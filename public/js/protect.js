@@ -7,13 +7,13 @@
   // watermark so any leaked image is traceable to the account that opened it.
   var doc = document.querySelector('.doc.protected');
   if (!doc) return;
-  var username = doc.getAttribute('data-user') || 'staff';
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var username = esc(doc.getAttribute('data-user') || 'staff');
   document.body.classList.add('noprint');
 
   // --- watermarking ---
-  // A subtle tiled diagonal layer for full coverage, PLUS fixed tags placed at
-  // the four corners and the center, so a cropped or carefully-framed screenshot
-  // still captures at least one mark identifying the account that opened it.
+  // A single subtle tiled diagonal layer for full, unobtrusive coverage that
+  // still identifies the account on a screenshot.
   var stamp = username + '  ·  VCF CONFIDENTIAL';
   var wm = document.createElement('div');
   wm.className = 'wm-overlay wm-a';
@@ -21,17 +21,6 @@
   for (var i = 0; i < 140; i++) cells += '<span>' + stamp + '</span>';
   wm.innerHTML = cells;
   document.body.appendChild(wm);
-
-  ['tl', 'tr', 'bl', 'br'].forEach(function (pos) {
-    var c = document.createElement('div');
-    c.className = 'wm-corner wm-' + pos;
-    c.textContent = stamp;
-    document.body.appendChild(c);
-  });
-  var center = document.createElement('div');
-  center.className = 'wm-center';
-  center.innerHTML = '<span>' + username + '</span>';
-  document.body.appendChild(center);
 
   // --- blur shield ---
   var shield = document.createElement('div');

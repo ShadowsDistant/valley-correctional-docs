@@ -4,8 +4,25 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title><%= title ? title + ' · ' + siteName : siteName %></title>
-  <meta name="description" content="<%= typeof page !== 'undefined' && page && page.description ? page.description : siteTagline %>" />
+  <%
+    var _pageDesc = (typeof page !== 'undefined' && page && page.description) ? page.description : siteTagline;
+    var _ogTitle = title ? title + ' · ' + siteName : siteName;
+    var _ogImg = (typeof baseUrl !== 'undefined' ? baseUrl : '') + '/assets/logo.png';
+  %>
+  <meta name="description" content="<%= _pageDesc %>" />
   <meta name="theme-color" content="#ffa200" />
+  <meta name="author" content="<%= siteName %>" />
+  <!-- Open Graph / social & Discord embeds -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="<%= siteName %>" />
+  <meta property="og:title" content="<%= _ogTitle %>" />
+  <meta property="og:description" content="<%= _pageDesc %>" />
+  <% if (typeof pageUrl !== 'undefined') { %><meta property="og:url" content="<%= pageUrl %>" /><% } %>
+  <meta property="og:image" content="<%= _ogImg %>" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="<%= _ogTitle %>" />
+  <meta name="twitter:description" content="<%= _pageDesc %>" />
+  <meta name="twitter:image" content="<%= _ogImg %>" />
   <link rel="icon" href="/assets/logo.png" type="image/png" />
   <link rel="stylesheet" href="/assets/icons.css" />
   <link rel="stylesheet" href="/assets/css/styles.css" />

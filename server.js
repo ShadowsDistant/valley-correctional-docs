@@ -101,7 +101,9 @@ app.use((req, res, next) => { res.locals.suspended = auth.isSuspended(res.locals
 app.use((req, res, next) => {
   res.locals.siteName = 'Valley Correctional Facility';
   res.locals.siteTagline = 'Documentation & Handbooks';
-  res.locals.discord = 'https://discord.gg/GDVqmx9hdk';
+  res.locals.discord = 'https://discord.gg/GDVqmx9hdK';
+  res.locals.baseUrl = (process.env.SITE_URL || (req.protocol + '://' + req.get('host'))).replace(/\/+$/, '');
+  res.locals.pageUrl = res.locals.baseUrl + (req.originalUrl || '/').split('?')[0];
   res.locals.year = new Date().getFullYear();
   res.locals.escapeHtml = (s) =>
     String(s == null ? '' : s).replace(/[<>&"']/g, (c) =>
@@ -189,7 +191,8 @@ app.get('/login', auth.csrfToken, (req, res) => {
 
 app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   const { username, password } = req.body;
-  const reqNext = typeof req.body.next === 'string' && req.body.next.startsWith('/') ? req.body.next : '';
+  // Only allow same-site relative paths (reject protocol-relative //evil.com).
+  const reqNext = typeof req.body.next === 'string' && /^\/(?!\/)/.test(req.body.next) ? req.body.next : '';
   const user = auth.findUserByUsername((username || '').trim());
   if (!user || !auth.verifyPassword(password || '', user.password)) {
     return res.status(401).render('login', {

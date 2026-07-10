@@ -1,5 +1,4 @@
 <%- include('../partials/head') %>
-<%- include('../partials/topbar') %>
 <div class="editor-shell"
      data-csrf="<%= csrfToken %>"
      data-new="<%= isNew ? '1' : '0' %>"
@@ -24,21 +23,25 @@
 
   <div class="editor-main">
     <details class="page-settings" open>
-      <summary>Page settings</summary>
-      <div class="field-grid">
-        <label class="field">Title <input type="text" id="f-title" value="<%= page.title %>" /></label>
-        <label class="field">URL slug <input type="text" id="f-slug" value="<%= page.slug %>" placeholder="section/page-name" /></label>
-        <label class="field">Group <input type="text" id="f-group" list="group-list" value="<%= page.group_name %>" placeholder="e.g. Shifts" />
+      <summary><span class="ps-title"><%- icon('file') %> Page settings</span><span class="ps-hint">title · url · visibility</span></summary>
+      <div class="settings-grid">
+        <label class="setting col-3">Title <input type="text" id="f-title" value="<%= page.title %>" /></label>
+        <label class="setting col-3">URL slug <input type="text" id="f-slug" value="<%= page.slug %>" placeholder="section/page-name" /></label>
+        <label class="setting col-2">Group <input type="text" id="f-group" list="group-list" value="<%= page.group_name %>" placeholder="e.g. Shifts" />
           <datalist id="group-list"><% groups.forEach(function (g) { %><option value="<%= g %>"></option><% }); %></datalist>
         </label>
-        <label class="field field-sm">Icon <input type="text" id="f-icon" value="<%= page.icon %>" list="icon-list" placeholder="home" />
+        <label class="setting col-2">Icon <input type="text" id="f-icon" value="<%= page.icon %>" list="icon-list" placeholder="home" />
           <datalist id="icon-list"><% ['home','message','bell','building','shield','briefcase','list','clock','clipboard','mask','calendar','cart','scroll','scale','cabinet','lock','file','files','book','users','eye','sitemap','info','check','warning','danger','chart'].forEach(function (n) { %><option value="<%= n %>"></option><% }); %></datalist>
         </label>
-        <label class="field field-sm">Sort <input type="number" id="f-sort" value="<%= page.sort %>" /></label>
-        <label class="field field-check"><input type="checkbox" id="f-internal" <%= page.internal ? 'checked' : '' %> /> <span>Internal (staff only)</span></label>
-        <label class="field field-sm" id="divisionField">Division
+        <label class="setting col-2">Sort order <input type="number" id="f-sort" value="<%= page.sort %>" /></label>
+        <label class="setting col-6">Description <input type="text" id="f-desc" value="<%= page.description %>" placeholder="Shown as the page subtitle and in search & social embeds" /></label>
+        <div class="setting col-3 setting-toggle">
+          <label class="switch"><input type="checkbox" id="f-internal" <%= page.internal ? 'checked' : '' %> /><span class="switch-track"></span></label>
+          <span class="setting-toggle-label">Internal <small>staff only</small></span>
+        </div>
+        <label class="setting col-3" id="divisionField">Division access
           <select id="f-division">
-            <option value="">— (all staff)</option>
+            <option value="">— Not restricted</option>
             <option value="all" <%= page.division === 'all' ? 'selected' : '' %>>All staff</option>
             <option value="management" <%= page.division === 'management' ? 'selected' : '' %>>Management</option>
             <option value="moderation" <%= page.division === 'moderation' ? 'selected' : '' %>>Moderation</option>
@@ -46,7 +49,6 @@
             <option value="osc" <%= page.division === 'osc' ? 'selected' : '' %>>Oversight Committee</option>
           </select>
         </label>
-        <label class="field field-full">Description (SEO / subtitle) <input type="text" id="f-desc" value="<%= page.description %>" /></label>
       </div>
     </details>
 

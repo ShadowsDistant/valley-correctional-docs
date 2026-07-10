@@ -9,7 +9,7 @@ Welcome to the official documentation hub for **Valley Correctional Facility (VC
 Whether you are joining your first shift or serving on our staff team, everything you need to participate safely and professionally is documented here.
 
 :::tip Join the community
-Find shift links, open support tickets, and connect with the community on our Discord: **[discord.gg/GDVqmx9hdk](https://discord.gg/GDVqmx9hdk)**
+Find shift links, open support tickets, and connect with the community on our Discord: **[discord.gg/GDVqmx9hdK](https://discord.gg/GDVqmx9hdK)**
 :::
 
 ## Getting Started
