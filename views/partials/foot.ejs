@@ -1,3 +1,4 @@
+  <% if (user && !user.agreed_policy) { %><%- include('policy-modal') %><% } %>
   <script src="/assets/js/app.js"></script>
   <% if (user) { %><script src="/assets/js/access-guard.js"></script><% } %>
   <% if (typeof pageScripts !== 'undefined') { pageScripts.forEach(function (s) { %>

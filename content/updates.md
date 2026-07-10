@@ -2,6 +2,20 @@
 
 Changelog of updates to the Valley Correctional Facility documentation site, including new pages, content revisions, and feature additions by version.
 
+## Version 2.0.0 — Documentation overhaul & new platform
+`Major Update` · `V2` · Published 7/9/2026
+
+**Content**
+- Rewrote **every public and internal document** for a clearer, more professional tone.
+- Standardised policy across the site: a single **Tier 1–3 offense framework** on the [rules](/community-rules/our-rules) page that aligns with the staff disciplinary process.
+- **Closed rule loopholes** — added explicit rules for alternate accounts and ban evasion, filter/automod evasion, impersonation, exploiting and cheating, false reports and evidence tampering, retaliation, and a "spirit of the rules" clause.
+
+**Platform**
+- New official **VCF seal** as the site logo and favicon.
+- Redesigned **staff login** and added a self-service **Account** page so staff can change their own password.
+- Added a required **staff policy agreement** shown at first sign-in.
+- Custom iconography across the site and quieter document watermarking.
+
 ## Version 1.3.4 — Notices page cleanup
 `Minor Update` · `V1` · Published 4/27/2026 @ 12:00 PM EST
 

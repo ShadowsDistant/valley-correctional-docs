@@ -1,15 +1,13 @@
 # Notices
 
-Stay up to date with official announcements, leadership changes, application openings, and important community notices for Valley Correctional Facility.
+Official announcements, leadership changes, application openings, and other important community notices for Valley Correctional Facility are posted here and in our Discord **#announcements** channel.
 
 :::note No active notices
-There are no active community notices at this time. When leadership changes, applications open, or an important announcement is made, it will appear here and in our Discord **#announcements** channel.
+There are no active community notices at this time. When leadership changes, applications open, or an important announcement is made, it will appear here.
 :::
 
 ## How notices work
 
 - **Announcements** — major community news is posted here and pinned in Discord.
-- **Application openings** — when CO, Moderator, or other roles open, we announce it here and in **#announcements**.
-- **Leadership changes** — promotions and structural changes are recorded on this page while they remain current.
-
-> Tip: Staff can add or remove a notice card at any time from the built-in editor — no redeploy required.
+- **Application openings** — when Corrections Officer, Moderator, or other roles open, they are announced here and in **#announcements**.
+- **Leadership changes** — appointments and structural changes are recorded here while they remain current.

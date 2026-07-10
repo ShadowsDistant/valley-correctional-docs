@@ -81,11 +81,12 @@ app.use(
 // (the realtime guard handles the page they're already looking at).
 app.use((req, res, next) => {
   if (req.session && req.session.user) {
-    const fresh = db.prepare('SELECT id, username, email, role, divisions, suspended FROM users WHERE id = ?').get(req.session.user.id);
+    const fresh = db.prepare('SELECT id, username, email, role, divisions, suspended, agreed_policy FROM users WHERE id = ?').get(req.session.user.id);
     if (!fresh) return req.session.destroy(() => res.redirect('/'));
     req.session.user = {
       id: fresh.id, username: fresh.username, email: fresh.email,
       role: fresh.role, divisions: fresh.divisions || '', suspended: fresh.suspended,
+      agreed_policy: fresh.agreed_policy,
     };
   }
   next();
@@ -127,6 +128,15 @@ function orderedPages(canView) {
   const flat = [];
   for (const group of tree) for (const p of group.pages) flat.push(p);
   return flat;
+}
+
+// The template renders the page title as an <h1>. If the body's first top-level
+// "# Heading" repeats that title, drop it so the title isn't shown twice.
+function stripDocTitle(markdown, title) {
+  const t = String(title || '').trim().toLowerCase();
+  return String(markdown).replace(/^#[ \t]+([^\r\n]+)\r?\n?/m, (m, h) =>
+    h.trim().toLowerCase() === t ? '' : m
+  );
 }
 
 const auditStmt = db.prepare('INSERT INTO audit_log (actor, action, target, details) VALUES (?, ?, ?, ?)');
@@ -263,6 +273,15 @@ app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf,
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(auth.hashPassword(next_), u.id);
   audit(u.username, 'user.password', u.username, 'changed own password');
   res.redirect('/account?updated=1');
+});
+
+// Record acceptance of the first-login staff policy agreement.
+app.post('/account/agree', auth.requireAuth, (req, res) => {
+  db.prepare('UPDATE users SET agreed_policy = 1 WHERE id = ?').run(req.session.user.id);
+  req.session.user.agreed_policy = 1;
+  audit(req.session.user.username, 'user.agree', req.session.user.username, 'accepted staff policy agreement');
+  const ref = req.get('referer') || '';
+  res.redirect(ref.includes('://' + req.get('host')) ? ref : '/home');
 });
 
 // --- admin: dashboard + editor + analytics ---------------------------------
@@ -704,7 +723,7 @@ app.get(/.*/, (req, res) => {
 
   recordView(req, page);
 
-  const { html, toc } = md.render(page.content);
+  const { html, toc } = md.render(stripDocTitle(page.content, page.title));
   const flat = orderedPages(canView);
   const idx = flat.findIndex((p) => p.slug === page.slug);
   const prev = idx > 0 ? flat[idx - 1] : null;

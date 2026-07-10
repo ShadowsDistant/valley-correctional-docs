@@ -408,7 +408,9 @@ kbd {
 }
 .doc-card:hover { border-color: var(--accent); color: var(--text); }
 :root[data-theme="dark"] .doc-card:hover { border-color: #ffa200; }
-.doc-card-icon { display: inline-flex; align-items: center; font-size: 22px; margin-bottom: 2px; }
+.doc-card-icon { display: inline-flex; align-items: center; font-size: 22px; margin-bottom: 4px; }
+.doc-card-icon .ic { width: 26px; height: 26px; background-color: var(--accent-strong); }
+:root[data-theme="dark"] .doc-card-icon .ic { background-color: #ffa200; }
 .doc-card-title { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .doc-card-desc { font-size: 13.5px; color: var(--muted); line-height: 1.55; }
 
@@ -459,8 +461,8 @@ kbd {
   border-radius: var(--r-xl); box-shadow: var(--shadow-lg); backdrop-filter: blur(6px);
 }
 .auth-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; border-radius: var(--r-xl) var(--r-xl) 0 0; background: var(--accent-grad); }
-.auth-logo { width: 68px; height: 68px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; border-radius: 18px; background: var(--surface-2); border: 1px solid var(--border); }
-.auth-logo img { width: 46px; height: 46px; border-radius: 12px; }
+.auth-logo { margin: -4px auto 14px; display: flex; align-items: center; justify-content: center; }
+.auth-logo img { width: 92px; height: 92px; filter: drop-shadow(0 6px 16px rgba(0,0,0,.35)); }
 .auth-eyebrow { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; color: var(--accent-strong); margin-bottom: 6px; }
 :root[data-theme="dark"] .auth-eyebrow { color: #ffa200; }
 .auth-card h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.02em; }
@@ -489,6 +491,31 @@ kbd {
 .account-panel .stack-form { max-width: 100%; }
 .account-ok { display: flex; align-items: center; gap: 9px; background: color-mix(in srgb, #22c55e 12%, transparent); border: 1px solid color-mix(in srgb, #22c55e 40%, transparent); color: #22c55e; padding: 11px 14px; border-radius: var(--r-sm); font-size: 13.5px; margin-bottom: 18px; font-weight: 600; }
 .account-ok .ic { background-color: #22c55e; width: 16px; height: 16px; }
+
+/* homepage cards must not inherit the markdown link underline */
+.markdown a.doc-card, .markdown a.doc-card:hover { text-decoration: none; }
+
+/* first-login staff policy agreement modal */
+.policy-back { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in srgb, var(--bg) 76%, transparent); backdrop-filter: blur(9px); }
+.policy-modal { position: relative; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r-xl); box-shadow: var(--shadow-lg); padding: 28px 30px 26px; }
+.policy-modal::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; border-radius: var(--r-xl) var(--r-xl) 0 0; background: var(--accent-grad); }
+.policy-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.policy-logo { width: 58px; height: 58px; flex: none; filter: drop-shadow(0 3px 8px rgba(0,0,0,.3)); }
+.policy-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--accent-strong); }
+:root[data-theme="dark"] .policy-eyebrow { color: #ffa200; }
+.policy-modal h2 { margin: 3px 0 0; font-size: 22px; letter-spacing: -0.01em; }
+.policy-intro { color: var(--muted); font-size: 13.5px; margin: 0 0 16px; line-height: 1.55; }
+.policy-body { border: 1px solid var(--border); border-radius: var(--r); background: var(--surface-2); padding: 4px 18px; margin-bottom: 18px; max-height: 300px; overflow-y: auto; }
+.policy-body ul { margin: 14px 0; padding-left: 20px; }
+.policy-body li { margin: 11px 0; font-size: 13.5px; color: var(--text-2); line-height: 1.62; }
+.policy-body li::marker { color: var(--accent); }
+.policy-body strong { color: var(--text); }
+.policy-actions { display: flex; flex-direction: column; gap: 14px; }
+.policy-check { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.policy-check input { width: 18px; height: 18px; flex: none; }
+.policy-actions .btn { align-self: flex-start; }
+.policy-decline { margin-top: 12px; text-align: center; }
+.policy-agree[disabled] { opacity: .5; }
 
 /* ---------- admin ---------- */
 .admin-content { max-width: 1120px; padding: 44px 48px 90px; }

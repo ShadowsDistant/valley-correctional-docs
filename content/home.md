@@ -4,54 +4,53 @@
 
 # Valley Correctional Facility
 
-Welcome to the official community hub for **Valley Correctional Facility (VCF)** — the largest role-playing community for Valley Prison. This site is your source of truth for our rules, shifts, divisions, and staff handbooks.
+Welcome to the official documentation hub for **Valley Correctional Facility (VCF)** — the largest and most established prison-roleplay community for Valley Prison. This site is the single source of truth for our rules, shift procedures, divisional structure, and staff handbooks.
 
-<img src="https://mintcdn.com/valleycorrectionalfacility/dZSvyqiTmwE_wKtd/images/11d640a8-df3d-42c2-b8fd-f8f4748fe8b4%20(1).jpeg?fit=max&auto=format&n=dZSvyqiTmwE_wKtd&q=85&s=7feef533a7fbdccfeb672021ff619cef" alt="Valley Prison facility" loading="lazy" />
-
+Whether you are joining your first shift or serving on our staff team, everything you need to participate safely and professionally is documented here.
 
 :::tip Join the community
-Come hang out, find shift links, and open support tickets on our Discord: **[discord.gg/GDVqmx9hdk](https://discord.gg/GDVqmx9hdk)**
+Find shift links, open support tickets, and connect with the community on our Discord: **[discord.gg/GDVqmx9hdk](https://discord.gg/GDVqmx9hdk)**
 :::
 
 ## Getting Started
 
-New here? Start with these two pages before joining any activity.
+New members should begin with the two pages below before taking part in any activity.
 
 <div class="card-grid">
   <a class="doc-card" href="/community-rules/our-rules">
-    <span class="doc-card-icon">📕</span>
+    <span class="doc-card-icon">:i[list]:</span>
     <span class="doc-card-title">Community Rules</span>
-    <span class="doc-card-desc">Read the foundational guidelines that keep VCF safe and fair before you participate.</span>
+    <span class="doc-card-desc">The complete, binding rules that keep VCF safe, fair, and welcoming. Read these before you participate.</span>
   </a>
   <a class="doc-card" href="/shifts/shift-information">
-    <span class="doc-card-icon">📋</span>
+    <span class="doc-card-icon">:i[clipboard]:</span>
     <span class="doc-card-title">Shift Information</span>
-    <span class="doc-card-desc">Learn how to join roleplay shifts, team structures, and our server timezone.</span>
+    <span class="doc-card-desc">How shifts run, the teams involved, and how to take part in our roleplay sessions.</span>
   </a>
 </div>
 
 ## Explore VCF
 
-VCF is organised into specialised divisions that keep the community running smoothly.
+VCF is organised into specialised divisions, each responsible for a distinct part of the community.
 
 <div class="card-grid">
   <a class="doc-card" href="/our-divisions/management-division">
-    <span class="doc-card-icon">🏛️</span>
+    <span class="doc-card-icon">:i[users]:</span>
     <span class="doc-card-title">Management Division</span>
-    <span class="doc-card-desc">Oversees operations and sets the strategic direction for the community.</span>
+    <span class="doc-card-desc">Sets strategic direction and oversees the health of every operational division.</span>
   </a>
   <a class="doc-card" href="/our-divisions/moderation-division">
-    <span class="doc-card-icon">🛡️</span>
+    <span class="doc-card-icon">:i[shield]:</span>
     <span class="doc-card-title">Moderation Division</span>
-    <span class="doc-card-desc">Ensures community safety and fairness through impartial enforcement.</span>
+    <span class="doc-card-desc">Safeguards the community through consistent, impartial rule enforcement.</span>
   </a>
   <a class="doc-card" href="/our-divisions/specialized-investigations-division">
-    <span class="doc-card-icon">🔎</span>
+    <span class="doc-card-icon">:i[briefcase]:</span>
     <span class="doc-card-title">Specialized Investigations</span>
-    <span class="doc-card-desc">Handles internal affairs cases and upholds staff integrity.</span>
+    <span class="doc-card-desc">Upholds staff integrity by investigating misconduct and internal-affairs cases.</span>
   </a>
 </div>
 
 ## Need Help?
 
-All support runs through tickets rather than direct messages to leadership. Open a ticket or use the Q&A channels in our Discord and a member of the Moderation Division will assist you.
+All support is handled through **tickets**, not direct messages to leadership. Open a ticket or use the Q&A channels on our Discord and a member of the Moderation Division will assist you as soon as possible.
