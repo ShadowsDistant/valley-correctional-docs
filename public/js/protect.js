@@ -19,7 +19,7 @@
   var wm = document.createElement('div');
   wm.className = 'wm-overlay wm-a';
   var cells = '';
-  for (var i = 0; i < 220; i++) cells += '<span>' + username + '</span>';
+  for (var i = 0; i < 320; i++) cells += '<span>' + username + '</span>';
   wm.innerHTML = cells;
   document.body.appendChild(wm);
 

@@ -985,3 +985,54 @@ kbd {
 .switch input:checked + .switch-track { background: var(--accent); }
 .switch input:checked + .switch-track::before { transform: translateX(18px); }
 @media (max-width: 760px) { .settings-grid { grid-template-columns: repeat(2, 1fr); } .setting.col-2, .setting.col-3, .setting.col-6 { grid-column: span 2; } }
+
+/* ===========================================================================
+   Motion — tasteful entrance animations & micro-interactions.
+   Entirely disabled for users who prefer reduced motion.
+   =========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes popIn    { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+  @keyframes slideDown{ from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: none; } }
+  @keyframes floatIn  { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+
+  /* chrome */
+  .topbar   { animation: slideDown .5s var(--ease) both; }
+  .sidebar  { animation: fadeIn .7s var(--ease) both; }
+  main.content { animation: fadeInUp .45s var(--ease) both; }
+  .hero, .doc-breadcrumb, .admin-titlerow, .admin-h1 { animation: fadeInUp .5s var(--ease) both; }
+
+  /* sidebar nav links flow in */
+  .side-nav .nav-link { animation: floatIn .4s var(--ease) both; }
+  .side-nav li:nth-child(2) .nav-link { animation-delay: .03s; }
+  .side-nav li:nth-child(3) .nav-link { animation-delay: .06s; }
+  .side-nav li:nth-child(4) .nav-link { animation-delay: .09s; }
+  .side-nav li:nth-child(5) .nav-link { animation-delay: .12s; }
+  .side-nav li:nth-child(6) .nav-link { animation-delay: .15s; }
+
+  /* staggered cards, panels & rows */
+  .doc-cards .doc-card, .stat-grid .stat-card, .admin-cols > .panel, .staff-list .staff-card,
+  .action-list .action, .policy-editor-grid > *, .wm-tool, .clause-row, .log-filters, .table-scroll,
+  .account-card, .settings-grid { animation: fadeInUp .5s var(--ease) both; }
+  .doc-card:nth-child(2), .stat-card:nth-child(2), .staff-card:nth-child(2), .action:nth-child(2), .clause-row:nth-child(2) { animation-delay: .05s; }
+  .doc-card:nth-child(3), .stat-card:nth-child(3), .staff-card:nth-child(3), .action:nth-child(3), .clause-row:nth-child(3) { animation-delay: .1s; }
+  .doc-card:nth-child(4), .stat-card:nth-child(4), .staff-card:nth-child(4), .action:nth-child(4), .clause-row:nth-child(4) { animation-delay: .15s; }
+  .doc-card:nth-child(5), .staff-card:nth-child(5), .action:nth-child(5), .clause-row:nth-child(5) { animation-delay: .2s; }
+  .doc-card:nth-child(n+6), .staff-card:nth-child(n+6), .clause-row:nth-child(n+6) { animation-delay: .25s; }
+
+  /* overlays & modals */
+  .policy-back, .access-lock { animation: fadeIn .28s var(--ease) both; }
+  .policy-modal, .auth-card, .restricted-box, .access-lock-box, .wz-modal { animation: popIn .4s var(--ease) both; }
+  .toast-in { animation: popIn .3s var(--ease) both; }
+
+  /* micro-interactions */
+  .btn { transition: transform .12s var(--ease), filter .15s var(--ease), background .15s var(--ease), border-color .15s var(--ease), box-shadow .15s var(--ease); }
+  .btn:active { transform: translateY(1px) scale(.99); }
+  .action:hover, .stat-card:hover { transform: translateY(-2px); }
+  .brand-logo { transition: transform .3s var(--ease); }
+  .brand:hover .brand-logo { transform: rotate(-6deg) scale(1.05); }
+  .nav-ico, .doc-card-icon { transition: transform .2s var(--ease); }
+  .nav-link:hover .nav-ico { transform: translateX(2px); }
+  .doc-card:hover .doc-card-icon { transform: scale(1.08); }
+}

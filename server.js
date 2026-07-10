@@ -29,18 +29,29 @@ const setSetting = (key, value) => setSettingStmt.run(key, String(value));
 
 // Staff policy agreement: the clauses are admin-editable and versioned. Bumping
 // the version re-prompts every user (their agreed_policy stores the version they
-// last accepted). Default version is 2 so accounts that agreed to the original
-// wording are re-prompted once for the "employment is a privilege" clause.
+// last accepted). POLICY_SEED_VERSION (below) re-seeds these defaults on deploy.
 const DEFAULT_POLICY_CLAUSES = [
   'I will comply with **all** Valley Correctional Facility policies — the community rules, my division handbook, the General Staff Handbook, and the Chain of Command — and act with professionalism, impartiality, and integrity at all times.',
   'I understand that **all internal documents are strictly confidential** and are not to be shared, screenshotted, copied, paraphrased, or discussed with anyone outside the authorized staff team.',
   '**I understand that leaking, disclosing, or facilitating access to any internal or classified VCF document — whether during or after my time on staff — is a Tier 3 offense that will result in immediate termination and a permanent employment blacklist, and may be escalated to platform moderation.**',
-  'I understand that my access is logged and monitored, that documents are watermarked to my account, and that violations are investigated by the Specialized Investigations Division.',
+  'I understand that my access is logged and monitored, and that violations are investigated by the Specialized Investigations Division.',
+  'I understand that any evidence gathered while investigating a leak or other policy violation is confidential and **will not be shared** with the person under investigation or with any other party.',
+  'I understand that **faction auditors are independent oversight and are not counted as members of the VCF staff team.**',
   '**I understand that my employment at Valley Correctional Facility is a privilege, not a right, and that it may be revoked at any time.**',
   'I accept that continued access is contingent on my ongoing compliance, and that VCF leadership may revise these policies at any time.',
 ];
-if (setting('policy_clauses') === undefined) setSetting('policy_clauses', JSON.stringify(DEFAULT_POLICY_CLAUSES));
-if (setting('policy_version') === undefined) setSetting('policy_version', '2');
+// Canonical policy revision. Bump this whenever DEFAULT_POLICY_CLAUSES changes;
+// on deploy it overwrites the stored clauses and re-prompts every staff member.
+const POLICY_SEED_VERSION = 3;
+(function seedPolicy() {
+  const seeded = Number(setting('policy_seed_version', '0')) || 0;
+  if (seeded < POLICY_SEED_VERSION) {
+    setSetting('policy_clauses', JSON.stringify(DEFAULT_POLICY_CLAUSES));
+    const nextVer = Math.max((Number(setting('policy_version', '1')) || 1) + 1, 2);
+    setSetting('policy_version', String(nextVer));
+    setSetting('policy_seed_version', String(POLICY_SEED_VERSION));
+  }
+})();
 const policyVersion = () => Number(setting('policy_version', '1')) || 1;
 function policyClauses() {
   try { return JSON.parse(setting('policy_clauses', '[]')); } catch (e) { return DEFAULT_POLICY_CLAUSES; }
