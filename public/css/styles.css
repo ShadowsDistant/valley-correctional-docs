@@ -752,11 +752,12 @@ kbd {
   display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0;
   overflow: hidden; transform-origin: center;
 }
-.wm-overlay span { flex: 0 0 auto; font-family: var(--mono); font-size: 12.5px; font-weight: 700; white-space: nowrap; color: var(--text); letter-spacing: .08em; }
-/* ~1/255 intensity delta: below the eye's contrast threshold even on the dark
-   theme's near-black background, but the thin anti-aliased glyph strokes still
-   leave a high-frequency signature the admin Watermark Reveal tool amplifies. */
-.wm-overlay.wm-a { opacity: .005; transform: rotate(-22deg) scale(1.3); }
+/* Chroma-only stamp: the glyphs are near-pure blue — the channel human vision
+   is least sensitive to. At .012 the LUMINANCE delta is ~0.75/255, below one
+   display quantization step (physically invisible on screen), while the blue
+   channel still carries ~3/255 for the Watermark Reveal tool's per-channel pass. */
+.wm-overlay span { flex: 0 0 auto; font-family: var(--mono); font-size: 12.5px; font-weight: 700; white-space: nowrap; color: #3c3cff; letter-spacing: .08em; }
+.wm-overlay.wm-a { opacity: .012; transform: rotate(-22deg) scale(1.3); }
 .wm-overlay.wm-a span { padding: 46px 74px; }
 /* blur the confidential body when the tab loses focus (anti screen-grab) */
 .doc.protected.blurred .markdown { filter: blur(9px); transition: filter .1s; }
@@ -1070,10 +1071,23 @@ time[data-time] { border-bottom: 1px dotted var(--border-2); cursor: help; white
   @keyframes fadeOut { to { opacity: 0; } }
   @keyframes ripple { to { transform: scale(1); opacity: 0; } }
   @keyframes expandIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes growW { from { width: 0; } }
+  @keyframes growH { from { height: 0; } }
   .ripple { animation: ripple .5s var(--ease); }
   .confirm-back { animation: fadeIn .2s var(--ease); }
   .confirm-back.closing { animation: fadeOut .16s var(--ease) forwards; }
   .confirm-card { animation: popIn .3s var(--ease); }
   /* staff-control panels push in when revealed */
   .staff-panel:not([hidden]), .add-panel:not([hidden]), .rev-drawer[open] .rev-list { animation: expandIn .28s var(--ease); }
+  /* search results pop under the box */
+  .search-results:not([hidden]) { animation: cpop .16s var(--ease); transform-origin: top center; }
+  /* accordions & page settings ease their body in when opened */
+  .markdown details.accordion[open] .accordion-body, .page-settings[open] .settings-grid { animation: expandIn .26s var(--ease); }
+  /* analytics bars grow in */
+  .bar span { animation: growW .7s var(--ease) both; }
+  .hour-bar span { animation: growH .7s var(--ease) both; }
+  /* watermark reveal stage fades in */
+  .wm-stage:not([hidden]) { animation: fadeInUp .35s var(--ease); }
 }
+/* past shifts stay listed but visibly retired */
+.row-past td { opacity: .45; }

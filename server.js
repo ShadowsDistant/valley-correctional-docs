@@ -150,10 +150,14 @@ app.use(
 // Reload the logged-in user from the DB on every request so role, division,
 // and suspension changes take effect immediately on the next navigation
 // (the realtime guard handles the page they're already looking at).
+const touchLastSeen = db.prepare(
+  "UPDATE users SET last_seen = datetime('now') WHERE id = ? AND (last_seen IS NULL OR last_seen < datetime('now','-60 seconds'))"
+);
 app.use((req, res, next) => {
   if (req.session && req.session.user) {
     const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy FROM users WHERE id = ?').get(req.session.user.id);
     if (!fresh) return req.session.destroy(() => res.redirect('/'));
+    try { touchLastSeen.run(fresh.id); } catch (e) { /* non-critical */ }
     req.session.user = {
       id: fresh.id, username: fresh.username,
       role: fresh.role, divisions: fresh.divisions || '', suspended: fresh.suspended,
@@ -702,8 +706,8 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   const toArr = (o) => Object.keys(o).map((k) => ({ label: k, n: o[k] })).sort((a, b) => b.n - a.n);
 
   const recent = db.prepare(
-    `SELECT slug, ts, authed, referrer FROM page_views ORDER BY id DESC LIMIT 12`
-  ).all().map((r) => { const p = getPageAny.get(r.slug); return { title: p ? p.title : r.slug, slug: r.slug, ts: r.ts, authed: r.authed }; });
+    `SELECT slug, ts, authed, username FROM page_views ORDER BY id DESC LIMIT 12`
+  ).all().map((r) => { const p = getPageAny.get(r.slug); return { title: p ? p.title : r.slug, slug: r.slug, ts: r.ts, authed: r.authed, username: r.username }; });
 
   res.render('admin/analytics', {
     title: 'Admin · Analytics', section: 'analytics',
@@ -725,7 +729,12 @@ const usesDivisions = (role) => role === 'staff' || role === 'editor';
 
 // Staff management (admins only)
 adminRouter.get('/staff', auth.requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, role, divisions, suspended, created_at, last_login FROM users ORDER BY id').all();
+  const users = db.prepare('SELECT id, username, role, divisions, suspended, created_at, last_login, last_seen FROM users ORDER BY id').all();
+  const viewCounts = new Map(
+    db.prepare('SELECT username, COUNT(*) AS n FROM page_views WHERE username IS NOT NULL GROUP BY username').all()
+      .map((r) => [r.username, r.n])
+  );
+  users.forEach((u) => { u.doc_views = viewCounts.get(u.username) || 0; });
   res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS });
 });
 

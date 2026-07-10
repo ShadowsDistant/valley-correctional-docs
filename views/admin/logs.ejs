@@ -41,12 +41,12 @@
     <section class="panel panel-flush">
       <div class="table-scroll">
       <table class="table logs-table">
-        <thead><tr><th>When (UTC)</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+        <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
         <tbody>
           <% if (!events.length) { %><tr><td colspan="5" class="muted" style="padding:18px">No matching activity.</td></tr><% } %>
           <% events.forEach(function (e) { var a = actionLabel(e.action); %>
             <tr>
-              <td class="muted mono small nowrap"><%= (e.ts || '').replace('T',' ') %></td>
+              <td class="muted small nowrap"><time data-time="<%= e.ts %>"><%= (e.ts || '').replace('T',' ') %></time></td>
               <td><strong><%= e.actor %></strong></td>
               <td><span class="act-badge <%= a[1] %>"><%= a[0] %></span></td>
               <td class="mono small"><% if (/^\//.test(e.target)) { %><a href="<%= e.target %>" target="_blank"><%= e.target %></a><% } else { %><%= e.target %><% } %></td>

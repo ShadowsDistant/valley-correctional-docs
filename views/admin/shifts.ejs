@@ -44,8 +44,9 @@
             <table class="table">
               <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Host</th><th></th></tr></thead>
               <tbody>
+                <% var today = new Date().toISOString().slice(0,10); %>
                 <% shifts.forEach(function (s) { %>
-                  <tr>
+                  <tr class="<%= s.date < today ? 'row-past' : '' %>">
                     <td class="nowrap mono small"><%= s.date %></td>
                     <td class="small"><%= s.time || 'TBA' %></td>
                     <td class="small"><%= s.type %></td>

@@ -91,27 +91,20 @@
     ctx.filter = 'none';
   }
 
-  // Auto-reveal: forensic high-pass. The watermark is a tiny (~2/255) local
-  // brightness offset, so we subtract a blurred copy from each pixel and
-  // amplify the residual around mid-gray. Works no matter how dark or light
-  // the screenshot is (naive brightness/contrast clips dark images to black).
-  function autoReveal() {
-    if (!loaded) return;
-    labels();
-    var w = srcCanvas.width, h = srcCanvas.height;
-    var d = sctx.getImageData(0, 0, w, h).data;
-    var n = w * h;
-    var lum = new Float32Array(n);
-    for (var i = 0, p = 0; i < n; i++, p += 4) lum[i] = 0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2];
-
-    // separable box blur (radius 4) via row/column prefix sums
-    var R = 4, win = 2 * R + 1;
-    var tmp = new Float32Array(n), blur = new Float32Array(n);
+  // Auto-reveal: forensic high-pass, per channel. The watermark is a tiny
+  // (1–3/255) local offset that may live in a single color channel (it's a
+  // chroma-only blue stamp), so we blur each channel, take the residual with
+  // the largest magnitude at each pixel, and amplify it around mid-gray.
+  // Works no matter how dark the screenshot is (naive brightness/contrast
+  // clips dark images to black).
+  function boxBlur(src, w, h) {
+    var R = 4, n = w * h;
+    var tmp = new Float32Array(n), out = new Float32Array(n);
     var pre = new Float32Array(Math.max(w, h) + 1);
     var x, y, row, a, b;
     for (y = 0; y < h; y++) {
       row = y * w; pre[0] = 0;
-      for (x = 0; x < w; x++) pre[x + 1] = pre[x] + lum[row + x];
+      for (x = 0; x < w; x++) pre[x + 1] = pre[x] + src[row + x];
       for (x = 0; x < w; x++) {
         a = Math.max(0, x - R); b = Math.min(w - 1, x + R);
         tmp[row + x] = (pre[b + 1] - pre[a]) / (b - a + 1);
@@ -122,15 +115,31 @@
       for (y = 0; y < h; y++) pre[y + 1] = pre[y] + tmp[y * w + x];
       for (y = 0; y < h; y++) {
         a = Math.max(0, y - R); b = Math.min(h - 1, y + R);
-        blur[y * w + x] = (pre[b + 1] - pre[a]) / (b - a + 1);
+        out[y * w + x] = (pre[b + 1] - pre[a]) / (b - a + 1);
       }
     }
+    return out;
+  }
+
+  function autoReveal() {
+    if (!loaded) return;
+    labels();
+    var w = srcCanvas.width, h = srcCanvas.height;
+    var d = sctx.getImageData(0, 0, w, h).data;
+    var n = w * h;
+    var chR = new Float32Array(n), chG = new Float32Array(n), chB = new Float32Array(n);
+    for (var i = 0, p = 0; i < n; i++, p += 4) { chR[i] = d[p]; chG[i] = d[p + 1]; chB[i] = d[p + 2]; }
+    var bR = boxBlur(chR, w, h), bG = boxBlur(chG, w, h), bB = boxBlur(chB, w, h);
 
     var gain = +ctrl.gain.value;
     canvas.width = w; canvas.height = h;
     var out = ctx.createImageData(w, h), o = out.data;
     for (i = 0, p = 0; i < n; i++, p += 4) {
-      var v = 128 + (lum[i] - blur[i]) * gain;
+      var rr = chR[i] - bR[i], rg = chG[i] - bG[i], rb = chB[i] - bB[i];
+      var res = rr;
+      if (Math.abs(rg) > Math.abs(res)) res = rg;
+      if (Math.abs(rb) > Math.abs(res)) res = rb;
+      var v = 128 + res * gain;
       v = v < 0 ? 0 : v > 255 ? 255 : v;
       o[p] = o[p + 1] = o[p + 2] = v; o[p + 3] = 255;
     }

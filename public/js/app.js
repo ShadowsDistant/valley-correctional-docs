@@ -42,11 +42,13 @@
     loading = true;
     fetch('/search-index.json').then(function (r) { return r.json(); }).then(function (data) {
       index = data.map(function (p) {
-        p._hay = (p.title + ' ' + (p.group || '') + ' ' + (p.description || '') + ' ' + (p.text || '')).toLowerCase();
-        p._t = p.title.toLowerCase();
+        p._hay = ((p.title || '') + ' ' + (p.group || '') + ' ' + (p.description || '') + ' ' + (p.text || '')).toLowerCase();
+        p._t = (p.title || '').toLowerCase();
         return p;
       });
       loading = false;
+      // If the user typed while the index was still loading, answer them now.
+      if (input && input.value.trim()) render(search(input.value));
     }).catch(function () { loading = false; });
   }
 
@@ -130,6 +132,7 @@
   if (input && box) {
     input.addEventListener('focus', loadIndex);
     input.addEventListener('input', function () {
+      loadIndex(); // belt & braces — some environments never fire focus
       if (input.value.trim()) render(search(input.value)); else box.hidden = true;
     });
     input.addEventListener('keydown', function (e) {

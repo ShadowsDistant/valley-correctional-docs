@@ -95,10 +95,10 @@
     <section class="panel">
       <div class="panel-head"><h2>Recent activity</h2></div>
       <% if(!recent.length){ %><p class="muted">No recent views.</p><% } else { %>
-        <table class="table"><thead><tr><th>Page</th><th>Visitor</th><th>When (UTC)</th></tr></thead><tbody>
+        <table class="table"><thead><tr><th>Page</th><th>Visitor</th><th>When</th></tr></thead><tbody>
           <% recent.forEach(function(r){ %><tr><td><a href="/<%= r.slug %>" target="_blank"><%= r.title %></a></td>
-            <td><span class="badge <%= r.authed ? 'badge-internal':'' %>"><%= r.authed ? 'Staff':'Anon' %></span></td>
-            <td class="muted mono small"><%= r.ts %></td></tr><% }); %>
+            <td><span class="badge <%= r.authed ? 'badge-internal':'' %>"><%= r.username || (r.authed ? 'Staff':'Anon') %></span></td>
+            <td class="muted small"><time data-time="<%= r.ts %>"><%= r.ts %></time></td></tr><% }); %>
         </tbody></table>
       <% } %>
     </section>

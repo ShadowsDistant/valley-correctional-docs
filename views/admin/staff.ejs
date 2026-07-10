@@ -52,6 +52,8 @@
               <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>
               <div class="staff-fact"><span class="fact-label">Divisions</span><span class="fact-val"><%= u.role==='admin' ? 'All' : (have.length ? have.join(', ') : '—') %></span></div>
               <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val"><% if (u.last_login) { %><time data-time="<%= u.last_login %>"><%= u.last_login.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
+              <div class="staff-fact"><span class="fact-label">Last seen</span><span class="fact-val"><% if (u.last_seen) { %><time data-time="<%= u.last_seen %>"><%= u.last_seen.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
+              <div class="staff-fact"><span class="fact-label">Doc views</span><span class="fact-val mono"><%= u.doc_views %></span></div>
             </div>
           </div>
 
