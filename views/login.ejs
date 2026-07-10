@@ -1,25 +1,29 @@
 <%- include('partials/head') %>
 <div class="auth-wrap">
   <div class="auth-card">
-    <a class="auth-brand" href="/home">
-      <span class="brand-mark">VCF</span>
-      <span class="brand-title"><%= siteName %></span>
-    </a>
-    <h1>Staff Login</h1>
-    <p class="auth-sub">Sign in to edit documentation, view analytics, and read internal handbooks.</p>
-    <% if (error) { %><div class="auth-error"><%= error %></div><% } %>
+    <div class="auth-logo"><img src="/assets/favicon-og.svg" alt="<%= siteName %>" width="60" height="60" /></div>
+    <div class="auth-eyebrow">Valley Correctional Facility</div>
+    <h1>Staff Portal</h1>
+    <p class="auth-sub">Sign in to edit documentation, view traffic, and read internal handbooks.</p>
+
+    <% if (error) { %><div class="auth-error"><%- icon('danger') %> <span><%= error %></span></div><% } %>
+
     <form method="post" action="/login" class="auth-form">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <input type="hidden" name="next" value="<%= next %>" />
-      <label>Username
-        <input type="text" name="username" autocomplete="username" required autofocus />
+      <label class="auth-field">
+        <span class="auth-label">Username</span>
+        <input type="text" name="username" autocomplete="username" required autofocus placeholder="your username" />
       </label>
-      <label>Password
-        <input type="password" name="password" autocomplete="current-password" required />
+      <label class="auth-field">
+        <span class="auth-label">Password</span>
+        <input type="password" name="password" autocomplete="current-password" required placeholder="••••••••" />
       </label>
-      <button class="btn btn-solid btn-block" type="submit">Log in</button>
+      <button class="btn btn-solid btn-block" type="submit"><%- icon('lock') %> Sign in</button>
     </form>
+
     <a class="auth-back" href="/home">← Back to documentation</a>
   </div>
+  <p class="auth-foot">Access is monitored. Unauthorized use is prohibited.</p>
 </div>
 <%- include('partials/foot') %>

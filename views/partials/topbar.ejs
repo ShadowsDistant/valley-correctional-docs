@@ -15,10 +15,11 @@
   </div>
 
   <nav class="top-actions">
-    <a class="top-link" href="/home"><%- icon('file') %> Public Documents</a>
+    <a class="top-link doc-tab" href="/home"><%- icon('file') %> Public Documents</a>
     <% if (user) { %>
-      <a class="top-link" href="/internal-documents/general-staff-handbook"><%- icon('lock') %> Internal Documents</a>
+      <a class="top-link doc-tab" href="/internal-documents/general-staff-handbook"><%- icon('lock') %> Internal Documents</a>
       <% if (canEdit) { %><a class="top-link" href="/admin">Dashboard</a><% } %>
+      <a class="top-link" href="/account" title="Your account"><%- icon('users') %> <%= user.username %></a>
       <form action="/logout" method="post" class="inline"><button class="btn btn-ghost btn-sm" type="submit"><%- icon('logout') %> Log out</button></form>
     <% } else { %>
       <a class="top-link" href="/login">Staff Login</a>

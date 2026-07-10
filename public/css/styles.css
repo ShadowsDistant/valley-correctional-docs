@@ -233,7 +233,7 @@ kbd {
 .sr-title .ic { width: 12px; height: 12px; }
 
 .top-actions { display: flex; align-items: center; gap: 8px; }
-.top-link { color: var(--text-2); font-size: 14px; font-weight: 500; padding: 8px 10px; border-radius: var(--r-sm); }
+.top-link { color: var(--text-2); font-size: 14px; font-weight: 500; padding: 8px 10px; border-radius: var(--r-sm); white-space: nowrap; }
 .top-link:hover { color: var(--text); background: var(--surface-2); }
 .ico-moon { display: none; }
 :root[data-theme="dark"] .ico-sun { display: none; }
@@ -446,23 +446,49 @@ kbd {
 .pager-link strong { font-weight: 600; font-size: 15px; }
 
 /* ---------- auth ---------- */
-.auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(900px 500px at 50% -5%, var(--accent-soft), transparent 65%), var(--bg); }
-.auth-card { width: 100%; max-width: 410px; padding: 38px; background: var(--elevated); border: 1px solid var(--border); border-radius: var(--r-xl); box-shadow: var(--shadow-lg); }
-.auth-brand { display: flex; align-items: center; gap: 11px; color: var(--text); margin-bottom: 24px; }
-.auth-brand .brand-title { font-size: 15px; }
-.auth-card h1 { font-size: 25px; margin: 0 0 6px; letter-spacing: -0.02em; }
-.auth-sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
-.auth-form { display: flex; flex-direction: column; gap: 16px; }
-.auth-form label, .field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.auth-wrap {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px;
+  background:
+    radial-gradient(720px 420px at 50% -8%, var(--accent-soft), transparent 62%),
+    radial-gradient(900px 600px at 50% 120%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 60%),
+    var(--bg);
+}
+.auth-card {
+  position: relative; width: 100%; max-width: 396px; padding: 40px 36px 32px; text-align: center;
+  background: color-mix(in srgb, var(--elevated) 92%, transparent); border: 1px solid var(--border);
+  border-radius: var(--r-xl); box-shadow: var(--shadow-lg); backdrop-filter: blur(6px);
+}
+.auth-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; border-radius: var(--r-xl) var(--r-xl) 0 0; background: var(--accent-grad); }
+.auth-logo { width: 68px; height: 68px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; border-radius: 18px; background: var(--surface-2); border: 1px solid var(--border); }
+.auth-logo img { width: 46px; height: 46px; border-radius: 12px; }
+.auth-eyebrow { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; color: var(--accent-strong); margin-bottom: 6px; }
+:root[data-theme="dark"] .auth-eyebrow { color: #ffa200; }
+.auth-card h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.02em; }
+.auth-sub { color: var(--muted); font-size: 13.5px; margin: 0 auto 26px; line-height: 1.55; max-width: 300px; }
+.auth-form { display: flex; flex-direction: column; gap: 15px; text-align: left; }
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
+.auth-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .auth-form input, .field input, .field select, .field textarea, .inline-form input {
-  font: inherit; font-size: 14px; padding: 11px 13px; color: var(--text);
+  font: inherit; font-size: 14px; padding: 12px 14px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--r-sm); outline: none; font-weight: 400;
   transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
 }
 .auth-form input:focus, .field input:focus, .field textarea:focus, .field select:focus, .inline-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
-.auth-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.35); color: #ef4444; padding: 11px 13px; border-radius: var(--r-sm); font-size: 13.5px; margin-bottom: 16px; }
-.auth-back { display: inline-block; margin-top: 20px; font-size: 13.5px; color: var(--muted); }
+.auth-form .btn-block { margin-top: 4px; padding: 13px; }
+.auth-error { display: flex; align-items: center; gap: 9px; text-align: left; background: color-mix(in srgb, #ef4444 12%, transparent); border: 1px solid color-mix(in srgb, #ef4444 40%, transparent); color: #ef4444; padding: 11px 13px; border-radius: var(--r-sm); font-size: 13px; margin-bottom: 18px; }
+.auth-error .ic { background-color: #ef4444; width: 16px; height: 16px; flex: none; }
+.auth-back { display: inline-block; margin-top: 22px; font-size: 13px; color: var(--muted); }
 .auth-back:hover { color: var(--text); }
+.auth-foot { font-size: 11.5px; color: var(--faint); letter-spacing: .02em; }
+
+/* account / self-service password */
+.account-wrap { max-width: 720px; margin: 0 auto; padding: 44px 24px 90px; }
+.account-card { }
+.account-meta { display: flex; flex-wrap: wrap; gap: 30px; margin: 6px 0 24px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
+.account-panel { max-width: 460px; }
+.account-panel .stack-form { max-width: 100%; }
+.account-ok { display: flex; align-items: center; gap: 9px; background: color-mix(in srgb, #22c55e 12%, transparent); border: 1px solid color-mix(in srgb, #22c55e 40%, transparent); color: #22c55e; padding: 11px 14px; border-radius: var(--r-sm); font-size: 13.5px; margin-bottom: 18px; font-weight: 600; }
+.account-ok .ic { background-color: #22c55e; width: 16px; height: 16px; }
 
 /* ---------- admin ---------- */
 .admin-content { max-width: 1120px; padding: 44px 48px 90px; }
@@ -569,6 +595,7 @@ kbd {
   .editor-preview-pane { border-top: 1px solid var(--border); }
   .top-link { display: none; }
 }
+@media (max-width: 1180px) { .top-link.doc-tab { display: none; } }
 @media (max-width: 720px) {
   .topbar { gap: 10px; padding: 0 14px; }
   .top-actions { gap: 4px; }
@@ -636,17 +663,17 @@ kbd {
   display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0;
   overflow: hidden; transform-origin: center;
 }
-.wm-overlay.wm-a { opacity: .04; transform: rotate(-22deg) scale(1.3); }
-.wm-overlay span { flex: 0 0 auto; padding: 46px 52px; font-family: var(--mono); font-size: 11.5px; font-weight: 600; white-space: nowrap; color: var(--text); letter-spacing: .06em; }
-/* fixed corner tags — catch cropped screenshots from any edge */
-.wm-corner { position: fixed; z-index: 31; pointer-events: none; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text); opacity: .12; white-space: nowrap; }
+.wm-overlay.wm-a { opacity: .022; transform: rotate(-22deg) scale(1.3); }
+.wm-overlay span { flex: 0 0 auto; padding: 54px 62px; font-family: var(--mono); font-size: 11px; font-weight: 500; white-space: nowrap; color: var(--text); letter-spacing: .06em; }
+/* fixed corner tags — subtle, only really visible on a screenshot */
+.wm-corner { position: fixed; z-index: 31; pointer-events: none; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text); opacity: .06; white-space: nowrap; }
 .wm-corner.wm-tl { top: calc(var(--topbar-h) + 12px); left: 18px; }
 .wm-corner.wm-tr { top: calc(var(--topbar-h) + 12px); right: 18px; }
 .wm-corner.wm-bl { bottom: 14px; left: 18px; }
 .wm-corner.wm-br { bottom: 14px; right: 18px; }
 /* faint centered tag */
 .wm-center { position: fixed; inset: 0; z-index: 31; pointer-events: none; display: flex; align-items: center; justify-content: center; }
-.wm-center span { transform: rotate(-22deg); font-family: var(--mono); font-size: 30px; font-weight: 800; letter-spacing: .12em; color: var(--text); opacity: .05; }
+.wm-center span { transform: rotate(-22deg); font-family: var(--mono); font-size: 20px; font-weight: 700; letter-spacing: .1em; color: var(--text); opacity: .022; }
 /* blur the confidential body when the tab loses focus (anti screen-grab) */
 .doc.protected.blurred .markdown { filter: blur(9px); transition: filter .1s; }
 .blur-shield { position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 40; display: none; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); font-size: 14px; text-align: center; padding: 30px; }

@@ -1,0 +1,37 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="account-wrap">
+  <div class="account-card">
+    <h1 class="admin-h1">Your account</h1>
+    <div class="account-meta">
+      <div class="staff-fact"><span class="fact-label">Username</span><span class="fact-val"><strong><%= user.username %></strong></span></div>
+      <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
+      <% if (user.email) { %><div class="staff-fact"><span class="fact-label">Email</span><span class="fact-val"><%= user.email %></span></div><% } %>
+    </div>
+
+    <% if (typeof done !== 'undefined' && done) { %>
+      <div class="account-ok"><%- icon('check') %> <span>Your password has been updated.</span></div>
+    <% } %>
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="auth-error"><%- icon('danger') %> <span><%= error %></span></div>
+    <% } %>
+
+    <section class="panel account-panel">
+      <div class="panel-head"><h2>Change password</h2></div>
+      <form method="post" action="/account/password" class="stack-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <label class="field">Current password
+          <input type="password" name="current" required autocomplete="current-password" />
+        </label>
+        <label class="field">New password
+          <input type="password" name="new" minlength="6" required autocomplete="new-password" placeholder="At least 6 characters" />
+        </label>
+        <label class="field">Confirm new password
+          <input type="password" name="confirm" minlength="6" required autocomplete="new-password" />
+        </label>
+        <div><button class="btn btn-solid" type="submit"><%- icon('lock') %> Update password</button></div>
+      </form>
+    </section>
+  </div>
+</div>
+<%- include('partials/foot') %>

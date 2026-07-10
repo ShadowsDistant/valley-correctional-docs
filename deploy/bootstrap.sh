@@ -96,6 +96,14 @@ EOF
 echo "==> [6/6] Build & start (first build takes a few minutes)"
 docker compose -f docker-compose.live.yml up -d --build
 
+# Optional: reset the admin password (pass RESET_ADMIN_PASSWORD=... when running).
+if [ -n "${RESET_ADMIN_PASSWORD:-}" ]; then
+  echo "==> Resetting admin password"
+  sleep 6
+  docker compose -f docker-compose.live.yml exec -T -e RESET_ADMIN_PASSWORD="$RESET_ADMIN_PASSWORD" app node scripts/reset-admin.js \
+    || echo "    (reset will retry — if it failed, re-run: docker compose -f docker-compose.live.yml exec -e RESET_ADMIN_PASSWORD='...' app node scripts/reset-admin.js)"
+fi
+
 echo
 echo "===================================================================="
 echo " ✅ App is running on the droplet at https://$DOMAIN (via Cloudflare)."

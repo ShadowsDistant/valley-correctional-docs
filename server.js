@@ -247,6 +247,24 @@ app.get('/api/access', (req, res) => {
   res.json({ ok: ok, suspended: false, reason: ok ? '' : 'no-access' });
 });
 
+// --- self-service account: any logged-in user can change their own password --
+app.get('/account', auth.requireAuth, auth.csrfToken, (req, res) => {
+  res.render('account', { title: 'Your account', done: req.query.updated === '1', error: null });
+});
+
+app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.user.id);
+  const current = req.body.current || '', next_ = req.body.new || '', confirm = req.body.confirm || '';
+  let error = null;
+  if (!u || !auth.verifyPassword(current, u.password)) error = 'Your current password is incorrect.';
+  else if (next_.length < 6) error = 'New password must be at least 6 characters.';
+  else if (next_ !== confirm) error = 'New passwords do not match.';
+  if (error) return res.status(400).render('account', { title: 'Your account', done: false, error });
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(auth.hashPassword(next_), u.id);
+  audit(u.username, 'user.password', u.username, 'changed own password');
+  res.redirect('/account?updated=1');
+});
+
 // --- admin: dashboard + editor + analytics ---------------------------------
 
 const adminRouter = express.Router();
