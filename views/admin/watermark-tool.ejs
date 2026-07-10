@@ -6,7 +6,7 @@
     <div class="admin-titlerow">
       <div>
         <h1 class="admin-h1">Watermark Reveal</h1>
-        <p class="admin-sub">Suspect a leak? Paste or upload the screenshot and boost the image until the leaker's username watermark appears. Everything runs in your browser — nothing is uploaded.</p>
+        <p class="admin-sub">Suspect a leak? Paste or upload the screenshot and run <strong>Auto-reveal</strong> to surface the leaker's username watermark. Everything runs in your browser — nothing is uploaded.</p>
       </div>
     </div>
 
@@ -16,14 +16,23 @@
         <div class="wm-drop-inner">
           <span class="wm-drop-ico"><%- icon('files') %></span>
           <strong>Drop an image here, paste from clipboard (Ctrl+V), or <button type="button" id="wmBrowse" class="linkbtn">browse</button></strong>
-          <span class="muted small">The watermark is a faint diagonal grid of the viewer's username. Push contrast up to surface it.</span>
+          <span class="muted small">The watermark is invisible on screen by design — it only appears through this tool's amplification.</span>
         </div>
       </div>
 
       <div id="wmStage" class="wm-stage" hidden>
         <div class="wm-controls">
+          <div class="wm-tool-actions">
+            <button type="button" class="btn btn-solid btn-sm" id="wmAuto"><%- icon('search') %> Auto-reveal</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="wmReset">Original</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="wmClear">Load another</button>
+          </div>
+          <label>Reveal strength <span class="wm-val" id="vGain">60×</span>
+            <input type="range" id="wmGain" min="10" max="150" value="60" />
+          </label>
+          <div class="wm-manual-head muted small">Manual adjustments (optional)</div>
           <label>Brightness <span class="wm-val" id="vBright">100%</span>
-            <input type="range" id="wmBright" min="10" max="400" value="100" />
+            <input type="range" id="wmBright" min="10" max="800" value="100" />
           </label>
           <label>Contrast <span class="wm-val" id="vContrast">100%</span>
             <input type="range" id="wmContrast" min="100" max="2000" value="100" />
@@ -34,11 +43,6 @@
           <label>Invert <span class="wm-val" id="vInvert">0%</span>
             <input type="range" id="wmInvert" min="0" max="100" value="0" />
           </label>
-          <div class="wm-tool-actions">
-            <button type="button" class="btn btn-solid btn-sm" id="wmAuto"><%- icon('search') %> Auto-reveal</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="wmReset">Reset</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="wmClear">Load another</button>
-          </div>
         </div>
         <div class="wm-canvas-wrap">
           <canvas id="wmCanvas"></canvas>
@@ -51,34 +55,115 @@
 (function () {
   var drop = document.getElementById('wmDrop'), stage = document.getElementById('wmStage');
   var fileInput = document.getElementById('wmFile'), canvas = document.getElementById('wmCanvas');
-  var ctx = canvas.getContext('2d'), img = new Image();
+  var ctx = canvas.getContext('2d');
+  // Keep the untouched source pixels in an offscreen canvas.
+  var srcCanvas = document.createElement('canvas');
+  var sctx = srcCanvas.getContext('2d', { willReadFrequently: true });
+  var loaded = false;
+  var MAX = 3200; // cap huge images for speed; watermark glyphs survive the scale
+
   var ctrl = {
+    gain: document.getElementById('wmGain'),
     bright: document.getElementById('wmBright'), contrast: document.getElementById('wmContrast'),
     sat: document.getElementById('wmSat'), invert: document.getElementById('wmInvert')
   };
   var val = {
+    gain: document.getElementById('vGain'),
     bright: document.getElementById('vBright'), contrast: document.getElementById('vContrast'),
     sat: document.getElementById('vSat'), invert: document.getElementById('vInvert')
   };
-
-  function draw() {
-    if (!img.width) return;
+  function labels() {
+    val.gain.textContent = ctrl.gain.value + '×';
     val.bright.textContent = ctrl.bright.value + '%';
     val.contrast.textContent = ctrl.contrast.value + '%';
     val.sat.textContent = ctrl.sat.value + '%';
     val.invert.textContent = ctrl.invert.value + '%';
-    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  }
+
+  // Manual mode: plain CSS-filter pass over the original.
+  function drawManual() {
+    if (!loaded) return;
+    labels();
+    canvas.width = srcCanvas.width; canvas.height = srcCanvas.height;
     ctx.filter = 'brightness(' + (ctrl.bright.value / 100) + ') contrast(' + (ctrl.contrast.value / 100) +
       ') saturate(' + (ctrl.sat.value / 100) + ') invert(' + (ctrl.invert.value / 100) + ')';
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(srcCanvas, 0, 0);
+    ctx.filter = 'none';
   }
-  Object.keys(ctrl).forEach(function (k) { ctrl[k].addEventListener('input', draw); });
 
-  function load(src) { img.onload = function () { stage.hidden = false; drop.classList.add('has-img'); draw(); }; img.src = src; }
+  // Auto-reveal: forensic high-pass. The watermark is a tiny (~2/255) local
+  // brightness offset, so we subtract a blurred copy from each pixel and
+  // amplify the residual around mid-gray. Works no matter how dark or light
+  // the screenshot is (naive brightness/contrast clips dark images to black).
+  function autoReveal() {
+    if (!loaded) return;
+    labels();
+    var w = srcCanvas.width, h = srcCanvas.height;
+    var d = sctx.getImageData(0, 0, w, h).data;
+    var n = w * h;
+    var lum = new Float32Array(n);
+    for (var i = 0, p = 0; i < n; i++, p += 4) lum[i] = 0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2];
+
+    // separable box blur (radius 4) via row/column prefix sums
+    var R = 4, win = 2 * R + 1;
+    var tmp = new Float32Array(n), blur = new Float32Array(n);
+    var pre = new Float32Array(Math.max(w, h) + 1);
+    var x, y, row, a, b;
+    for (y = 0; y < h; y++) {
+      row = y * w; pre[0] = 0;
+      for (x = 0; x < w; x++) pre[x + 1] = pre[x] + lum[row + x];
+      for (x = 0; x < w; x++) {
+        a = Math.max(0, x - R); b = Math.min(w - 1, x + R);
+        tmp[row + x] = (pre[b + 1] - pre[a]) / (b - a + 1);
+      }
+    }
+    for (x = 0; x < w; x++) {
+      pre[0] = 0;
+      for (y = 0; y < h; y++) pre[y + 1] = pre[y] + tmp[y * w + x];
+      for (y = 0; y < h; y++) {
+        a = Math.max(0, y - R); b = Math.min(h - 1, y + R);
+        blur[y * w + x] = (pre[b + 1] - pre[a]) / (b - a + 1);
+      }
+    }
+
+    var gain = +ctrl.gain.value;
+    canvas.width = w; canvas.height = h;
+    var out = ctx.createImageData(w, h), o = out.data;
+    for (i = 0, p = 0; i < n; i++, p += 4) {
+      var v = 128 + (lum[i] - blur[i]) * gain;
+      v = v < 0 ? 0 : v > 255 ? 255 : v;
+      o[p] = o[p + 1] = o[p + 2] = v; o[p + 3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
+  }
+
+  ['bright', 'contrast', 'sat', 'invert'].forEach(function (k) { ctrl[k].addEventListener('input', drawManual); });
+  ctrl.gain.addEventListener('input', autoReveal);
+  document.getElementById('wmAuto').addEventListener('click', autoReveal);
+  document.getElementById('wmReset').addEventListener('click', function () {
+    ctrl.bright.value = 100; ctrl.contrast.value = 100; ctrl.sat.value = 100; ctrl.invert.value = 0; drawManual();
+  });
+  document.getElementById('wmClear').addEventListener('click', function () {
+    stage.hidden = true; drop.classList.remove('has-img'); loaded = false; fileInput.value = '';
+  });
+
+  function load(src) {
+    var img = new Image();
+    img.onload = function () {
+      var s = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      srcCanvas.width = Math.max(1, Math.round(img.naturalWidth * s));
+      srcCanvas.height = Math.max(1, Math.round(img.naturalHeight * s));
+      sctx.drawImage(img, 0, 0, srcCanvas.width, srcCanvas.height);
+      loaded = true;
+      stage.hidden = false; drop.classList.add('has-img');
+      autoReveal(); // reveal immediately — that's what you came here for
+    };
+    img.src = src;
+  }
   function handleFile(f) { if (!f || !/^image\//.test(f.type)) return; var r = new FileReader(); r.onload = function () { load(r.result); }; r.readAsDataURL(f); }
 
-  document.getElementById('wmBrowse').addEventListener('click', function () { fileInput.click(); });
-  drop.addEventListener('click', function (e) { if (e.target === drop || e.target.closest('.wm-drop-inner') && e.target.tagName !== 'BUTTON') fileInput.click(); });
+  document.getElementById('wmBrowse').addEventListener('click', function (e) { e.stopPropagation(); fileInput.click(); });
+  drop.addEventListener('click', function (e) { if (e.target.tagName !== 'BUTTON') fileInput.click(); });
   fileInput.addEventListener('change', function () { handleFile(fileInput.files[0]); });
   ['dragover', 'dragenter'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('drag'); }); });
   ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('drag'); }); });
@@ -86,16 +171,6 @@
   window.addEventListener('paste', function (e) {
     var items = (e.clipboardData || {}).items || [];
     for (var i = 0; i < items.length; i++) { if (/^image\//.test(items[i].type)) { handleFile(items[i].getAsFile()); break; } }
-  });
-
-  document.getElementById('wmAuto').addEventListener('click', function () {
-    ctrl.bright.value = 60; ctrl.contrast.value = 1400; ctrl.sat.value = 400; ctrl.invert.value = 0; draw();
-  });
-  document.getElementById('wmReset').addEventListener('click', function () {
-    ctrl.bright.value = 100; ctrl.contrast.value = 100; ctrl.sat.value = 100; ctrl.invert.value = 0; draw();
-  });
-  document.getElementById('wmClear').addEventListener('click', function () {
-    stage.hidden = true; drop.classList.remove('has-img'); img = new Image(); fileInput.value = '';
   });
 })();
 </script>

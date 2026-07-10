@@ -306,7 +306,9 @@ app.get('/search-index.json', (req, res) => {
   const user = req.session && req.session.user;
   const pages = navPages().filter((p) => auth.canViewPage(user, p));
   const index = pages.map((p) => {
-    const { toc } = md.render(p.content);
+    // Dynamic placeholders (e.g. the live shift table) shouldn't leak into search.
+    const content = String(p.content || '').replace(/\[\[SHIFTS_TABLE\]\]/g, '');
+    const { toc } = md.render(content);
     return {
       slug: p.slug,
       title: p.title,
@@ -315,7 +317,7 @@ app.get('/search-index.json', (req, res) => {
       description: p.description,
       // headings become deep-link search hits
       headings: toc.map((h) => ({ text: h.text, id: h.id })),
-      text: md.toPlainText(p.content).slice(0, 4000),
+      text: md.toPlainText(content).slice(0, 4000),
     };
   });
   res.set('Cache-Control', 'no-store');
@@ -451,9 +453,11 @@ adminRouter.get('/edit', (req, res) => {
   });
 });
 
-// Live preview endpoint — renders markdown exactly like the public site.
+// Live preview endpoint — renders markdown exactly like the public site,
+// including the live shift table in place of [[SHIFTS_TABLE]].
 adminRouter.post('/preview', (req, res) => {
-  const { html } = md.render(req.body.content || '');
+  const content = String(req.body.content || '').replace(/\[\[SHIFTS_TABLE\]\]/g, shiftScheduleMarkdown());
+  const { html } = md.render(content);
   res.json({ html });
 });
 
