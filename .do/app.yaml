@@ -1,0 +1,42 @@
+# DigitalOcean App Platform spec (alternative to the Droplet + Compose setup).
+#
+# IMPORTANT: App Platform containers have an EPHEMERAL filesystem, so the
+# SQLite database in /app/data is wiped on every redeploy/restart. Use this
+# path only for a demo, OR switch storage to a managed database before relying
+# on it. For persistent, low-cost hosting, prefer the Droplet path in README.md.
+#
+# Deploy with:  doctl apps create --spec .do/app.yaml
+name: valley-correctional-docs
+region: nyc
+services:
+  - name: web
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      # repo: your-user/valley-correctional-docs
+      # branch: main
+      deploy_on_push: true
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SESSION_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: ADMIN_USERNAME
+        value: shadowsdistant
+      - key: ADMIN_EMAIL
+        value: shadowsdistant@gmail.com
+      - key: ADMIN_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME

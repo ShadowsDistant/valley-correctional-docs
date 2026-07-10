@@ -1,0 +1,27 @@
+# Deploy to Cloudflare on every push to main (alternative to connecting the
+# repo in the Cloudflare dashboard). Requires two repo secrets:
+#   CLOUDFLARE_API_TOKEN  — a token with "Edit Workers" + "Workers Scripts" perms
+#   CLOUDFLARE_ACCOUNT_ID — your Cloudflare account id
+# Also set your app secrets once with:  wrangler secret put SESSION_SECRET  (etc.)
+name: Deploy to Cloudflare
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deploy tooling
+        run: npm install --no-save wrangler @cloudflare/containers
+      - name: Deploy (builds the container image from ./Dockerfile)
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

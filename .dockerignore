@@ -1,0 +1,16 @@
+node_modules
+data
+caddy_data
+caddy_config
+.git
+.gitignore
+.env
+.env.local
+*.md.bak
+npm-debug.log*
+Dockerfile
+docker-compose.yml
+cf
+wrangler.jsonc
+.wrangler
+.github
