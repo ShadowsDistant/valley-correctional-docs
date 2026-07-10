@@ -96,12 +96,24 @@ EOF
 echo "==> [6/6] Build & start (first build takes a few minutes)"
 docker compose -f docker-compose.live.yml up -d --build
 
-# Optional: reset the admin password (pass RESET_ADMIN_PASSWORD=... when running).
+# Optional post-start tasks:
+#   RESET_ADMIN_PASSWORD=...  reset the admin password
+#   SYNC_CONTENT=1            re-import the shipped docs into the database
+#                            (overwrites any pages edited in the app — use when
+#                             deploying updated documentation)
+if [ -n "${RESET_ADMIN_PASSWORD:-}" ] || [ "${SYNC_CONTENT:-}" = "1" ]; then
+  echo "==> Applying post-start tasks (waiting for the app to be ready)"
+  sleep 8
+fi
 if [ -n "${RESET_ADMIN_PASSWORD:-}" ]; then
   echo "==> Resetting admin password"
-  sleep 6
   docker compose -f docker-compose.live.yml exec -T -e RESET_ADMIN_PASSWORD="$RESET_ADMIN_PASSWORD" app node scripts/reset-admin.js \
-    || echo "    (reset will retry — if it failed, re-run: docker compose -f docker-compose.live.yml exec -e RESET_ADMIN_PASSWORD='...' app node scripts/reset-admin.js)"
+    || echo "    (retry: docker compose -f docker-compose.live.yml exec -e RESET_ADMIN_PASSWORD='...' app node scripts/reset-admin.js)"
+fi
+if [ "${SYNC_CONTENT:-}" = "1" ]; then
+  echo "==> Importing shipped documentation into the database"
+  docker compose -f docker-compose.live.yml exec -T app node scripts/sync-content.js \
+    || echo "    (retry: docker compose -f docker-compose.live.yml exec app node scripts/sync-content.js)"
 fi
 
 echo
