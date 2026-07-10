@@ -1,0 +1,38 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <h1 class="admin-h1">Activity log</h1>
+    <p class="admin-sub">Who changed what, and when. Content edits, page creates/deletes, and account changes are recorded here.</p>
+
+    <section class="panel panel-flush">
+      <div class="table-scroll">
+      <table class="table logs-table">
+        <thead><tr><th>When (UTC)</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+        <tbody>
+          <% if (!events.length) { %><tr><td colspan="5" class="muted" style="padding:18px">No activity recorded yet.</td></tr><% } %>
+          <%
+            var ACTION = {
+              'page.create': ['Created page', 'act-create'], 'page.update': ['Edited page', 'act-edit'],
+              'page.delete': ['Deleted page', 'act-delete'], 'page.restore': ['Restored page', 'act-edit'],
+              'user.create': ['Created account', 'act-create'], 'user.role': ['Changed role', 'act-edit'],
+              'user.suspend': ['Suspended account', 'act-delete'], 'user.reinstate': ['Reinstated account', 'act-create'],
+            };
+          %>
+          <% events.forEach(function (e) { var a = ACTION[e.action] || [e.action, '']; %>
+            <tr>
+              <td class="muted mono small nowrap"><%= (e.ts || '').replace('T',' ') %></td>
+              <td><strong><%= e.actor %></strong></td>
+              <td><span class="act-badge <%= a[1] %>"><%= a[0] %></span></td>
+              <td class="mono small"><% if (/^\//.test(e.target)) { %><a href="<%= e.target %>" target="_blank"><%= e.target %></a><% } else { %><%= e.target %><% } %></td>
+              <td class="muted small"><%= e.details %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+      </div>
+    </section>
+  </main>
+</div>
+<%- include('../partials/foot') %>

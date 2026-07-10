@@ -1,0 +1,44 @@
+{
+  // Cloudflare Workers + Containers deployment.
+  //
+  // This app is Express + native SQLite, which cannot run on the plain Workers
+  // (V8 isolate) runtime. Cloudflare runs it as a CONTAINER, fronted by a tiny
+  // Worker. Cloudflare builds the image from ./Dockerfile automatically.
+  //
+  // GitHub method: in the Cloudflare dashboard go to Workers & Pages → Create →
+  // "Connect to Git", pick this repo, and Cloudflare Workers Builds will build
+  // the container and deploy on every push. See CLOUDFLARE.md for full steps.
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/configuration/",
+  "name": "vcf-docs",
+  "main": "cf/container-worker.js",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "containers": [
+    {
+      "class_name": "DocsContainer",
+      "image": "./Dockerfile",
+      "name": "vcf-docs-container",
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "class_name": "DocsContainer", "name": "DOCS_CONTAINER" }
+    ]
+  },
+
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DocsContainer"] }
+  ],
+
+  // Non-secret env passed to the container. Put SESSION_SECRET / ADMIN_PASSWORD
+  // in the dashboard as encrypted secrets (or `wrangler secret put`), NOT here.
+  "vars": {
+    "NODE_ENV": "production",
+    "PORT": "3000",
+    "TRUST_PROXY": "1"
+  }
+}

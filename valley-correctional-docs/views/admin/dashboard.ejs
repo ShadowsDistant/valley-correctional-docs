@@ -1,0 +1,49 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <h1 class="admin-h1">Dashboard</h1>
+    <p class="admin-sub">Welcome back, <%= user.username %>. Here's how your documentation is doing.</p>
+
+    <div class="stat-grid">
+      <div class="stat-card"><span class="stat-num"><%= stats.pageCount %></span><span class="stat-label">Published pages</span></div>
+      <div class="stat-card"><span class="stat-num"><%= stats.views7 %></span><span class="stat-label">Views · last 7 days</span></div>
+      <div class="stat-card"><span class="stat-num"><%= stats.views30 %></span><span class="stat-label">Views · last 30 days</span></div>
+      <div class="stat-card"><span class="stat-num"><%= stats.visitors30 %></span><span class="stat-label">Unique visitors · 30 days</span></div>
+    </div>
+
+    <div class="admin-cols">
+      <section class="panel">
+        <div class="panel-head"><h2>Recent edits</h2><a class="btn btn-ghost btn-sm" href="/admin/pages">All pages</a></div>
+        <% if (recentEdits.length === 0) { %>
+          <p class="muted">No edits yet. Open a page and hit <strong>Edit</strong> to make your first change.</p>
+        <% } else { %>
+          <table class="table">
+            <thead><tr><th>Page</th><th>Editor</th><th>When</th></tr></thead>
+            <tbody>
+              <% recentEdits.forEach(function (e) { %>
+                <tr>
+                  <td><a href="/admin/edit?slug=<%= encodeURIComponent(e.slug) %>"><%= e.title || e.slug %></a></td>
+                  <td><%= e.editor %></td>
+                  <td class="muted"><%= e.created_at %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        <% } %>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Quick actions</h2></div>
+        <div class="action-list">
+          <a class="action" href="/admin/new"><span>➕</span> Create a new page</a>
+          <a class="action" href="/admin/analytics"><span>📈</span> View traffic analytics</a>
+          <% if (user.role === 'admin') { %><a class="action" href="/admin/staff"><span>👥</span> Manage staff accounts</a><% } %>
+          <a class="action" href="/home"><span>🌐</span> Open the live site</a>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<%- include('../partials/foot') %>

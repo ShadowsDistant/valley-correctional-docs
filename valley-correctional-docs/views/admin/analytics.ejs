@@ -1,0 +1,109 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div><h1 class="admin-h1">Analytics</h1><p class="admin-sub">Traffic to your documentation. Privacy-preserving — IP + user-agent are hashed, never stored raw.</p></div>
+      <div class="range-tabs">
+        <% [7,30,90].forEach(function(d){ %><a class="range-tab <%= totals.days===d ? 'active':'' %>" href="/admin/analytics?days=<%= d %>"><%= d %>d</a><% }); %>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><span class="stat-num"><%= totals.viewsToday %></span><span class="stat-label">Views today</span></div>
+      <div class="stat-card"><span class="stat-num"><%= totals.viewsRange %></span><span class="stat-label">Views · <%= totals.days %>d</span></div>
+      <div class="stat-card"><span class="stat-num"><%= totals.visitorsRange %></span><span class="stat-label">Unique visitors · <%= totals.days %>d</span></div>
+      <div class="stat-card"><span class="stat-num"><%= totals.avgPerDay %></span><span class="stat-label">Avg views / day</span></div>
+      <div class="stat-card"><span class="stat-num"><%= totals.busiestViews %></span><span class="stat-label">Busiest day (<%= totals.busiestDay.slice(5) %>)</span></div>
+      <div class="stat-card"><span class="stat-num"><%= totals.views %></span><span class="stat-label">All-time views</span></div>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Views &amp; visitors per day</h2><span class="muted small"><span class="legend-dot dot-views"></span> Views &nbsp; <span class="legend-dot dot-visitors"></span> Visitors</span></div>
+      <%
+        var W=760,H=240,padL=32,padB=22,padT=12,padR=8;
+        var maxV=1; series.forEach(function(s){ if(s.views>maxV)maxV=s.views; });
+        var n=series.length, xstep=(W-padL-padR)/Math.max(1,n-1), yScale=(H-padT-padB)/maxV;
+        function X(i){return padL+i*xstep;} function Y(v){return H-padB-v*yScale;}
+        var line=series.map(function(s,i){return (i===0?'M':'L')+X(i).toFixed(1)+' '+Y(s.views).toFixed(1);}).join(' ');
+        var vline=series.map(function(s,i){return (i===0?'M':'L')+X(i).toFixed(1)+' '+Y(s.visitors).toFixed(1);}).join(' ');
+        var area='M'+X(0).toFixed(1)+' '+(H-padB)+' '+series.map(function(s,i){return 'L'+X(i).toFixed(1)+' '+Y(s.views).toFixed(1);}).join(' ')+' L'+X(n-1).toFixed(1)+' '+(H-padB)+' Z';
+      %>
+      <div class="chart-wrap">
+        <svg class="chart" viewBox="0 0 <%= W %> <%= H %>" preserveAspectRatio="none" role="img" aria-label="Views per day">
+          <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffa200" stop-opacity="0.28"/><stop offset="100%" stop-color="#ffa200" stop-opacity="0"/></linearGradient></defs>
+          <% for(var g=0;g<=4;g++){ var gy=padT+(H-padT-padB)*g/4; %>
+            <line class="grid" x1="<%= padL %>" y1="<%= gy.toFixed(1) %>" x2="<%= W-padR %>" y2="<%= gy.toFixed(1) %>"/>
+            <text class="axis" x="0" y="<%= (gy+4).toFixed(1) %>"><%= Math.round(maxV*(4-g)/4) %></text>
+          <% } %>
+          <path class="area" d="<%= area %>"/>
+          <path class="spark" d="<%= line %>"/>
+          <path class="spark2" d="<%= vline %>"/>
+        </svg>
+        <div class="chart-x"><span><%= series[0].day.slice(5) %></span><span><%= series[Math.floor(n/2)].day.slice(5) %></span><span><%= series[n-1].day.slice(5) %></span></div>
+      </div>
+    </section>
+
+    <div class="admin-cols">
+      <section class="panel">
+        <div class="panel-head"><h2>Top pages · <%= totals.days %>d</h2></div>
+        <% if(!topPages.length){ %><p class="muted">No page views recorded yet.</p><% } else { var tmax=topPages[0].views; %>
+          <table class="table"><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visitors</th></tr></thead><tbody>
+            <% topPages.forEach(function(p){ %>
+              <tr><td><a href="/<%= p.slug %>" target="_blank"><% if(p.internal){ %><span class="ic ic-lock"></span> <% } %><%= p.title %></a>
+                <div class="bar"><span style="width: <%= Math.round(p.views/tmax*100) %>%"></span></div></td>
+                <td class="num"><%= p.views %></td><td class="num muted"><%= p.visitors %></td></tr>
+            <% }); %>
+          </tbody></table>
+        <% } %>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Referrers · <%= totals.days %>d</h2></div>
+        <% if(!referrers.length){ %><p class="muted">No external referrers recorded.</p><% } else { %>
+          <table class="table"><thead><tr><th>Source</th><th class="num">Hits</th></tr></thead><tbody>
+            <% referrers.forEach(function(r){ %><tr><td class="mono ellipsis"><%= r.referrer %></td><td class="num"><%= r.n %></td></tr><% }); %>
+          </tbody></table>
+        <% } %>
+      </section>
+    </div>
+
+    <div class="admin-cols cols-3">
+      <%
+        function barList(items){ var tot=items.reduce(function(a,b){return a+b.n;},0)||1; return { items: items, tot: tot }; }
+        var audienceItems=[{label:'Staff (logged in)',n:authed.staff},{label:'Anonymous',n:authed.anon}];
+        var scopeItems=[{label:'Public pages',n:scope.public},{label:'Internal handbooks',n:scope.internal}];
+      %>
+      <section class="panel"><div class="panel-head"><h2>Audience</h2></div><%- include('../partials/barlist', { data: audienceItems }) %></section>
+      <section class="panel"><div class="panel-head"><h2>Content scope</h2></div><%- include('../partials/barlist', { data: scopeItems }) %></section>
+      <section class="panel"><div class="panel-head"><h2>Browsers</h2></div><%- include('../partials/barlist', { data: browsers }) %></section>
+    </div>
+
+    <div class="admin-cols">
+      <section class="panel">
+        <div class="panel-head"><h2>Views by hour (UTC)</h2></div>
+        <% var hmax=1; byHour.forEach(function(h){ if(h.n>hmax)hmax=h.n; }); %>
+        <div class="hour-chart">
+          <% byHour.forEach(function(h){ %><div class="hour-bar" title="<%= h.h %>:00 — <%= h.n %> views"><span style="height: <%= Math.round(h.n/hmax*100) %>%"></span></div><% }); %>
+        </div>
+        <div class="hour-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
+      </section>
+      <section class="panel"><div class="panel-head"><h2>Operating systems</h2></div><%- include('../partials/barlist', { data: oses }) %></section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Recent activity</h2></div>
+      <% if(!recent.length){ %><p class="muted">No recent views.</p><% } else { %>
+        <table class="table"><thead><tr><th>Page</th><th>Visitor</th><th>When (UTC)</th></tr></thead><tbody>
+          <% recent.forEach(function(r){ %><tr><td><a href="/<%= r.slug %>" target="_blank"><%= r.title %></a></td>
+            <td><span class="badge <%= r.authed ? 'badge-internal':'' %>"><%= r.authed ? 'Staff':'Anon' %></span></td>
+            <td class="muted mono small"><%= r.ts %></td></tr><% }); %>
+        </tbody></table>
+      <% } %>
+    </section>
+
+    <p class="muted small">No third-party trackers are used. All metrics are computed from first-party server logs.</p>
+  </main>
+</div>
+<%- include('../partials/foot') %>

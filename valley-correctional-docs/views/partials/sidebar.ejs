@@ -1,0 +1,35 @@
+<aside class="sidebar" id="sidebar">
+  <nav class="side-nav">
+    <%
+      // Group icons mirroring the original site's docs.json group icons.
+      var groupIcons = {
+        'Overview': 'files', 'Our Divisions': 'building', 'Community Rules': 'list',
+        'Shifts': 'clock', 'Miscellaneous': 'cabinet', 'Internal Documents': 'lock'
+      };
+    %>
+    <% nav.forEach(function (group) { %>
+      <div class="nav-group">
+        <% if (group.name) { %>
+          <div class="nav-group-title">
+            <% if (groupIcons[group.name]) { %><span class="nav-group-ico"><%- icon(groupIcons[group.name]) %></span><% } %>
+            <%= group.name %>
+          </div>
+        <% } %>
+        <ul>
+          <% group.pages.forEach(function (p) { %>
+            <li>
+              <a class="nav-link <%= currentPath === '/' + p.slug ? 'active' : '' %>" href="/<%= p.slug %>">
+                <% if (p.icon) { %><span class="nav-ico"><%- icon(p.icon) %></span><% } %>
+                <span class="nav-label"><%= p.title %></span>
+              </a>
+            </li>
+          <% }); %>
+        </ul>
+      </div>
+    <% }); %>
+  </nav>
+  <div class="side-foot">
+    <a href="<%= discord %>" target="_blank" rel="noopener">Join our Discord →</a>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>

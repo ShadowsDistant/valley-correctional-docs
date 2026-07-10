@@ -1,0 +1,12 @@
+# Caddy behind Cloudflare with the proxy ON (orange cloud).
+#
+# Uses a Cloudflare *Origin Certificate* instead of Let's Encrypt, so there's no
+# ACME HTTP challenge to conflict with Cloudflare's proxy. Pair this with
+# Cloudflare SSL/TLS mode "Full (strict)".
+#
+# Replace the domain if yours differs.
+docs.valleycorrectional.xyz {
+	encode gzip zstd
+	tls /certs/origin.pem /certs/origin.key
+	reverse_proxy app:3000
+}

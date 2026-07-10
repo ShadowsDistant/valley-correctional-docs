@@ -1,0 +1,31 @@
+# Production stack for a DigitalOcean Droplet behind Cloudflare (proxied).
+# TLS at the origin uses a Cloudflare Origin Certificate (see CLOUDFLARE + DO
+# guide). Run from the project root:
+#   docker compose -f docker-compose.cloudflare.yml up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      TRUST_PROXY: 1
+    volumes:
+      - ./data:/app/data            # persists the SQLite database
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile.cloudflare:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro           # Cloudflare Origin Certificate lives here
+      - ./caddy_data:/data
+      - ./caddy_config:/config

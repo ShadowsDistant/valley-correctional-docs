@@ -1,0 +1,42 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div><h1 class="admin-h1">Pages</h1><p class="admin-sub"><%= pages.length %> page<%= pages.length===1?'':'s' %><%= canCreate ? '' : ' you can edit' %>.</p></div>
+      <% if (canCreate) { %><a class="btn btn-solid" href="/admin/new"><%- icon('plus') %> New page</a><% } %>
+    </div>
+
+    <section class="panel panel-flush">
+      <div class="list-head page-row">
+        <span class="page-main">Title</span>
+        <span class="page-group">Group</span>
+        <span class="page-vis">Visibility</span>
+        <span class="page-date">Updated</span>
+        <span class="page-actions"></span>
+      </div>
+      <div class="page-list">
+        <% pages.forEach(function (p) { %>
+          <div class="page-row">
+            <a class="page-main" href="/admin/edit?slug=<%= encodeURIComponent(p.slug) %>">
+              <span class="page-ico"><%- icon(p.icon) %></span>
+              <span class="page-text">
+                <span class="page-title"><%= p.title %></span>
+                <span class="page-url">/<%= p.slug %></span>
+              </span>
+            </a>
+            <span class="page-group"><%= p.group_name || '—' %></span>
+            <span class="page-vis"><% if (p.internal) { %><span class="badge badge-internal"><%- icon('lock') %> Internal</span><% } else { %><span class="badge">Public</span><% } %></span>
+            <span class="page-date"><%= (p.updated_at || '').slice(0,10) %></span>
+            <span class="page-actions">
+              <a class="btn btn-ghost btn-sm" href="/<%= p.slug %>" target="_blank">View</a>
+              <a class="btn btn-ghost btn-sm" href="/admin/edit?slug=<%= encodeURIComponent(p.slug) %>">Edit</a>
+            </span>
+          </div>
+        <% }); %>
+      </div>
+    </section>
+  </main>
+</div>
+<%- include('../partials/foot') %>

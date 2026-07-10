@@ -1,0 +1,102 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="editor-shell"
+     data-csrf="<%= csrfToken %>"
+     data-new="<%= isNew ? '1' : '0' %>"
+     data-original-slug="<%= page.slug %>">
+  <div class="editor-bar">
+    <div class="editor-bar-left">
+      <a class="btn btn-ghost btn-sm" href="/admin/pages">← Pages</a>
+      <span class="editor-title"><%= isNew ? 'New page' : 'Editing: ' + page.title %></span>
+      <span class="save-state" id="saveState"></span>
+    </div>
+    <div class="editor-bar-right">
+      <div class="mode-tabs" id="modeTabs">
+        <button type="button" data-mode="wysiwyg" class="active">Editor</button>
+        <button type="button" data-mode="markdown">Markdown</button>
+        <button type="button" data-mode="preview">Preview</button>
+      </div>
+      <% if (!isNew) { %><a class="btn btn-ghost btn-sm" href="/<%= page.slug %>" target="_blank">View live ↗</a><% } %>
+      <% if (!isNew) { %><button class="btn btn-ghost btn-sm danger" type="button" id="deleteBtn">Delete</button><% } %>
+      <button class="btn btn-solid btn-sm" type="button" id="saveBtn">Save changes</button>
+    </div>
+  </div>
+
+  <div class="editor-main">
+    <details class="page-settings" open>
+      <summary>Page settings</summary>
+      <div class="field-grid">
+        <label class="field">Title <input type="text" id="f-title" value="<%= page.title %>" /></label>
+        <label class="field">URL slug <input type="text" id="f-slug" value="<%= page.slug %>" placeholder="section/page-name" /></label>
+        <label class="field">Group <input type="text" id="f-group" list="group-list" value="<%= page.group_name %>" placeholder="e.g. Shifts" />
+          <datalist id="group-list"><% groups.forEach(function (g) { %><option value="<%= g %>"></option><% }); %></datalist>
+        </label>
+        <label class="field field-sm">Icon <input type="text" id="f-icon" value="<%= page.icon %>" list="icon-list" placeholder="home" />
+          <datalist id="icon-list"><% ['home','message','bell','building','shield','briefcase','list','clock','clipboard','mask','calendar','cart','scroll','scale','cabinet','lock','file','files','book','users','eye','sitemap','info','check','warning','danger','chart'].forEach(function (n) { %><option value="<%= n %>"></option><% }); %></datalist>
+        </label>
+        <label class="field field-sm">Sort <input type="number" id="f-sort" value="<%= page.sort %>" /></label>
+        <label class="field field-check"><input type="checkbox" id="f-internal" <%= page.internal ? 'checked' : '' %> /> <span>Internal (staff only)</span></label>
+        <label class="field field-sm" id="divisionField">Division
+          <select id="f-division">
+            <option value="">— (all staff)</option>
+            <option value="all" <%= page.division === 'all' ? 'selected' : '' %>>All staff</option>
+            <option value="management" <%= page.division === 'management' ? 'selected' : '' %>>Management</option>
+            <option value="moderation" <%= page.division === 'moderation' ? 'selected' : '' %>>Moderation</option>
+            <option value="sid" <%= page.division === 'sid' ? 'selected' : '' %>>Specialized Investigations</option>
+            <option value="osc" <%= page.division === 'osc' ? 'selected' : '' %>>Oversight Committee</option>
+          </select>
+        </label>
+        <label class="field field-full">Description (SEO / subtitle) <input type="text" id="f-desc" value="<%= page.description %>" /></label>
+      </div>
+    </details>
+
+    <div class="editor-surface">
+      <!-- WYSIWYG -->
+      <div class="wysiwyg-wrap" id="wzPane">
+        <div class="wz-toolbar" id="wzToolbar">
+          <button class="wz-btn" data-cmd="h2" title="Heading">H2</button>
+          <button class="wz-btn" data-cmd="h3" title="Subheading">H3</button>
+          <span class="sep"></span>
+          <button class="wz-btn" data-cmd="bold" title="Bold (Ctrl+B)"><%- icon('bold') %></button>
+          <button class="wz-btn" data-cmd="italic" title="Italic (Ctrl+I)"><%- icon('italic') %></button>
+          <button class="wz-btn" data-cmd="strike" title="Strikethrough"><%- icon('strike') %></button>
+          <button class="wz-btn" data-cmd="code" title="Inline code"><%- icon('code') %></button>
+          <button class="wz-btn" data-cmd="link" title="Link (Ctrl+K)"><%- icon('link') %></button>
+          <span class="sep"></span>
+          <button class="wz-btn" data-cmd="ul" title="Bulleted list"><%- icon('list') %></button>
+          <button class="wz-btn" data-cmd="ol" title="Numbered list">1.</button>
+          <button class="wz-btn" data-cmd="quote" title="Quote"><%- icon('quote') %></button>
+          <button class="wz-btn" data-cmd="hr" title="Divider"><%- icon('divider') %></button>
+          <span class="sep"></span>
+          <button class="wz-btn" data-cmd="insert" title="Insert block"><%- icon('plus') %> Insert</button>
+        </div>
+        <div class="wz-editor markdown" id="wzEditor"></div>
+      </div>
+
+      <!-- Markdown -->
+      <div class="wysiwyg-wrap" id="mdPane" hidden>
+        <textarea id="md" spellcheck="true"><%= page.content %></textarea>
+        <div class="md-hint">Markdown + callouts <code>:::note</code> … <code>:::</code>, accordions <code>:::details Title</code>, and icons <code>:i[shield]:</code>.</div>
+      </div>
+
+      <!-- Preview -->
+      <div class="wysiwyg-wrap" id="previewPane" hidden>
+        <article class="doc"><div class="markdown" id="preview"></div></article>
+      </div>
+    </div>
+  </div>
+
+  <% if (!isNew && revisions.length) { %>
+  <details class="rev-drawer">
+    <summary>Revision history (<%= revisions.length %>)</summary>
+    <ul class="rev-list">
+      <% revisions.forEach(function (r) { %>
+        <li><span class="muted mono">#<%= r.id %></span> <%= r.created_at %> · <%= r.editor %>
+          <button class="btn btn-ghost btn-sm restore-btn" data-id="<%= r.id %>" type="button">Restore</button></li>
+      <% }); %>
+    </ul>
+  </details>
+  <% } %>
+</div>
+<script src="/assets/js/editor.js"></script>
+<%- include('../partials/foot') %>

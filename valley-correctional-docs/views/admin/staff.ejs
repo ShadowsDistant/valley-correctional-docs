@@ -1,0 +1,131 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div><h1 class="admin-h1">Staff accounts</h1><p class="admin-sub"><strong>Admin</strong> = full control · <strong>Editor</strong> = edits assigned division handbooks · <strong>Staff</strong> = reads assigned handbooks.</p></div>
+      <button class="btn btn-solid" type="button" id="addToggle"><%- icon('plus') %> Add account</button>
+    </div>
+
+    <section class="add-panel" id="addPanel" hidden>
+      <div class="panel">
+        <div class="panel-head"><h2>New account</h2></div>
+        <form method="post" action="/admin/staff/create" class="stack-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="field-grid">
+            <label class="field">Username<input type="text" name="username" required autocomplete="off" /></label>
+            <label class="field">Email<input type="email" name="email" autocomplete="off" /></label>
+            <label class="field">Password<input type="password" name="password" minlength="6" required autocomplete="new-password" /></label>
+            <label class="field">Role
+              <select name="role" id="roleSelect">
+                <option value="staff">Staff — read-only</option>
+                <option value="editor">Editor — edit assigned divisions</option>
+                <option value="admin">Admin — full control</option>
+              </select>
+            </label>
+          </div>
+          <div class="field field-full" id="divisionPicker">
+            <span class="field-label">Division access</span>
+            <div class="chk-row">
+              <% divisions.forEach(function (d) { %><label class="chk"><input type="checkbox" name="divisions" value="<%= d.key %>" /> <%= d.label %></label><% }); %>
+            </div>
+            <span class="muted small">For <strong>staff</strong> this is what they can read; for <strong>editors</strong> what they can edit. Chain of Command &amp; General Staff Handbook are readable by all staff.</span>
+          </div>
+          <div><button class="btn btn-solid" type="submit">Create account</button></div>
+        </form>
+      </div>
+    </section>
+
+    <div class="staff-list">
+      <% users.forEach(function (u) { var have=(u.divisions||'').split(',').filter(Boolean); %>
+        <div class="staff-card <%= u.suspended ? 'is-suspended' : '' %>">
+          <div class="staff-head">
+            <div class="staff-avatar" aria-hidden="true"><%= (u.username||'?').slice(0,1).toUpperCase() %></div>
+            <div class="staff-id">
+              <div class="staff-name"><%= u.username %>
+                <% if (u.id === user.id) { %><span class="badge">you</span><% } %>
+                <% if (u.suspended) { %><span class="badge badge-danger"><%- icon('lock') %> Suspended</span><% } %>
+              </div>
+              <div class="staff-email"><%= u.email || 'no email' %></div>
+            </div>
+            <div class="staff-facts">
+              <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>
+              <div class="staff-fact"><span class="fact-label">Divisions</span><span class="fact-val"><%= u.role==='admin' ? 'All' : (have.length ? have.join(', ') : '—') %></span></div>
+              <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val mono"><%= (u.last_login || 'never').slice(0,16).replace('T',' ') %></span></div>
+            </div>
+          </div>
+
+          <div class="staff-actions">
+            <button class="btn btn-ghost btn-sm" type="button" data-panel="access-<%= u.id %>"><%- icon('edit') %> Edit access</button>
+            <button class="btn btn-ghost btn-sm" type="button" data-panel="pw-<%= u.id %>">Reset password</button>
+            <% if (u.id !== user.id) { %>
+              <form method="post" action="/admin/staff/suspend" class="inline">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" /><input type="hidden" name="suspend" value="<%= u.suspended ? '0' : '1' %>" />
+                <button class="btn btn-ghost btn-sm <%= u.suspended ? '' : 'danger' %>" type="submit"><%= u.suspended ? 'Reinstate' : 'Suspend' %></button>
+              </form>
+              <form method="post" action="/admin/staff/delete" class="inline" onsubmit="return confirm('Delete <%= u.username %>? This removes the account entirely.');">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
+                <button class="btn btn-ghost btn-sm danger" type="submit">Delete</button>
+              </form>
+            <% } %>
+          </div>
+
+          <div class="staff-panel" id="access-<%= u.id %>" hidden>
+            <form method="post" action="/admin/staff/access" class="access-form">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
+              <div class="access-grid">
+                <label class="field field-sm">Role
+                  <select name="role" class="role-sel">
+                    <option value="staff" <%= u.role==='staff'?'selected':'' %>>Staff</option>
+                    <option value="editor" <%= u.role==='editor'?'selected':'' %>>Editor</option>
+                    <option value="admin" <%= u.role==='admin'?'selected':'' %>>Admin</option>
+                  </select>
+                </label>
+                <div class="field div-picker">
+                  <span class="field-label">Divisions</span>
+                  <div class="chk-row">
+                    <% divisions.forEach(function (d) { %><label class="chk"><input type="checkbox" name="divisions" value="<%= d.key %>" <%= have.includes(d.key)?'checked':'' %> /> <%= d.label %></label><% }); %>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-solid btn-sm" type="submit">Save changes</button>
+            </form>
+          </div>
+
+          <div class="staff-panel" id="pw-<%= u.id %>" hidden>
+            <form method="post" action="/admin/staff/password" class="pw-form">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
+              <label class="field field-sm">New password<input type="password" name="password" placeholder="At least 6 characters" minlength="6" required /></label>
+              <button class="btn btn-solid btn-sm" type="submit">Set password</button>
+            </form>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  </main>
+</div>
+<script>
+  (function () {
+    var addBtn = document.getElementById('addToggle'), addPanel = document.getElementById('addPanel');
+    addBtn.addEventListener('click', function () { addPanel.hidden = !addPanel.hidden; });
+    var role = document.getElementById('roleSelect'), picker = document.getElementById('divisionPicker');
+    function sync() { picker.style.display = (role.value === 'staff' || role.value === 'editor') ? '' : 'none'; }
+    role.addEventListener('change', sync); sync();
+    // per-card panel toggles (only one open per card)
+    document.querySelectorAll('[data-panel]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = document.getElementById(b.getAttribute('data-panel'));
+        var card = b.closest('.staff-card');
+        card.querySelectorAll('.staff-panel').forEach(function (p) { if (p !== el) p.hidden = true; });
+        el.hidden = !el.hidden;
+      });
+    });
+    document.querySelectorAll('.access-form').forEach(function (f) {
+      var sel = f.querySelector('.role-sel'), dp = f.querySelector('.div-picker');
+      function s() { dp.style.display = (sel.value === 'staff' || sel.value === 'editor') ? '' : 'none'; }
+      sel.addEventListener('change', s); s();
+    });
+  })();
+</script>
+<%- include('../partials/foot') %>

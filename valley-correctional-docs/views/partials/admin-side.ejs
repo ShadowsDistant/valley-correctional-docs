@@ -1,0 +1,27 @@
+<aside class="sidebar admin-sidebar" id="sidebar">
+  <nav class="side-nav">
+    <div class="nav-group">
+      <div class="nav-group-title">Admin</div>
+      <ul>
+        <li><a class="nav-link <%= section === 'dashboard' ? 'active' : '' %>" href="/admin"><span class="nav-ico"><%- icon('chart') %></span><span class="nav-label">Dashboard</span></a></li>
+        <li><a class="nav-link <%= section === 'pages' ? 'active' : '' %>" href="/admin/pages"><span class="nav-ico"><%- icon('file') %></span><span class="nav-label">Pages</span></a></li>
+        <li><a class="nav-link <%= section === 'analytics' ? 'active' : '' %>" href="/admin/analytics"><span class="nav-ico"><%- icon('chart') %></span><span class="nav-label">Analytics</span></a></li>
+        <li><a class="nav-link <%= section === 'logs' ? 'active' : '' %>" href="/admin/logs"><span class="nav-ico"><%- icon('scroll') %></span><span class="nav-label">Activity log</span></a></li>
+        <% if (user && user.role === 'admin') { %>
+          <li><a class="nav-link <%= section === 'staff' ? 'active' : '' %>" href="/admin/staff"><span class="nav-ico"><%- icon('users') %></span><span class="nav-label">Staff</span></a></li>
+        <% } %>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Shortcuts</div>
+      <ul>
+        <% if (user && user.role === 'admin') { %><li><a class="nav-link" href="/admin/new"><span class="nav-ico"><%- icon('plus') %></span><span class="nav-label">New page</span></a></li><% } %>
+        <li><a class="nav-link" href="/home"><span class="nav-ico"><%- icon('external') %></span><span class="nav-label">View live site</span></a></li>
+      </ul>
+    </div>
+  </nav>
+  <div class="side-foot">
+    Signed in as <strong><%= user.username %></strong><br /><span class="role-badge"><%= user.role %></span>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>

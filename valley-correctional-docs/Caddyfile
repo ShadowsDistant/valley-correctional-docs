@@ -1,0 +1,12 @@
+# Replace the domain below if you deploy under a different hostname.
+# Caddy automatically obtains and renews a Let's Encrypt certificate.
+docs.valleycorrectional.xyz {
+	encode gzip zstd
+	reverse_proxy app:3000
+}
+
+# Local / IP testing without a domain: uncomment the block below and comment
+# out the domain block above. Then browse to http://<droplet-ip>.
+# :80 {
+# 	reverse_proxy app:3000
+# }

@@ -1,0 +1,10 @@
+<% var _tot = data.reduce(function (a, b) { return a + b.n; }, 0) || 1; %>
+<div class="barlist">
+  <% if (!data.length) { %><p class="muted small">No data yet.</p><% } %>
+  <% data.forEach(function (it) { var pct = Math.round(it.n / _tot * 100); %>
+    <div class="barlist-row">
+      <div class="barlist-top"><span><%= it.label %></span><span class="muted"><%= it.n %> · <%= pct %>%</span></div>
+      <div class="bar"><span style="width: <%= pct %>%"></span></div>
+    </div>
+  <% }); %>
+</div>

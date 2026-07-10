@@ -1,0 +1,34 @@
+# Production stack for a single DigitalOcean Droplet:
+#   - `app`   : the Node documentation server (not exposed to the internet)
+#   - `caddy` : reverse proxy that terminates HTTPS with automatic Let's Encrypt
+#
+# Usage:
+#   1. cp .env.example .env   and edit the values
+#   2. point docs.valleycorrectional.xyz's A record at this droplet's IP
+#   3. docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      TRUST_PROXY: 1
+    volumes:
+      - ./data:/app/data          # persists the SQLite database across restarts
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data        # stores issued TLS certificates
+      - ./caddy_config:/config
