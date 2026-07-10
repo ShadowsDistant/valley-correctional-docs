@@ -12,7 +12,8 @@
   var openWidget = null;
   function closeOpen() { if (openWidget) openWidget(); openWidget = null; }
   document.addEventListener('click', function (e) {
-    if (openWidget && !e.target.closest('.cselect, .cdate')) closeOpen();
+    // panels are portaled to <body>, so also treat clicks inside them as "inside"
+    if (openWidget && !e.target.closest('.cselect, .cdate, .cselect-panel, .cdate-pop')) closeOpen();
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeOpen(); });
 
@@ -51,21 +52,41 @@
       label.classList.toggle('placeholder', !cur || cur.value === '');
     }
 
-    function place() {
-      panel.classList.remove('up');
+    // Portal the panel to <body> and position it with fixed coords, so it can
+    // never be clipped or covered by an ancestor's overflow / stacking context.
+    function position() {
       var r = btn.getBoundingClientRect();
-      var need = Math.min(panel.scrollHeight || 240, 260);
-      if (r.bottom + need > window.innerHeight && r.top > need) panel.classList.add('up');
+      panel.style.position = 'fixed';
+      panel.style.left = r.left + 'px';
+      panel.style.width = r.width + 'px';
+      var below = window.innerHeight - r.bottom - 10;
+      var above = r.top - 10;
+      var full = Math.min(panel.scrollHeight, 264);
+      if (below < full && above > below) {
+        panel.classList.add('up');
+        panel.style.top = ''; panel.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+        panel.style.maxHeight = Math.min(full, above) + 'px';
+      } else {
+        panel.classList.remove('up');
+        panel.style.bottom = ''; panel.style.top = (r.bottom + 6) + 'px';
+        panel.style.maxHeight = Math.min(full, below) + 'px';
+      }
     }
     function isOpen() { return !panel.hidden; }
     function open() {
       closeOpen();
+      document.body.appendChild(panel);
       panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); wrap.classList.add('open');
-      active = sel.selectedIndex; highlight(); place();
+      active = sel.selectedIndex; highlight(); position();
       var s = panel.querySelector('.selected'); if (s) s.scrollIntoView({ block: 'nearest' });
+      window.addEventListener('scroll', position, true); window.addEventListener('resize', position);
       openWidget = close;
     }
-    function close() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); wrap.classList.remove('open'); }
+    function close() {
+      panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); wrap.classList.remove('open');
+      window.removeEventListener('scroll', position, true); window.removeEventListener('resize', position);
+      if (panel.parentNode === document.body) wrap.appendChild(panel);
+    }
     function highlight() {
       opts().forEach(function (o, i) { o.classList.toggle('active', i === active); });
       var a = opts()[active]; if (a) a.scrollIntoView({ block: 'nearest' });
@@ -154,13 +175,28 @@
       pop.innerHTML = html;
     }
 
-    function place() {
-      pop.classList.remove('up');
+    function position() {
       var r = btn.getBoundingClientRect();
-      if (r.bottom + 320 > window.innerHeight && r.top > 320) pop.classList.add('up');
+      pop.style.position = 'fixed';
+      pop.style.left = Math.min(r.left, window.innerWidth - 288) + 'px';
+      var need = pop.offsetHeight || 320;
+      if (r.bottom + need + 10 > window.innerHeight && r.top > need) {
+        pop.classList.add('up'); pop.style.top = ''; pop.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+      } else {
+        pop.classList.remove('up'); pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px';
+      }
     }
-    function open() { closeOpen(); render(); pop.hidden = false; wrap.classList.add('open'); place(); openWidget = close; }
-    function close() { pop.hidden = true; wrap.classList.remove('open'); }
+    function open() {
+      closeOpen(); render(); document.body.appendChild(pop);
+      pop.hidden = false; wrap.classList.add('open'); position();
+      window.addEventListener('scroll', position, true); window.addEventListener('resize', position);
+      openWidget = close;
+    }
+    function close() {
+      pop.hidden = true; wrap.classList.remove('open');
+      window.removeEventListener('scroll', position, true); window.removeEventListener('resize', position);
+      if (pop.parentNode === document.body) wrap.appendChild(pop);
+    }
     function isOpen() { return !pop.hidden; }
 
     btn.addEventListener('click', function (e) { e.preventDefault(); isOpen() ? close() : open(); });

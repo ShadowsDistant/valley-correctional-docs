@@ -149,6 +149,67 @@
     });
   }
 
+  // ---------- custom confirm modal ----------
+  // Any <form data-confirm="message"> asks for confirmation in a styled modal
+  // instead of the browser's confirm(). Optional: data-confirm-title,
+  // data-confirm-ok, data-confirm-variant="danger".
+  var WARN_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.6 20.5h18.8L12 4Z"/><path d="M12 10v4M12 17.5h.01"/></svg>';
+  function showConfirm(opts, onOk) {
+    // never stack modals — drop any that's still open/closing
+    var prev = document.querySelectorAll('.confirm-back'); for (var i = 0; i < prev.length; i++) prev[i].remove();
+    var back = document.createElement('div');
+    back.className = 'confirm-back';
+    var danger = opts.danger !== false;
+    back.innerHTML =
+      '<div class="confirm-card" role="alertdialog" aria-modal="true">'
+      + '<div class="confirm-ico' + (danger ? ' danger' : '') + '">' + WARN_SVG + '</div>'
+      + '<h3>' + esc(opts.title || 'Are you sure?') + '</h3>'
+      + '<p>' + esc(opts.message || '') + '</p>'
+      + '<div class="confirm-actions">'
+      + '<button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+      + '<button type="button" class="btn btn-solid ' + (danger ? 'danger' : '') + '" data-ok>' + esc(opts.okLabel || 'Confirm') + '</button>'
+      + '</div></div>';
+    document.body.appendChild(back);
+    var okBtn = back.querySelector('[data-ok]');
+    function close() { back.classList.add('closing'); setTimeout(function () { back.remove(); }, 150); document.removeEventListener('keydown', key); }
+    function key(e) { if (e.key === 'Escape') close(); else if (e.key === 'Enter') { close(); onOk(); } }
+    back.querySelector('[data-cancel]').addEventListener('click', close);
+    okBtn.addEventListener('click', function () { close(); onOk(); });
+    back.addEventListener('mousedown', function (e) { if (e.target === back) close(); });
+    document.addEventListener('keydown', key);
+    setTimeout(function () { okBtn.focus(); }, 30);
+  }
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form && form.matches && form.matches('form[data-confirm]')) {
+      e.preventDefault();
+      showConfirm({
+        title: form.getAttribute('data-confirm-title') || 'Please confirm',
+        message: form.getAttribute('data-confirm'),
+        okLabel: form.getAttribute('data-confirm-ok') || 'Confirm',
+        danger: form.getAttribute('data-confirm-variant') !== 'safe'
+      }, function () { form.submit(); });
+    }
+  }, true);
+
+  // ---------- button click ripple ----------
+  if (window.matchMedia && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.addEventListener('pointerdown', function (e) {
+      var b = e.target.closest && e.target.closest('.btn, .clause-btn, .wz-btn, .cdate-nav');
+      if (!b || b.disabled) return;
+      var r = b.getBoundingClientRect();
+      var d = Math.max(r.width, r.height) * 1.4;
+      var s = document.createElement('span');
+      s.className = 'ripple';
+      s.style.width = s.style.height = d + 'px';
+      s.style.left = (e.clientX - r.left - d / 2) + 'px';
+      s.style.top = (e.clientY - r.top - d / 2) + 'px';
+      if (getComputedStyle(b).position === 'static') b.style.position = 'relative';
+      b.appendChild(s);
+      setTimeout(function () { s.remove(); }, 520);
+    });
+  }
+
   // ---------- TOC scrollspy ----------
   var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
   if (tocLinks.length && 'IntersectionObserver' in window) {

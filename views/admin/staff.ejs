@@ -59,11 +59,13 @@
             <button class="btn btn-ghost btn-sm" type="button" data-panel="access-<%= u.id %>"><%- icon('edit') %> Edit access</button>
             <button class="btn btn-ghost btn-sm" type="button" data-panel="pw-<%= u.id %>">Reset password</button>
             <% if (u.id !== user.id) { %>
-              <form method="post" action="/admin/staff/suspend" class="inline">
+              <form method="post" action="/admin/staff/suspend" class="inline"
+                <% if (!u.suspended) { %>data-confirm="Suspend <%= u.username %>? They will immediately lose all access until reinstated." data-confirm-title="Suspend account" data-confirm-ok="Suspend"<% } %>>
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" /><input type="hidden" name="suspend" value="<%= u.suspended ? '0' : '1' %>" />
                 <button class="btn btn-ghost btn-sm <%= u.suspended ? '' : 'danger' %>" type="submit"><%= u.suspended ? 'Reinstate' : 'Suspend' %></button>
               </form>
-              <form method="post" action="/admin/staff/delete" class="inline" onsubmit="return confirm('Delete <%= u.username %>? This removes the account entirely.');">
+              <form method="post" action="/admin/staff/delete" class="inline"
+                data-confirm="Delete <%= u.username %>? This permanently removes the account and cannot be undone." data-confirm-title="Delete account" data-confirm-ok="Delete account">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
                 <button class="btn btn-ghost btn-sm danger" type="submit">Delete</button>
               </form>
