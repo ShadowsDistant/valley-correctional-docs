@@ -748,8 +748,8 @@ kbd {
   display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0;
   overflow: hidden; transform-origin: center;
 }
-.wm-overlay span { flex: 0 0 auto; font-family: var(--mono); font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text); letter-spacing: .08em; }
-.wm-overlay.wm-a { opacity: .013; transform: rotate(-22deg) scale(1.3); }
+.wm-overlay span { flex: 0 0 auto; font-family: var(--mono); font-size: 12.5px; font-weight: 700; white-space: nowrap; color: var(--text); letter-spacing: .08em; }
+.wm-overlay.wm-a { opacity: .008; transform: rotate(-22deg) scale(1.3); }
 .wm-overlay.wm-a span { padding: 46px 74px; }
 /* blur the confidential body when the tab loses focus (anti screen-grab) */
 .doc.protected.blurred .markdown { filter: blur(9px); transition: filter .1s; }
