@@ -1,17 +1,6 @@
 (function () {
   'use strict';
 
-  // ---------- theme toggle ----------
-  var themeBtn = document.getElementById('themeToggle');
-  if (themeBtn) {
-    themeBtn.addEventListener('click', function () {
-      var cur = document.documentElement.getAttribute('data-theme');
-      var next = cur === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      try { localStorage.setItem('vcf-theme', next); } catch (e) {}
-    });
-  }
-
   // ---------- mobile sidebar ----------
   var menuBtn = document.getElementById('menuToggle');
   var sidebar = document.getElementById('sidebar');

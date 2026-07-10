@@ -6,38 +6,119 @@
     <div class="admin-titlerow">
       <div>
         <h1 class="admin-h1">Staff Policy Agreement</h1>
-        <p class="admin-sub">The terms every staff member must accept. Currently <strong>version <%= version %></strong>.</p>
+        <p class="admin-sub">The terms every staff member must read and accept. Saving bumps the version and re-prompts everyone.</p>
       </div>
+      <span class="policy-version-badge"><%- icon('shield') %> Version <%= version %></span>
     </div>
 
     <% if (saved) { %>
-      <div class="account-ok"><%- icon('check') %> <span>Policy saved. It's now version <%= version %> — all staff will be asked to re-accept it.</span></div>
+      <div class="account-ok"><%- icon('check') %> <span>Policy saved as version <%= version %> — all staff will be asked to re-accept it.</span></div>
     <% } %>
 
-    <div class="admin-cols admin-cols-policy">
-      <section class="panel">
-        <div class="panel-head"><h2>Edit clauses</h2></div>
-        <form method="post" action="/admin/policy" class="stack-form">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-          <label class="field">One clause per line
-            <textarea name="clauses" class="policy-editor" rows="14" spellcheck="true"><% clauses.forEach(function (c, i) { %><%= c %><%= i < clauses.length - 1 ? '\n' : '' %><% }); %></textarea>
-          </label>
-          <p class="muted small">Wrap text in <code>**double asterisks**</code> to make it bold. Blank lines are ignored.</p>
-          <div class="policy-save-note"><%- icon('warning') %> <span>Saving increases the policy version. Every staff member — including those who already agreed — will see the agreement again on their next page load and must re-accept.</span></div>
-          <div><button class="btn btn-solid" type="submit"><%- icon('check') %> Save &amp; re-prompt everyone</button></div>
-        </form>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>Preview</h2></div>
-        <div class="policy-body policy-preview">
-          <ul>
-            <% clauses.forEach(function (c) { %><li><%- policyLine(c) %></li><% }); %>
-          </ul>
+    <div class="policy-editor-grid">
+      <form method="post" action="/admin/policy" id="policyForm" class="panel policy-edit-panel">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="panel-head">
+          <h2>Clauses</h2>
+          <span class="muted small" id="clauseCount"></span>
         </div>
-        <p class="muted small">This is exactly how the agreement will read to staff.</p>
-      </section>
+
+        <div id="clauseList" class="clause-list">
+          <% clauses.forEach(function (c) { %>
+            <div class="clause-row">
+              <div class="clause-move">
+                <button type="button" class="clause-btn move-up" title="Move up" aria-label="Move up"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
+                <button type="button" class="clause-btn move-down" title="Move down" aria-label="Move down"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+              </div>
+              <textarea name="clause" class="clause-input" rows="2" spellcheck="true"><%= c %></textarea>
+              <button type="button" class="clause-btn clause-del" title="Remove clause" aria-label="Remove clause"><%- icon('trash') %></button>
+            </div>
+          <% }); %>
+        </div>
+
+        <button type="button" class="btn btn-ghost btn-sm" id="addClause"><%- icon('plus') %> Add clause</button>
+        <p class="muted small clause-hint">Wrap phrases in <code>**double asterisks**</code> to bold them. Empty clauses are ignored.</p>
+
+        <div class="policy-save-note"><%- icon('warning') %> <span>Saving increases the policy version. Every staff member — including those who already agreed — will be asked to re-accept the agreement on their next page load.</span></div>
+        <div class="policy-edit-actions"><button class="btn btn-solid" type="submit"><%- icon('check') %> Save &amp; re-prompt everyone</button></div>
+      </form>
+
+      <div class="panel policy-preview-panel">
+        <div class="panel-head"><h2>Live preview</h2></div>
+        <div class="policy-preview-modal">
+          <div class="policy-preview-head">
+            <img src="/assets/logo.png" alt="VCF" width="40" height="40" />
+            <div>
+              <div class="policy-eyebrow">Valley Correctional Facility</div>
+              <strong>Staff Policy Agreement</strong>
+            </div>
+          </div>
+          <div class="policy-body"><ul id="previewList"></ul></div>
+        </div>
+        <p class="muted small">This is exactly how staff will see the agreement.</p>
+      </div>
     </div>
   </main>
 </div>
+
+<template id="clauseTemplate">
+  <div class="clause-row">
+    <div class="clause-move">
+      <button type="button" class="clause-btn move-up" title="Move up" aria-label="Move up"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
+      <button type="button" class="clause-btn move-down" title="Move down" aria-label="Move down"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+    <textarea name="clause" class="clause-input" rows="2" spellcheck="true" placeholder="Write a policy clause…"></textarea>
+    <button type="button" class="clause-btn clause-del" title="Remove clause" aria-label="Remove clause"><%- icon('trash') %></button>
+  </div>
+</template>
+
+<script>
+(function () {
+  var list = document.getElementById('clauseList');
+  var tpl = document.getElementById('clauseTemplate');
+  var preview = document.getElementById('previewList');
+  var count = document.getElementById('clauseCount');
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function fmt(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); }
+
+  function render() {
+    var rows = list.querySelectorAll('.clause-input');
+    var html = '';
+    rows.forEach(function (t) { var v = t.value.trim(); if (v) html += '<li>' + fmt(v) + '</li>'; });
+    preview.innerHTML = html || '<li class="muted">No clauses yet.</li>';
+    count.textContent = rows.length + (rows.length === 1 ? ' clause' : ' clauses');
+    list.querySelectorAll('.clause-row').forEach(function (r, i, all) {
+      r.querySelector('.move-up').disabled = i === 0;
+      r.querySelector('.move-down').disabled = i === all.length - 1;
+    });
+  }
+
+  function autoGrow(t) { t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight, 44) + 'px'; }
+
+  list.addEventListener('input', function (e) { if (e.target.classList.contains('clause-input')) { autoGrow(e.target); render(); } });
+  list.addEventListener('click', function (e) {
+    var btn = e.target.closest('.clause-btn'); if (!btn) return;
+    var row = btn.closest('.clause-row');
+    if (btn.classList.contains('clause-del')) { if (list.querySelectorAll('.clause-row').length > 1) row.remove(); else row.querySelector('.clause-input').value = ''; }
+    else if (btn.classList.contains('move-up') && row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
+    else if (btn.classList.contains('move-down') && row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
+    render();
+  });
+
+  document.getElementById('addClause').addEventListener('click', function () {
+    var node = tpl.content.firstElementChild.cloneNode(true);
+    list.appendChild(node);
+    var ta = node.querySelector('.clause-input'); ta.focus(); render();
+  });
+
+  // Don't submit empty clauses.
+  document.getElementById('policyForm').addEventListener('submit', function () {
+    list.querySelectorAll('.clause-input').forEach(function (t) { if (!t.value.trim()) t.closest('.clause-row').remove(); });
+  });
+
+  list.querySelectorAll('.clause-input').forEach(autoGrow);
+  render();
+})();
+</script>
 <%- include('../partials/foot') %>

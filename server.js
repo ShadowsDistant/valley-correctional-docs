@@ -806,10 +806,11 @@ adminRouter.get('/policy', auth.requireAdmin, (req, res) => {
 });
 
 adminRouter.post('/policy', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
-  const clauses = String(req.body.clauses || '')
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // New editor submits one `clause` field per row; keep the old textarea format
+  // (`clauses`, newline-separated) working as a fallback.
+  const raw = req.body.clause;
+  const list = Array.isArray(raw) ? raw : (raw != null ? [raw] : String(req.body.clauses || '').split(/\r?\n/));
+  const clauses = list.map((s) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean);
   if (!clauses.length) {
     return res.status(400).render('error', {
       title: 'Invalid', heading: 'Policy cannot be empty',
