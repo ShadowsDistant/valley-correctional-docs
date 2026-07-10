@@ -53,6 +53,10 @@
   // --- keyboard: block copy/save/print/view-source; PrintScreen -> blur + clear ---
   document.addEventListener('keydown', function (e) {
     var k = (e.key || '').toLowerCase();
+    // Ctrl/Cmd+Shift+S is the browser/OS screenshot shortcut in several browsers.
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && k === 's') {
+      e.preventDefault(); flashBlur(1800); flash('Screenshots are logged and traced to your account.'); return false;
+    }
     if ((e.ctrlKey || e.metaKey) && (k === 'p' || k === 's' || k === 'c' || k === 'u' || k === 'a')) {
       e.preventDefault(); flash('That action is disabled on confidential documents.'); return false;
     }

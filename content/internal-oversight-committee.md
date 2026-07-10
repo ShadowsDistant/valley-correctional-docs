@@ -1,4 +1,4 @@
-<span class="badge badge-internal">🛡️ Internal Release</span> <span class="badge">🔎 Oversight Committee</span>
+<span class="badge badge-internal">:i[shield]: Internal Release</span> <span class="badge">:i[search]: Oversight Committee</span>
 
 # Oversight Committee
 
@@ -13,19 +13,19 @@ This document is restricted to logged-in VCF staff.
 The **Oversight Committee (OSC)** is the primary regulatory and audit body within Valley Correctional Facility. Its core function is to maintain operational integrity through policy enforcement, community-engagement monitoring, and high-level strategic advisory.
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">🗂️ Committee Overview</div><div class="md-card-body"><strong>Lead Overseer:</strong> shadowsdistant<br><strong>Formal Name:</strong> Oversight Committee<br><strong>Abbreviation:</strong> OSC</div></div>
-  <div class="md-card"><div class="md-card-title">🛡️ Mission</div><div class="md-card-body">Safeguard facility operational standards by ensuring total policy compliance and fostering long-term community sustainability through objective administrative review.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[cabinet]: Committee Overview</div><div class="md-card-body"><strong>Lead Overseer:</strong> shadowsdistant<br><strong>Assistant Lead Overseer:</strong> SomotoDev<br><strong>Formal Name:</strong> Oversight Committee<br><strong>Abbreviation:</strong> OSC</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Mission</div><div class="md-card-body">Safeguard facility operational standards by ensuring total policy compliance and fostering long-term community sustainability through objective administrative review.</div></div>
 </div>
 
 ## Organizational Structure
 
-| Departmental Jurisdiction | Assigned Personnel | Status |
+| Role | Assigned Personnel | Status |
 | :--- | :--- | :--- |
-| **Lead Overseer** | `shadowsdistant` | ✅ Occupied |
-| **Prison Administration** | `N/A` | ⚠️ Vacant |
-| **Prison Administration** | `N/A` | ⚠️ Vacant |
-| **Internal Operations** | `N/A` | ⚠️ Vacant |
-| **Development** | `N/A` | ⚠️ Vacant |
+| **Lead Overseer** | `shadowsdistant` | :i[check]: Occupied |
+| **Assistant Lead Overseer** | `SomotoDev` | :i[check]: Occupied |
+| **Overseer** | `creepersedgeboy2` | :i[check]: Occupied |
+
+Overseers are **not tied to any specific division** — they provide facility-wide oversight and may review any division as directed by the Lead Overseer.
 
 ## Core Mandates
 
@@ -40,7 +40,7 @@ The OSC functions as an **Independent Advisory Body**. Overseers serve as senior
 
 If an Overseer identifies policy violations or inactivity, they submit a formal report to the full committee. With majority consensus or Lead Overseer approval, the committee may issue **Directives** that Managers must follow, including corrective actions or removal.
 
-> **⚠️ No Unilateral Action:** Overseers cannot act alone. No single Overseer may independently enact consequences — firing, demoting, or removing individuals requires a formal committee vote.
+> **:i[warning]: No Unilateral Action:** Overseers cannot act alone. No single Overseer may independently enact consequences — firing, demoting, or removing individuals requires a formal committee vote.
 
 **Cross-Division Authority Limits:** an Overseer's authority is scoped strictly to their assigned division. Concerns about other divisions must be raised with the Overseer assigned there — or escalated to the Lead Overseer if that seat is vacant.
 :::

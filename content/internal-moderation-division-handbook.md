@@ -1,4 +1,4 @@
-<span class="badge badge-internal">🛡️ Internal Release</span> <span class="badge">🛡️ Moderation Division</span>
+<span class="badge badge-internal">:i[shield]: Internal Release</span> <span class="badge">:i[shield]: Moderation Division</span>
 
 # Moderation Division Handbook
 
@@ -11,8 +11,8 @@ This handbook is restricted to logged-in VCF staff.
 ## Overview
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">🗂️ Division Overview</div><div class="md-card-body"><strong>Division Lead:</strong> Krtz1012 (Internal Operations Manager)<br><strong>Full Name:</strong> Moderation Division<br><strong>Abbreviation:</strong> MOD</div></div>
-  <div class="md-card"><div class="md-card-title">🛡️ Division Mission</div><div class="md-card-body">Ensure a safe, fair, and enjoyable environment through consistent and impartial rule enforcement. Moderators act with professionalism, integrity, and respect.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[cabinet]: Division Overview</div><div class="md-card-body"><strong>Division Lead:</strong> Krtz1012 (Internal Operations Manager)<br><strong>Full Name:</strong> Moderation Division<br><strong>Abbreviation:</strong> MOD</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Division Mission</div><div class="md-card-body">Ensure a safe, fair, and enjoyable environment through consistent and impartial rule enforcement. Moderators act with professionalism, integrity, and respect.</div></div>
 </div>
 
 ## Core Responsibilities
@@ -84,7 +84,7 @@ The `;give` command may only be used for documented roleplay purposes with prior
 2. **Manager Approval** — A Manager posts approval in the ticket thread. Unapproved requests must not be actioned.
 3. **Execution & Logging** — After execution, log the command in the staff command log, including the approving Manager's name and reason.
 
-> **⚠️ Warning:** unauthorized use of `;give` constitutes **Command Abuse** and is referred to SID.
+> **:i[warning]: Warning:** unauthorized use of `;give` constitutes **Command Abuse** and is referred to SID.
 :::
 
 ## Verbal Warning Logging
@@ -95,7 +95,7 @@ All verbal warnings — including in-shift warnings for FRP and powergaming — 
 - Create a **Note** on the member's Melonly profile with date, violation, and brief description.
 - Or log to the staff log channel as: `[DATE] — Verbal Warning — [USER] — [VIOLATION] — [DESCRIPTION]`
 
-> **⚠️ Warning:** unlogged verbal warnings cannot be used to escalate punishments and expire after **30 days**.
+> **:i[warning]: Warning:** unlogged verbal warnings cannot be used to escalate punishments and expire after **30 days**.
 :::
 
 ## Conflict of Interest Escalation
@@ -147,8 +147,8 @@ Minimum **4 hours** per calendar month. Use `/shiftmanage` in Discord to clock i
 ## Appeals & Infractions
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">⚖️ Community Appeals</div><div class="md-card-body">All appeals are handled exclusively through Melonly. Direct users to the official appeal process — do not handle appeals in DMs or tickets.</div></div>
-  <div class="md-card"><div class="md-card-title">🛡️ Staff Infractions</div><div class="md-card-body">SID logs all disciplinary actions in Melonly. You have 7 calendar days from receipt to submit an appeal.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[scale]: Community Appeals</div><div class="md-card-body">All appeals are handled exclusively through Melonly. Direct users to the official appeal process — do not handle appeals in DMs or tickets.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Staff Infractions</div><div class="md-card-body">SID logs all disciplinary actions in Melonly. You have 7 calendar days from receipt to submit an appeal.</div></div>
 </div>
 
 ## Punishment Rubrics

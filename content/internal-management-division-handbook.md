@@ -1,4 +1,4 @@
-<span class="badge badge-internal">🛡️ Internal Release</span> <span class="badge">👔 Management Division</span>
+<span class="badge badge-internal">:i[shield]: Internal Release</span> <span class="badge">:i[briefcase]: Management Division</span>
 
 # Management Division Handbook
 
@@ -11,8 +11,8 @@ This handbook is restricted to logged-in VCF staff.
 ## Overview
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">🗂️ Division Overview</div><div class="md-card-body"><strong>Division Lead:</strong> TBD (Community Manager)<br><strong>Formal Name:</strong> Management Division<br><strong>Abbreviation:</strong> MGT</div></div>
-  <div class="md-card"><div class="md-card-title">🛡️ Division Mission</div><div class="md-card-body">Management serves as the architect of operational health — ensuring every division functions as a cohesive unit, aligned with the facility's strategic goals and ethical standards.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[cabinet]: Division Overview</div><div class="md-card-body"><strong>Division Lead:</strong> TBD (Community Manager)<br><strong>Formal Name:</strong> Management Division<br><strong>Abbreviation:</strong> MGT</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Division Mission</div><div class="md-card-body">Management serves as the architect of operational health — ensuring every division functions as a cohesive unit, aligned with the facility's strategic goals and ethical standards.</div></div>
 </div>
 
 ## Pillar Principles
@@ -20,19 +20,19 @@ This handbook is restricted to logged-in VCF staff.
 Adherence to these principles is non-negotiable for every manager.
 
 <div class="md-cards cols-3">
-  <div class="md-card"><div class="md-card-title">🛡️ Absolute Accountability</div><div class="md-card-body">Managers are held to a "Zero Margin" standard. You are directly responsible for the conduct of your subordinates. SID investigations into management misconduct carry the highest disciplinary weight.</div></div>
-  <div class="md-card"><div class="md-card-title">👁️ Macro-Management</div><div class="md-card-body">Be directive, not invasive. Provide strategy, clear the path, and empower your team to execute. Expert-level knowledge of your division's mechanics is required.</div></div>
-  <div class="md-card"><div class="md-card-title">🌉 Cross-Functional Synergy</div><div class="md-card-body">MGT members maintain open communication channels and actively participate in leadership summits to resolve inter-divisional friction.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Absolute Accountability</div><div class="md-card-body">Managers are held to a "Zero Margin" standard. You are directly responsible for the conduct of your subordinates. SID investigations into management misconduct carry the highest disciplinary weight.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[eye]: Macro-Management</div><div class="md-card-body">Be directive, not invasive. Provide strategy, clear the path, and empower your team to execute. Expert-level knowledge of your division's mechanics is required.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[building]: Cross-Functional Synergy</div><div class="md-card-body">MGT members maintain open communication channels and actively participate in leadership summits to resolve inter-divisional friction.</div></div>
 </div>
 
 ## Organizational Architecture
 
 | Executive Role | Jurisdictional Oversight | Executive Authority |
 | :--- | :--- | :--- |
-| **Community Manager** | Moderation, SID, Management | ✅ Authorized |
-| **Prison Admin. Manager** | Prison Administration (DoC) | ❌ Restricted |
-| **Internal Ops. Manager** | Moderation, SID | ❌ Restricted |
-| **Development Manager** | Development Division | ❌ Restricted |
+| **Community Manager** | Moderation, SID, Management | :i[check]: Authorized |
+| **Prison Admin. Manager** | Prison Administration (DoC) | :i[x]: Restricted |
+| **Internal Ops. Manager** | Moderation, SID | :i[x]: Restricted |
+| **Development Manager** | Development Division | :i[x]: Restricted |
 
 ## Operational Mandates
 

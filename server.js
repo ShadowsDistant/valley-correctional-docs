@@ -171,6 +171,7 @@ app.use((req, res, next) => {
     );
   res.locals.icon = icons.icon;
   res.locals.assetVersion = ASSET_VERSION;
+  res.locals.canManageShifts = auth.canManageShifts(req.session && req.session.user);
   // Staff-policy agreement state for the first-login / policy-changed gate.
   const u = req.session && req.session.user;
   res.locals.policyVersion = policyVersion();
@@ -264,6 +265,7 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
   const reqNext = typeof req.body.next === 'string' && /^\/(?!\/)/.test(req.body.next) ? req.body.next : '';
   const user = auth.findUserByUsername((username || '').trim());
   if (!user || !auth.verifyPassword(password || '', user.password)) {
+    audit((username || '').trim() || 'unknown', 'user.login_fail', (username || '').trim(), 'invalid credentials · ' + (req.ip || ''));
     return res.status(401).render('login', {
       title: 'Staff Login',
       next: reqNext || '/admin',
@@ -272,6 +274,7 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
     });
   }
   if (auth.isSuspended(user)) {
+    audit(user.username, 'user.login_blocked', user.username, 'suspended account attempted login');
     return res.status(403).render('login', {
       title: 'Account suspended',
       next: reqNext || '/admin',
@@ -280,6 +283,7 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
     });
   }
   db.prepare('UPDATE users SET last_login = datetime(\'now\') WHERE id = ?').run(user.id);
+  audit(user.username, 'user.login', user.username, user.role + ' · ' + (req.ip || ''));
   // Division-limited staff can't use the admin panel — land them on the site.
   const landing = auth.canEdit(user) ? '/admin' : '/home';
   const nextUrl = reqNext && !(reqNext.startsWith('/admin') && !auth.canEdit(user)) ? reqNext : landing;
@@ -291,6 +295,8 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
 });
 
 app.post('/logout', (req, res) => {
+  const u = req.session && req.session.user;
+  if (u) audit(u.username, 'user.logout', u.username, '');
   req.session.destroy(() => res.redirect('/'));
 });
 
@@ -441,6 +447,7 @@ adminRouter.get('/edit', (req, res) => {
     page,
     groups: nav.GROUP_ORDER,
     revisions,
+    undeletable: UNDELETABLE_SLUGS.includes(page.slug),
   });
 });
 
@@ -516,9 +523,14 @@ adminRouter.post('/save', auth.verifyCsrf, (req, res) => {
   res.json({ ok: true, slug, url: '/' + slug });
 });
 
+// Core pages that must always exist and cannot be deleted from the editor.
+const UNDELETABLE_SLUGS = ['shifts/shift-schedule', 'home'];
 adminRouter.post('/delete', auth.verifyCsrf, (req, res) => {
   if (req.session.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Only administrators can delete pages.' });
   const slug = normalizeSlug(req.body.slug);
+  if (UNDELETABLE_SLUGS.includes(slug)) {
+    return res.status(400).json({ ok: false, error: 'This page is protected and cannot be deleted. The Shift Schedule is managed from the Shift Scheduler.' });
+  }
   const page = getPageAny.get(slug);
   db.prepare('DELETE FROM pages WHERE slug = ?').run(slug);
   audit(req.session.user.username, 'page.delete', '/' + slug, page ? page.title : '');
@@ -538,9 +550,26 @@ adminRouter.post('/restore', auth.verifyCsrf, (req, res) => {
 });
 
 // --- activity / edit log ---
-adminRouter.get('/logs', (req, res) => {
-  const events = db.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 200').all();
-  res.render('admin/logs', { title: 'Admin · Activity', section: 'logs', events });
+adminRouter.get('/logs', auth.requireAdmin, (req, res) => {
+  // Optional filters: action, actor (username substring), and date range.
+  const clauses = [];
+  const args = [];
+  const action = String(req.query.action || '').trim();
+  const actor = String(req.query.actor || '').trim();
+  const from = String(req.query.from || '').trim();
+  const to = String(req.query.to || '').trim();
+  if (action) { clauses.push('action = ?'); args.push(action); }
+  if (actor) { clauses.push('lower(actor) LIKE ?'); args.push('%' + actor.toLowerCase() + '%'); }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { clauses.push('ts >= ?'); args.push(from + ' 00:00:00'); }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { clauses.push('ts <= ?'); args.push(to + ' 23:59:59'); }
+  const where = clauses.length ? ' WHERE ' + clauses.join(' AND ') : '';
+  const events = db.prepare('SELECT * FROM audit_log' + where + ' ORDER BY id DESC LIMIT 300').all(...args);
+  // Distinct action types present in the log, for the filter dropdown.
+  const actions = db.prepare('SELECT DISTINCT action FROM audit_log ORDER BY action').all().map((r) => r.action);
+  res.render('admin/logs', {
+    title: 'Admin · Activity', section: 'logs', events, actions,
+    filter: { action, actor, from, to },
+  });
 });
 
 // Classify a user-agent string into a coarse browser / OS bucket.
@@ -564,8 +593,8 @@ function uaOS(ua) {
   return 'Other';
 }
 
-// Analytics dashboard (detailed)
-adminRouter.get('/analytics', (req, res) => {
+// Analytics dashboard (detailed) — admins only
+adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   const days = [7, 30, 90].includes(+req.query.days) ? +req.query.days : 30;
   const since = `-${days - 1} days`;
 
@@ -728,7 +757,9 @@ adminRouter.post('/staff/password', auth.requireAdmin, auth.verifyCsrf, (req, re
       title: 'Invalid', heading: 'Password too short', message: 'Password must be at least 6 characters.',
     });
   }
+  const pwTarget = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(auth.hashPassword(password), id);
+  audit(req.session.user.username, 'user.password_reset', pwTarget ? pwTarget.username : '#' + id, 'admin reset password');
   res.redirect('/admin/staff');
 });
 
@@ -746,8 +777,16 @@ adminRouter.post('/staff/delete', auth.requireAdmin, auth.verifyCsrf, (req, res)
       title: 'Invalid', heading: 'Cannot delete last admin', message: 'There must be at least one administrator.',
     });
   }
+  const delTarget = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  audit(req.session.user.username, 'user.delete', delTarget ? delTarget.username : '#' + id, 'account deleted');
   res.redirect('/admin/staff');
+});
+
+// Client-side tool: paste/upload a screenshot and boost brightness/contrast/
+// saturation to reveal the embedded per-user watermark. Admins only.
+adminRouter.get('/watermark-tool', auth.requireAdmin, (req, res) => {
+  res.render('admin/watermark-tool', { title: 'Admin · Watermark Reveal', section: 'watermark' });
 });
 
 // Edit the staff policy agreement. Saving bumps the version, which re-prompts
@@ -779,6 +818,75 @@ adminRouter.post('/policy', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
   audit(req.session.user.username, 'policy.update', 'staff-policy', 'v' + v + ' · ' + clauses.length + ' clauses');
   res.redirect('/admin/policy?saved=1');
 });
+
+// --- shift scheduler -------------------------------------------------------
+// Managed by admins + Management/Oversight staff; shown on the public schedule.
+const SHIFT_TYPES = ['Standard Shift', 'Training Shift', 'Event Shift', 'Special Operation', 'Inspection'];
+const upcomingShiftsStmt = db.prepare("SELECT * FROM shifts WHERE date >= date('now','-1 day') ORDER BY date, time");
+const allShiftsStmt = db.prepare('SELECT * FROM shifts ORDER BY date DESC, time');
+
+function requireShiftManager(req, res, next) {
+  const u = req.session && req.session.user;
+  if (u && auth.canManageShifts(u)) return next();
+  if (u) {
+    return res.status(403).render('error', {
+      title: 'Forbidden', heading: '403 — Shift managers only',
+      message: 'Only administrators and Management / Oversight staff can manage the shift schedule.',
+    });
+  }
+  return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl || '/admin/shifts'));
+}
+
+app.get('/admin/shifts', requireShiftManager, auth.csrfToken, (req, res) => {
+  res.render('admin/shifts', {
+    title: 'Admin · Shift Scheduler',
+    section: 'shifts',
+    shifts: allShiftsStmt.all(),
+    shiftTypes: SHIFT_TYPES,
+    saved: req.query.saved === '1',
+  });
+});
+
+app.post('/admin/shifts/add', requireShiftManager, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const date = String(req.body.date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Invalid date', message: 'Pick a valid shift date.' });
+  }
+  const type = SHIFT_TYPES.includes(req.body.type) ? req.body.type : 'Standard Shift';
+  const time = String(req.body.time || '').trim().slice(0, 80);
+  const host = String(req.body.host || '').trim().slice(0, 80);
+  const notes = String(req.body.notes || '').trim().slice(0, 200);
+  db.prepare('INSERT INTO shifts (date, time, type, host, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(date, time, type, host, notes, req.session.user.username);
+  audit(req.session.user.username, 'shift.create', date, type + (time ? ' · ' + time : ''));
+  res.redirect('/admin/shifts?saved=1');
+});
+
+app.post('/admin/shifts/delete', requireShiftManager, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const id = Number(req.body.id);
+  const s = db.prepare('SELECT date, type FROM shifts WHERE id = ?').get(id);
+  db.prepare('DELETE FROM shifts WHERE id = ?').run(id);
+  if (s) audit(req.session.user.username, 'shift.delete', s.date, s.type);
+  res.redirect('/admin/shifts');
+});
+
+// Build the markdown table injected into the public Shift Schedule page.
+function shiftScheduleMarkdown() {
+  const rows = upcomingShiftsStmt.all();
+  if (!rows.length) {
+    return '_No shifts are currently scheduled. Check the Discord **#events** channel for the latest announcements._';
+  }
+  const esc = (s) => String(s || '').replace(/\|/g, '\\|');
+  const fmt = (d) => {
+    const dt = new Date(d + 'T00:00:00');
+    return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  let out = '| Date | Time | Type | Host | Notes |\n| :--- | :--- | :--- | :--- | :--- |\n';
+  for (const r of rows) {
+    out += `| ${fmt(r.date)} | ${esc(r.time) || 'TBA'} | ${esc(r.type)} | ${esc(r.host) || '—'} | ${esc(r.notes) || '—'} |\n`;
+  }
+  return out;
+}
 
 app.use('/admin', adminRouter);
 
@@ -825,7 +933,12 @@ app.get(/.*/, (req, res) => {
 
   recordView(req, page);
 
-  const { html, toc } = md.render(stripDocTitle(page.content, page.title));
+  // The public shift schedule injects live shifts in place of [[SHIFTS_TABLE]].
+  let pageContent = stripDocTitle(page.content, page.title);
+  if (page.slug === 'shifts/shift-schedule') {
+    pageContent = pageContent.replace(/\[\[SHIFTS_TABLE\]\]/g, shiftScheduleMarkdown());
+  }
+  const { html, toc } = md.render(pageContent);
   const flat = orderedPages(canView);
   const idx = flat.findIndex((p) => p.slug === page.slug);
   const prev = idx > 0 ? flat[idx - 1] : null;

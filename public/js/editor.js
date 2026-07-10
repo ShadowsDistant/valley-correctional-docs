@@ -400,7 +400,7 @@
     fetch('/admin/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) { setState(d.error || 'Save failed', 'error'); return; }
-        dirty = false; setState('✓ Saved', 'saved');
+        dirty = false; setState('Saved', 'saved');
         if (isNew || d.slug !== originalSlug) window.location.href = '/admin/edit?slug=' + encodeURIComponent(d.slug);
       }).catch(function () { setState('Network error', 'error'); });
   }

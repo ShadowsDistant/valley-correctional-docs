@@ -41,7 +41,7 @@ To protect our community, we have deployed **TASE**, a Discord moderation bot th
 Thank you for helping keep our community safe and compliant with Roblox's Terms of Service.
 
 <div class="signature-card">
-  <span class="signature-icon">✒️</span>
+  <span class="signature-icon">:i[edit]:</span>
   <span class="signature-name">shadowsdistant</span>
   <span class="signature-role">Lead Overseer @ Valley Correctional Facility</span>
 </div>

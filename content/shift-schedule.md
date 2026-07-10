@@ -8,9 +8,9 @@ The most current schedule always lives in the Discord **#events** channel. Staff
 
 ## Upcoming Shifts
 
-| Date | Time (EST) | Type | Notes |
-| :--- | :--- | :--- | :--- |
-| _TBA_ | 2:00 PM – 5:00 PM | Standard Shift | Booster early access 10–15 min prior |
+[[SHIFTS_TABLE]]
+
+_Shifts are scheduled by Management and Oversight staff and update automatically._
 
 ## Where to find announcements
 

@@ -1,4 +1,4 @@
-<span class="badge badge-internal">🛡️ Internal Release</span> <span class="badge">👥 Staff Team</span>
+<span class="badge badge-internal">:i[shield]: Internal Release</span> <span class="badge">:i[users]: Staff Team</span>
 
 # Chain of Command
 
@@ -106,10 +106,10 @@ This document is restricted to logged-in VCF staff. All personnel must respect a
 ## Dismissal & Termination Channels
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">👥 Peer Consensus</div><div class="md-card-body">A majority vote from the Management Division.</div></div>
-  <div class="md-card"><div class="md-card-title">🚫 Community Manager Action</div><div class="md-card-body">The Community Manager may dismiss any staff member for gross mismanagement or harmful conduct.</div></div>
-  <div class="md-card"><div class="md-card-title">🔎 SID Finding</div><div class="md-card-body">A formal "Termination" recommendation following a confirmed SID investigation.</div></div>
-  <div class="md-card"><div class="md-card-title">🛡️ Oversight Intervention</div><div class="md-card-body">Majority vote by the Oversight Committee and Lead Overseer approval.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[users]: Peer Consensus</div><div class="md-card-body">A majority vote from the Management Division.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[ban]: Community Manager Action</div><div class="md-card-body">The Community Manager may dismiss any staff member for gross mismanagement or harmful conduct.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[search]: SID Finding</div><div class="md-card-body">A formal "Termination" recommendation following a confirmed SID investigation.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Oversight Intervention</div><div class="md-card-body">Majority vote by the Oversight Committee and Lead Overseer approval.</div></div>
 </div>
 
 :::note

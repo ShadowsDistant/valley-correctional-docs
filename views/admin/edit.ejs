@@ -16,7 +16,7 @@
         <button type="button" data-mode="preview">Preview</button>
       </div>
       <% if (!isNew) { %><a class="btn btn-ghost btn-sm" href="/<%= page.slug %>" target="_blank">View live ↗</a><% } %>
-      <% if (!isNew) { %><button class="btn btn-ghost btn-sm danger" type="button" id="deleteBtn">Delete</button><% } %>
+      <% if (!isNew && !(typeof undeletable !== 'undefined' && undeletable)) { %><button class="btn btn-ghost btn-sm danger" type="button" id="deleteBtn">Delete</button><% } %>
       <button class="btn btn-solid btn-sm" type="button" id="saveBtn">Save changes</button>
     </div>
   </div>

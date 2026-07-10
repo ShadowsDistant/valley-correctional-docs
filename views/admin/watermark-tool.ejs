@@ -1,0 +1,102 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div>
+        <h1 class="admin-h1">Watermark Reveal</h1>
+        <p class="admin-sub">Suspect a leak? Paste or upload the screenshot and boost the image until the leaker's username watermark appears. Everything runs in your browser — nothing is uploaded.</p>
+      </div>
+    </div>
+
+    <div class="wm-tool">
+      <div id="wmDrop" class="wm-drop">
+        <input type="file" id="wmFile" accept="image/*" hidden />
+        <div class="wm-drop-inner">
+          <span class="wm-drop-ico"><%- icon('files') %></span>
+          <strong>Drop an image here, paste from clipboard (Ctrl+V), or <button type="button" id="wmBrowse" class="linkbtn">browse</button></strong>
+          <span class="muted small">The watermark is a faint diagonal grid of the viewer's username. Push contrast up to surface it.</span>
+        </div>
+      </div>
+
+      <div id="wmStage" class="wm-stage" hidden>
+        <div class="wm-controls">
+          <label>Brightness <span class="wm-val" id="vBright">100%</span>
+            <input type="range" id="wmBright" min="10" max="400" value="100" />
+          </label>
+          <label>Contrast <span class="wm-val" id="vContrast">100%</span>
+            <input type="range" id="wmContrast" min="100" max="2000" value="100" />
+          </label>
+          <label>Saturation <span class="wm-val" id="vSat">100%</span>
+            <input type="range" id="wmSat" min="0" max="600" value="100" />
+          </label>
+          <label>Invert <span class="wm-val" id="vInvert">0%</span>
+            <input type="range" id="wmInvert" min="0" max="100" value="0" />
+          </label>
+          <div class="wm-tool-actions">
+            <button type="button" class="btn btn-solid btn-sm" id="wmAuto"><%- icon('search') %> Auto-reveal</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="wmReset">Reset</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="wmClear">Load another</button>
+          </div>
+        </div>
+        <div class="wm-canvas-wrap">
+          <canvas id="wmCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+(function () {
+  var drop = document.getElementById('wmDrop'), stage = document.getElementById('wmStage');
+  var fileInput = document.getElementById('wmFile'), canvas = document.getElementById('wmCanvas');
+  var ctx = canvas.getContext('2d'), img = new Image();
+  var ctrl = {
+    bright: document.getElementById('wmBright'), contrast: document.getElementById('wmContrast'),
+    sat: document.getElementById('wmSat'), invert: document.getElementById('wmInvert')
+  };
+  var val = {
+    bright: document.getElementById('vBright'), contrast: document.getElementById('vContrast'),
+    sat: document.getElementById('vSat'), invert: document.getElementById('vInvert')
+  };
+
+  function draw() {
+    if (!img.width) return;
+    val.bright.textContent = ctrl.bright.value + '%';
+    val.contrast.textContent = ctrl.contrast.value + '%';
+    val.sat.textContent = ctrl.sat.value + '%';
+    val.invert.textContent = ctrl.invert.value + '%';
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    ctx.filter = 'brightness(' + (ctrl.bright.value / 100) + ') contrast(' + (ctrl.contrast.value / 100) +
+      ') saturate(' + (ctrl.sat.value / 100) + ') invert(' + (ctrl.invert.value / 100) + ')';
+    ctx.drawImage(img, 0, 0);
+  }
+  Object.keys(ctrl).forEach(function (k) { ctrl[k].addEventListener('input', draw); });
+
+  function load(src) { img.onload = function () { stage.hidden = false; drop.classList.add('has-img'); draw(); }; img.src = src; }
+  function handleFile(f) { if (!f || !/^image\//.test(f.type)) return; var r = new FileReader(); r.onload = function () { load(r.result); }; r.readAsDataURL(f); }
+
+  document.getElementById('wmBrowse').addEventListener('click', function () { fileInput.click(); });
+  drop.addEventListener('click', function (e) { if (e.target === drop || e.target.closest('.wm-drop-inner') && e.target.tagName !== 'BUTTON') fileInput.click(); });
+  fileInput.addEventListener('change', function () { handleFile(fileInput.files[0]); });
+  ['dragover', 'dragenter'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('drag'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('drag'); }); });
+  drop.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+  window.addEventListener('paste', function (e) {
+    var items = (e.clipboardData || {}).items || [];
+    for (var i = 0; i < items.length; i++) { if (/^image\//.test(items[i].type)) { handleFile(items[i].getAsFile()); break; } }
+  });
+
+  document.getElementById('wmAuto').addEventListener('click', function () {
+    ctrl.bright.value = 60; ctrl.contrast.value = 1400; ctrl.sat.value = 400; ctrl.invert.value = 0; draw();
+  });
+  document.getElementById('wmReset').addEventListener('click', function () {
+    ctrl.bright.value = 100; ctrl.contrast.value = 100; ctrl.sat.value = 100; ctrl.invert.value = 0; draw();
+  });
+  document.getElementById('wmClear').addEventListener('click', function () {
+    stage.hidden = true; drop.classList.remove('has-img'); img = new Image(); fileInput.value = '';
+  });
+})();
+</script>
+<%- include('../partials/foot') %>

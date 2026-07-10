@@ -1,0 +1,69 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <% if (canEdit) { %><%- include('../partials/admin-side') %><% } %>
+  <main class="content admin-content <%= canEdit ? '' : 'admin-content-wide' %>">
+    <div class="admin-titlerow">
+      <div>
+        <h1 class="admin-h1">Shift Scheduler</h1>
+        <p class="admin-sub">Add shifts here and they appear automatically on the public <a href="/shifts/shift-schedule" target="_blank">Shift Schedule</a> page.</p>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="/home"><%- icon('external') %> View site</a>
+    </div>
+
+    <% if (saved) { %>
+      <div class="account-ok"><%- icon('check') %> <span>Shift added — it's now live on the public schedule.</span></div>
+    <% } %>
+
+    <div class="admin-cols admin-cols-policy">
+      <section class="panel">
+        <div class="panel-head"><h2>Add a shift</h2></div>
+        <form method="post" action="/admin/shifts/add" class="stack-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="field-grid">
+            <label class="field">Date<input type="date" name="date" required /></label>
+            <label class="field">Time <input type="text" name="time" placeholder="2:00 PM – 5:00 PM EST" /></label>
+            <label class="field">Type
+              <select name="type">
+                <% shiftTypes.forEach(function (t) { %><option value="<%= t %>"><%= t %></option><% }); %>
+              </select>
+            </label>
+            <label class="field">Host <input type="text" name="host" placeholder="Hosting staff member" /></label>
+          </div>
+          <label class="field">Notes <input type="text" name="notes" placeholder="e.g. Booster early access 10–15 min prior" /></label>
+          <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> Add shift</button></div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Scheduled shifts</h2><span class="muted small"><%= shifts.length %> total</span></div>
+        <% if (!shifts.length) { %>
+          <p class="muted">No shifts scheduled yet. Add one on the left.</p>
+        <% } else { %>
+          <div class="table-scroll">
+            <table class="table">
+              <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Host</th><th></th></tr></thead>
+              <tbody>
+                <% shifts.forEach(function (s) { %>
+                  <tr>
+                    <td class="nowrap mono small"><%= s.date %></td>
+                    <td class="small"><%= s.time || 'TBA' %></td>
+                    <td class="small"><%= s.type %></td>
+                    <td class="small"><%= s.host || '—' %></td>
+                    <td>
+                      <form method="post" action="/admin/shifts/delete" class="inline" onsubmit="return confirm('Remove this shift?');">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= s.id %>" />
+                        <button class="btn btn-ghost btn-sm danger" type="submit">Remove</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </section>
+    </div>
+  </main>
+</div>
+<%- include('../partials/foot') %>

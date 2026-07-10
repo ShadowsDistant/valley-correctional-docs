@@ -1,4 +1,4 @@
-<span class="badge badge-internal">🛡️ Internal Release</span> <span class="badge">🔎 Specialized Investigations Division</span>
+<span class="badge badge-internal">:i[shield]: Internal Release</span> <span class="badge">:i[search]: Specialized Investigations Division</span>
 
 # Specialized Investigations Division Handbook
 
@@ -11,8 +11,8 @@ This handbook is restricted to logged-in VCF staff. Some fine detail (exact per-
 ## Overview
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">🗂️ Division Overview</div><div class="md-card-body"><strong>Division Lead:</strong> Krtz1012 (Internal Operations Manager)<br><strong>Full Name:</strong> Specialized Investigations Division<br><strong>Abbreviation:</strong> SID</div></div>
-  <div class="md-card"><div class="md-card-title">🛡️ Division Mission</div><div class="md-card-body">Uphold staff integrity through impartial, thorough, and discreet investigations of misconduct, holding all personnel to a strict code of conduct.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[cabinet]: Division Overview</div><div class="md-card-body"><strong>Division Lead:</strong> Krtz1012 (Internal Operations Manager)<br><strong>Full Name:</strong> Specialized Investigations Division<br><strong>Abbreviation:</strong> SID</div></div>
+  <div class="md-card"><div class="md-card-title">:i[shield]: Division Mission</div><div class="md-card-body">Uphold staff integrity through impartial, thorough, and discreet investigations of misconduct, holding all personnel to a strict code of conduct.</div></div>
 </div>
 
 ## Code of Conduct Violations
@@ -131,8 +131,8 @@ Any SID investigation targeting the **Community Manager** requires mandatory **L
 ## Governance
 
 <div class="md-cards cols-2">
-  <div class="md-card"><div class="md-card-title">⚖️ Appeals Process</div><div class="md-card-body">Staff have 7 calendar days from receipt of an infraction to appeal via Melonly. Appeals are reviewed impartially.</div></div>
-  <div class="md-card"><div class="md-card-title">🚫 Mandatory-Termination Appeals</div><div class="md-card-body">Mandatory-termination offenses are not eligible for the standard appeals process.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[scale]: Appeals Process</div><div class="md-card-body">Staff have 7 calendar days from receipt of an infraction to appeal via Melonly. Appeals are reviewed impartially.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[ban]: Mandatory-Termination Appeals</div><div class="md-card-body">Mandatory-termination offenses are not eligible for the standard appeals process.</div></div>
 </div>
 
 ### Lead Investigator Appointment
@@ -145,9 +145,9 @@ Any SID investigation targeting the **Community Manager** requires mandatory **L
 ## Definitions
 
 <div class="md-cards cols-3">
-  <div class="md-card"><div class="md-card-title">⏸️ Suspension</div><div class="md-card-body">A temporary removal of duties and permissions for a fixed period.</div></div>
-  <div class="md-card"><div class="md-card-title">⛔ Termination</div><div class="md-card-body">Permanent removal from the staff team.</div></div>
-  <div class="md-card"><div class="md-card-title">🚫 Blacklist</div><div class="md-card-body">A bar from future employment, reserved for severe cases per the Management Handbook.</div></div>
+  <div class="md-card"><div class="md-card-title">⏸ Suspension</div><div class="md-card-body">A temporary removal of duties and permissions for a fixed period.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[ban]: Termination</div><div class="md-card-body">Permanent removal from the staff team.</div></div>
+  <div class="md-card"><div class="md-card-title">:i[ban]: Blacklist</div><div class="md-card-body">A bar from future employment, reserved for severe cases per the Management Handbook.</div></div>
 </div>
 
 ## Confidentiality Agreement
