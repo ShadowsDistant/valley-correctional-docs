@@ -12,21 +12,16 @@
   document.body.classList.add('noprint');
 
   // --- watermarking ---
-  // Two diagonal tiled layers carrying the viewer's username (traceability):
-  //  (a) wm-a  — faintly visible, dense diagonal tiling.
-  //  (b) wm-b  — a second, near-invisible layer at the opposite angle. It's
-  //      imperceptible on screen but re-emerges if a leaked screenshot has its
-  //      brightness / contrast / saturation cranked up, revealing the account.
-  function makeLayer(cls, count) {
-    var wm = document.createElement('div');
-    wm.className = 'wm-overlay ' + cls;
-    var cells = '';
-    for (var i = 0; i < count; i++) cells += '<span>' + username + '</span>';
-    wm.innerHTML = cells;
-    document.body.appendChild(wm);
-  }
-  makeLayer('wm-a', 360);
-  makeLayer('wm-b', 420);
+  // A single diagonal tiled layer carrying the viewer's username (traceability).
+  // It sits at a very low opacity so it's imperceptible to the naked eye and the
+  // tiles never overlap — but it re-emerges if a leaked screenshot has its
+  // brightness / contrast / saturation cranked up, revealing the account.
+  var wm = document.createElement('div');
+  wm.className = 'wm-overlay wm-a';
+  var cells = '';
+  for (var i = 0; i < 220; i++) cells += '<span>' + username + '</span>';
+  wm.innerHTML = cells;
+  document.body.appendChild(wm);
 
   // --- blur shield ---
   var shield = document.createElement('div');
