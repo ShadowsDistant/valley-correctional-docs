@@ -153,6 +153,9 @@ kbd {
 .btn-sm { padding: 7px 12px; font-size: 13px; }
 .btn.danger { color: #ef4444; border-color: transparent; }
 .btn.danger:hover { border-color: #ef4444; background: rgba(239,68,68,.08); }
+/* a filled danger button (destructive confirm) is solid red, not red-on-amber */
+.btn-solid.danger { background: #ef4444; border-color: #ef4444; color: #fff; }
+.btn-solid.danger:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; border-radius: var(--r-sm);
@@ -458,11 +461,11 @@ kbd {
     var(--bg);
 }
 .auth-card {
-  position: relative; width: 100%; max-width: 396px; padding: 40px 36px 32px; text-align: center;
+  position: relative; width: 100%; max-width: 396px; padding: 40px 36px 32px; text-align: center; overflow: hidden;
   background: color-mix(in srgb, var(--elevated) 92%, transparent); border: 1px solid var(--border);
   border-radius: var(--r-xl); box-shadow: var(--shadow-lg); backdrop-filter: blur(6px);
 }
-.auth-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; border-radius: var(--r-xl) var(--r-xl) 0 0; background: var(--accent-grad); }
+.auth-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--accent-grad); }
 .auth-logo { margin: -4px auto 14px; display: flex; align-items: center; justify-content: center; }
 .auth-logo img { width: 92px; height: 92px; filter: drop-shadow(0 6px 16px rgba(0,0,0,.35)); }
 .auth-eyebrow { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; color: var(--accent-strong); margin-bottom: 6px; }
@@ -954,6 +957,12 @@ kbd {
 .staff-id { flex: 1 1 180px; min-width: 0; }
 .staff-name { font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .staff-email, .staff-since { color: var(--muted); font-size: 13px; }
+/* relative timestamps — dotted underline hints there's an exact time on hover */
+time[data-time] { border-bottom: 1px dotted var(--border-2); cursor: help; white-space: nowrap; }
+.back-link { display: inline-block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.back-link:hover { color: var(--text); }
+.admin-h1 .staff-avatar.sm { width: 32px; height: 32px; font-size: 14px; display: inline-flex; vertical-align: -6px; margin-right: 6px; }
+.stat-num .stat-time { font-size: 17px; font-weight: 700; border-bottom-color: transparent; }
 .staff-facts { display: flex; gap: 28px; flex-wrap: wrap; }
 .staff-fact { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .fact-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 700; }

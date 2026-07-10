@@ -210,6 +210,31 @@
     });
   }
 
+  // ---------- relative timestamps ----------
+  // <time data-time="2026-07-10 12:00:00"> (UTC) -> "1 hour ago", exact on hover.
+  function ago(d) {
+    var s = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (s < 0) s = 0;
+    if (s < 45) return 'just now';
+    var units = [['minute', 60], ['hour', 60], ['day', 24], ['month', 30], ['year', 12]];
+    var val = s / 60, i = 0;
+    for (; i < units.length - 1 && val >= units[i + 1][1]; i++) val /= units[i + 1][1];
+    var n = Math.floor(val), label = units[i][0];
+    return n + ' ' + label + (n === 1 ? '' : 's') + ' ago';
+  }
+  function fillTime(el) {
+    var raw = el.getAttribute('data-time');
+    if (!raw) return;
+    var iso = raw.trim().replace(' ', 'T');
+    if (!/[zZ]|[+][0-9]/.test(iso)) iso += 'Z'; // DB times are UTC
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return;
+    el.title = d.toLocaleString();
+    el.textContent = ago(d);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-time]'), fillTime);
+  window.fillTimes = function () { Array.prototype.forEach.call(document.querySelectorAll('[data-time]'), fillTime); };
+
   // ---------- TOC scrollspy ----------
   var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
   if (tocLinks.length && 'IntersectionObserver' in window) {

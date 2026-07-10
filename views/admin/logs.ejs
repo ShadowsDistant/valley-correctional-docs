@@ -16,7 +16,7 @@
         'user.suspend': ['Suspended account', 'act-delete'], 'user.reinstate': ['Reinstated account', 'act-create'],
         'user.delete': ['Deleted account', 'act-delete'], 'user.password': ['Changed own password', 'act-edit'],
         'user.password_reset': ['Reset password', 'act-edit'], 'user.agree': ['Accepted policy', 'act-neutral'],
-        'policy.update': ['Updated staff policy', 'act-edit'],
+        'policy.update': ['Updated staff policy', 'act-edit'], 'policy.decline': ['Declined policy (deleted)', 'act-delete'],
         'shift.create': ['Added shift', 'act-create'], 'shift.delete': ['Removed shift', 'act-delete'],
       };
       function actionLabel(a) { return (ACTION[a] || [a, 'act-neutral']); }

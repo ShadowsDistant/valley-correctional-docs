@@ -17,8 +17,9 @@
       <label class="policy-check"><input type="checkbox" id="policyChk" required /> <span>I have read and agree to the Staff Policy Agreement.</span></label>
       <button class="btn btn-solid" type="submit" id="policyAgree" disabled><%- icon('check') %> Agree &amp; continue</button>
     </form>
-    <form method="post" action="/logout" class="policy-decline">
-      <button class="btn btn-ghost btn-sm" type="submit">Decline &amp; sign out</button>
+    <form method="post" action="/account/decline" class="policy-decline"
+      data-confirm="Declining the Staff Policy permanently deletes your VCF staff account. This cannot be undone — you'll lose all access." data-confirm-title="Decline &amp; delete account" data-confirm-ok="Delete my account">
+      <button class="btn btn-ghost btn-sm" type="submit">Decline &amp; delete account</button>
     </form>
   </div>
 </div>

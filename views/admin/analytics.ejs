@@ -4,7 +4,7 @@
   <%- include('../partials/admin-side') %>
   <main class="content admin-content">
     <div class="admin-titlerow">
-      <div><h1 class="admin-h1">Analytics</h1><p class="admin-sub">Traffic to your documentation. Privacy-preserving — IP + user-agent are hashed, never stored raw.</p></div>
+      <div><h1 class="admin-h1">Analytics</h1><p class="admin-sub">Traffic to your documentation, counted <strong>per user</strong> — repeat visits to the same page in a day count once. IP + user-agent are hashed, never stored raw.</p></div>
       <div class="range-tabs">
         <% [7,30,90].forEach(function(d){ %><a class="range-tab <%= totals.days===d ? 'active':'' %>" href="/admin/analytics?days=<%= d %>"><%= d %>d</a><% }); %>
       </div>
@@ -49,11 +49,11 @@
       <section class="panel">
         <div class="panel-head"><h2>Top pages · <%= totals.days %>d</h2></div>
         <% if(!topPages.length){ %><p class="muted">No page views recorded yet.</p><% } else { var tmax=topPages[0].views; %>
-          <table class="table"><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visitors</th></tr></thead><tbody>
+          <table class="table"><thead><tr><th>Page</th><th class="num">Unique viewers</th></tr></thead><tbody>
             <% topPages.forEach(function(p){ %>
               <tr><td><a href="/<%= p.slug %>" target="_blank"><% if(p.internal){ %><span class="ic ic-lock"></span> <% } %><%= p.title %></a>
                 <div class="bar"><span style="width: <%= Math.round(p.views/tmax*100) %>%"></span></div></td>
-                <td class="num"><%= p.views %></td><td class="num muted"><%= p.visitors %></td></tr>
+                <td class="num"><%= p.views %></td></tr>
             <% }); %>
           </tbody></table>
         <% } %>

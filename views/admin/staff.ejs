@@ -51,11 +51,12 @@
             <div class="staff-facts">
               <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>
               <div class="staff-fact"><span class="fact-label">Divisions</span><span class="fact-val"><%= u.role==='admin' ? 'All' : (have.length ? have.join(', ') : '—') %></span></div>
-              <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val mono"><%= (u.last_login || 'never').slice(0,16).replace('T',' ') %></span></div>
+              <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val"><% if (u.last_login) { %><time data-time="<%= u.last_login %>"><%= u.last_login.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
             </div>
           </div>
 
           <div class="staff-actions">
+            <a class="btn btn-ghost btn-sm" href="/admin/staff/activity?id=<%= u.id %>"><%- icon('chart') %> Activity</a>
             <button class="btn btn-ghost btn-sm" type="button" data-panel="access-<%= u.id %>"><%- icon('edit') %> Edit access</button>
             <button class="btn btn-ghost btn-sm" type="button" data-panel="pw-<%= u.id %>">Reset password</button>
             <% if (u.id !== user.id) { %>

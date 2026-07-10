@@ -1,0 +1,54 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<%
+  function fmtDur(s) {
+    if (s == null) return '<span class="muted">—</span>';
+    if (s < 60) return s + 's';
+    var m = Math.floor(s / 60), r = s % 60;
+    if (m < 60) return m + 'm' + (r ? ' ' + r + 's' : '');
+    var h = Math.floor(m / 60); return h + 'h ' + (m % 60) + 'm';
+  }
+%>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div>
+        <a class="back-link" href="/admin/staff">← Back to staff</a>
+        <h1 class="admin-h1"><span class="staff-avatar sm"><%= (target.username||'?').slice(0,1).toUpperCase() %></span> <%= target.username %></h1>
+        <p class="admin-sub">Document activity — pages visited, when, and estimated time on page. <span class="badge <%= target.role==='admin'?'badge-internal':'' %>"><%= target.role %></span></p>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><span class="stat-num"><%= stats.totalViews %></span><span class="stat-label">Total page views</span></div>
+      <div class="stat-card"><span class="stat-num"><%= stats.uniquePages %></span><span class="stat-label">Unique pages</span></div>
+      <div class="stat-card"><span class="stat-num"><%- fmtDur(stats.totalTime) %></span><span class="stat-label">Time reading (est.)</span></div>
+      <div class="stat-card"><span class="stat-num"><% if (target.last_login) { %><time data-time="<%= target.last_login %>" class="stat-time"><%= target.last_login.slice(0,16).replace('T',' ') %></time><% } else { %>never<% } %></span><span class="stat-label">Last login</span></div>
+    </div>
+
+    <section class="panel panel-flush">
+      <div class="table-scroll">
+        <table class="table">
+          <thead><tr><th>Page</th><th>When</th><th class="num">Time on page</th></tr></thead>
+          <tbody>
+            <% if (!items.length) { %>
+              <tr><td colspan="3" class="muted" style="padding:18px">No document activity recorded for this account yet.</td></tr>
+            <% } %>
+            <% items.forEach(function (it) { %>
+              <tr>
+                <td>
+                  <% if (it.slug) { %><a href="/<%= it.slug %>" target="_blank"><% if (it.internal) { %><span class="ic ic-lock"></span> <% } %><%= it.title %></a><% } else { %><span class="mono small"><%= it.path %></span><% } %>
+                </td>
+                <td class="muted small"><time data-time="<%= it.ts %>"><%= it.ts %></time></td>
+                <td class="num mono small"><%- fmtDur(it.duration) %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <p class="muted small">Time on page is estimated from the gap between consecutive views (capped at 15 minutes); the most recent view has no measured duration.</p>
+  </main>
+</div>
+<%- include('../partials/foot') %>

@@ -233,9 +233,10 @@ function recordView(req, page) {
     const ip = req.ip || '';
     const visitor = crypto.createHash('sha256').update(ip + '|' + ua).digest('hex').slice(0, 16);
     const day = new Date().toISOString().slice(0, 10);
+    const u = req.session && req.session.user;
     db.prepare(
-      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       req.path,
       page ? page.slug : null,
@@ -243,7 +244,8 @@ function recordView(req, page) {
       visitor,
       (req.headers.referer || '').slice(0, 300),
       ua,
-      req.session && req.session.user ? 1 : 0
+      u ? 1 : 0,
+      u ? u.username : null
     );
   } catch (e) {
     // analytics must never break a page render
@@ -376,6 +378,22 @@ app.post('/account/agree', auth.requireAuth, (req, res) => {
   res.redirect(ref.includes('://' + req.get('host')) ? ref : '/home');
 });
 
+// Declining the staff policy is logged and permanently deletes the account
+// (a last active admin is signed out instead, to avoid locking everyone out).
+app.post('/account/decline', auth.requireAuth, (req, res) => {
+  const u = req.session.user;
+  if (u.role === 'admin') {
+    const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND suspended = 0").get().n;
+    if (admins <= 1) {
+      audit(u.username, 'policy.decline', u.username, 'declined policy — last admin, signed out (not deleted)');
+      return req.session.destroy(() => res.redirect('/login'));
+    }
+  }
+  audit(u.username, 'policy.decline', u.username, 'declined staff policy — account deleted');
+  db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+  req.session.destroy(() => res.redirect('/?declined=1'));
+});
+
 // --- admin: dashboard + editor + analytics ---------------------------------
 
 const adminRouter = express.Router();
@@ -384,11 +402,13 @@ adminRouter.use(auth.csrfToken);
 
 adminRouter.get('/', (req, res) => {
   const pageCount = db.prepare('SELECT COUNT(*) AS n FROM pages').get().n;
+  // Views are counted per user (unique visitor × page × day), not per raw hit.
+  const UNIQV = "COUNT(DISTINCT visitor || '¦' || COALESCE(slug, path))";
   const views7 = db.prepare(
-    "SELECT COUNT(*) AS n FROM page_views WHERE day >= date('now','-6 days')"
+    `SELECT ${UNIQV} AS n FROM page_views WHERE day >= date('now','-6 days')`
   ).get().n;
   const views30 = db.prepare(
-    "SELECT COUNT(*) AS n FROM page_views WHERE day >= date('now','-29 days')"
+    `SELECT ${UNIQV} AS n FROM page_views WHERE day >= date('now','-29 days')`
   ).get().n;
   const visitors30 = db.prepare(
     "SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE day >= date('now','-29 days')"
@@ -612,9 +632,12 @@ function uaOS(ua) {
 adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   const days = [7, 30, 90].includes(+req.query.days) ? +req.query.days : 30;
   const since = `-${days - 1} days`;
+  // "Views" are counted per user, not per visit: repeated loads of the same page
+  // by the same visitor in a day count once (distinct visitor × page × day).
+  const UNIQV = "COUNT(DISTINCT visitor || '¦' || COALESCE(slug, path))";
 
   const rows = db.prepare(
-    `SELECT day, COUNT(*) AS views, COUNT(DISTINCT visitor) AS visitors
+    `SELECT day, ${UNIQV} AS views, COUNT(DISTINCT visitor) AS visitors
      FROM page_views WHERE day >= date('now', ?) GROUP BY day ORDER BY day`
   ).all(since);
   const byDay = new Map(rows.map((r) => [r.day, r]));
@@ -629,10 +652,10 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   const one = (sql, ...a) => db.prepare(sql).get(...a).n;
   const totals = {
     days,
-    viewsToday: one("SELECT COUNT(*) AS n FROM page_views WHERE day = date('now')"),
-    viewsRange: one('SELECT COUNT(*) AS n FROM page_views WHERE day >= date(\'now\', ?)', since),
+    viewsToday: one(`SELECT ${UNIQV} AS n FROM page_views WHERE day = date('now')`),
+    viewsRange: one(`SELECT ${UNIQV} AS n FROM page_views WHERE day >= date('now', ?)`, since),
     visitorsRange: one('SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE day >= date(\'now\', ?)', since),
-    views: one('SELECT COUNT(*) AS n FROM page_views'),
+    views: one(`SELECT ${UNIQV} AS n FROM page_views`),
     visitors: one('SELECT COUNT(DISTINCT visitor) AS n FROM page_views'),
   };
   totals.avgPerDay = Math.round(totals.viewsRange / days);
@@ -641,7 +664,7 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   totals.busiestViews = busiest ? busiest.views : 0;
 
   const topPages = db.prepare(
-    `SELECT slug, COUNT(*) AS views, COUNT(DISTINCT visitor) AS visitors FROM page_views
+    `SELECT slug, COUNT(DISTINCT visitor) AS views, COUNT(DISTINCT visitor) AS visitors FROM page_views
      WHERE slug IS NOT NULL AND day >= date('now', ?) GROUP BY slug ORDER BY views DESC LIMIT 12`
   ).all(since).map((r) => {
     const p = getPageAny.get(r.slug);
@@ -903,6 +926,39 @@ function shiftScheduleMarkdown() {
   }
   return out;
 }
+
+// A staff member's document activity: pages visited, when, and how long. Time
+// on a page is estimated as the gap to their next view (capped at 15 min).
+adminRouter.get('/staff/activity', auth.requireAdmin, (req, res) => {
+  const target = db.prepare('SELECT id, username, role, divisions, last_login, created_at, suspended FROM users WHERE id = ?').get(Number(req.query.id));
+  if (!target) {
+    return res.status(404).render('error', { title: 'Not found', heading: 'Staff member not found', message: 'That account does not exist.' });
+  }
+  const rowsAsc = db.prepare(
+    'SELECT slug, path, ts FROM page_views WHERE username = ? ORDER BY ts ASC LIMIT 3000'
+  ).all(target.username);
+  const CAP = 15 * 60;
+  const parse = (t) => Date.parse(String(t).replace(' ', 'T') + 'Z');
+  const items = rowsAsc.map((r, i) => {
+    let dur = null;
+    if (i < rowsAsc.length - 1) {
+      const a = parse(r.ts), b = parse(rowsAsc[i + 1].ts);
+      if (!isNaN(a) && !isNaN(b)) dur = Math.max(0, Math.min(CAP, Math.round((b - a) / 1000)));
+    }
+    const p = r.slug ? getPageAny.get(r.slug) : null;
+    return { slug: r.slug, path: r.path, title: p ? p.title : (r.slug || r.path), internal: p ? !!p.internal : false, ts: r.ts, duration: dur };
+  });
+  const stats = {
+    totalViews: rowsAsc.length,
+    uniquePages: new Set(rowsAsc.map((r) => r.slug || r.path)).size,
+    totalTime: items.reduce((a, b) => a + (b.duration || 0), 0),
+  };
+  items.reverse(); // newest first
+  res.render('admin/activity', {
+    title: 'Admin · ' + target.username + ' activity',
+    section: 'staff', target, stats, items: items.slice(0, 300),
+  });
+});
 
 app.use('/admin', adminRouter);
 
