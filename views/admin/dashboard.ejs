@@ -37,10 +37,11 @@
       <section class="panel">
         <div class="panel-head"><h2>Quick actions</h2></div>
         <div class="action-list">
-          <a class="action" href="/admin/new"><span>➕</span> Create a new page</a>
-          <a class="action" href="/admin/analytics"><span>📈</span> View traffic analytics</a>
-          <% if (user.role === 'admin') { %><a class="action" href="/admin/staff"><span>👥</span> Manage staff accounts</a><% } %>
-          <a class="action" href="/home"><span>🌐</span> Open the live site</a>
+          <a class="action" href="/admin/new"><span class="action-ico"><%- icon('plus') %></span> Create a new page</a>
+          <a class="action" href="/admin/analytics"><span class="action-ico"><%- icon('chart') %></span> View traffic analytics</a>
+          <% if (user.role === 'admin') { %><a class="action" href="/admin/staff"><span class="action-ico"><%- icon('users') %></span> Manage staff accounts</a><% } %>
+          <% if (user.role === 'admin') { %><a class="action" href="/admin/policy"><span class="action-ico"><%- icon('shield') %></span> Edit the staff policy</a><% } %>
+          <a class="action" href="/home"><span class="action-ico"><%- icon('external') %></span> Open the live site</a>
         </div>
       </section>
     </div>

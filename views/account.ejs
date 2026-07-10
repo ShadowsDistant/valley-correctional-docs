@@ -6,7 +6,6 @@
     <div class="account-meta">
       <div class="staff-fact"><span class="fact-label">Username</span><span class="fact-val"><strong><%= user.username %></strong></span></div>
       <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
-      <% if (user.email) { %><div class="staff-fact"><span class="fact-label">Email</span><span class="fact-val"><%= user.email %></span></div><% } %>
     </div>
 
     <% if (typeof done !== 'undefined' && done) { %>

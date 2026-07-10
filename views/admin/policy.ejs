@@ -1,0 +1,43 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div>
+        <h1 class="admin-h1">Staff Policy Agreement</h1>
+        <p class="admin-sub">The terms every staff member must accept. Currently <strong>version <%= version %></strong>.</p>
+      </div>
+    </div>
+
+    <% if (saved) { %>
+      <div class="account-ok"><%- icon('check') %> <span>Policy saved. It's now version <%= version %> — all staff will be asked to re-accept it.</span></div>
+    <% } %>
+
+    <div class="admin-cols admin-cols-policy">
+      <section class="panel">
+        <div class="panel-head"><h2>Edit clauses</h2></div>
+        <form method="post" action="/admin/policy" class="stack-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <label class="field">One clause per line
+            <textarea name="clauses" class="policy-editor" rows="14" spellcheck="true"><% clauses.forEach(function (c, i) { %><%= c %><%= i < clauses.length - 1 ? '\n' : '' %><% }); %></textarea>
+          </label>
+          <p class="muted small">Wrap text in <code>**double asterisks**</code> to make it bold. Blank lines are ignored.</p>
+          <div class="policy-save-note"><%- icon('warning') %> <span>Saving increases the policy version. Every staff member — including those who already agreed — will see the agreement again on their next page load and must re-accept.</span></div>
+          <div><button class="btn btn-solid" type="submit"><%- icon('check') %> Save &amp; re-prompt everyone</button></div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Preview</h2></div>
+        <div class="policy-body policy-preview">
+          <ul>
+            <% clauses.forEach(function (c) { %><li><%- policyLine(c) %></li><% }); %>
+          </ul>
+        </div>
+        <p class="muted small">This is exactly how the agreement will read to staff.</p>
+      </section>
+    </div>
+  </main>
+</div>
+<%- include('../partials/foot') %>

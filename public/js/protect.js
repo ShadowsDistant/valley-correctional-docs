@@ -12,15 +12,21 @@
   document.body.classList.add('noprint');
 
   // --- watermarking ---
-  // A single subtle tiled diagonal layer for full, unobtrusive coverage that
-  // still identifies the account on a screenshot.
-  var stamp = username + '  ·  VCF CONFIDENTIAL';
-  var wm = document.createElement('div');
-  wm.className = 'wm-overlay wm-a';
-  var cells = '';
-  for (var i = 0; i < 140; i++) cells += '<span>' + stamp + '</span>';
-  wm.innerHTML = cells;
-  document.body.appendChild(wm);
+  // Two diagonal tiled layers carrying the viewer's username (traceability):
+  //  (a) wm-a  — faintly visible, dense diagonal tiling.
+  //  (b) wm-b  — a second, near-invisible layer at the opposite angle. It's
+  //      imperceptible on screen but re-emerges if a leaked screenshot has its
+  //      brightness / contrast / saturation cranked up, revealing the account.
+  function makeLayer(cls, count) {
+    var wm = document.createElement('div');
+    wm.className = 'wm-overlay ' + cls;
+    var cells = '';
+    for (var i = 0; i < count; i++) cells += '<span>' + username + '</span>';
+    wm.innerHTML = cells;
+    document.body.appendChild(wm);
+  }
+  makeLayer('wm-a', 360);
+  makeLayer('wm-b', 420);
 
   // --- blur shield ---
   var shield = document.createElement('div');

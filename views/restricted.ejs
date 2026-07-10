@@ -8,15 +8,26 @@
       <div class="restricted-box">
         <div class="restricted-ico"><%- icon('lock') %></div>
         <% if (loggedIn) { %>
-          <h1>Restricted to another division</h1>
-          <p><strong><%= page.title %></strong> is limited to staff assigned to its division. Your account doesn't have access to this handbook.</p>
+          <div class="restricted-tag">Restricted document</div>
+          <h1>You don't have access to this handbook</h1>
+          <p><strong><%= page.title %></strong> is limited to staff assigned to its division, and your account isn't on that list.</p>
           <p class="muted small">If you believe you should have access, ask an administrator to add the relevant division to your account.</p>
-          <a class="btn btn-primary" href="/home">Back to documentation</a>
+          <div class="restricted-actions"><a class="btn btn-solid" href="/home">Back to documentation</a></div>
         <% } else { %>
-          <h1>Staff only</h1>
-          <p><strong><%= page.title %></strong> is an internal document restricted to logged-in Valley Correctional Facility staff.</p>
-          <a class="btn btn-solid" href="/login?next=<%= encodeURIComponent(nextUrl) %>">Log in to continue</a>
+          <div class="restricted-tag">Confidential · staff only</div>
+          <h1>This is an internal VCF document</h1>
+          <p><strong><%= page.title %></strong> is a confidential internal document restricted to authorized, signed-in Valley Correctional Facility staff. If your session expired or you've been signed out for a while, sign in again to continue.</p>
+          <div class="restricted-actions"><a class="btn btn-solid" href="/login?next=<%= encodeURIComponent(nextUrl) %>"><%- icon('lock') %> Staff sign in</a><a class="btn btn-ghost" href="/home">Public documentation</a></div>
         <% } %>
+
+        <div class="restricted-report">
+          <div class="restricted-report-ico"><%- icon('shield') %></div>
+          <div>
+            <strong>Were you sent this by someone outside the staff team?</strong>
+            <p>Internal VCF documents are strictly confidential. If someone attempted to leak, share, or sell you access to this document, please <strong>file a report with the Specialized Investigations Division (SID)</strong> in our Discord so it can be investigated. Sharing internal documents is a terminable, blacklistable offense.</p>
+            <a class="btn btn-ghost btn-sm" href="<%= discord %>" target="_blank" rel="noopener"><%- icon('message') %> Report to SID on Discord</a>
+          </div>
+        </div>
       </div>
     </article>
   </main>

@@ -7,7 +7,6 @@ const db = require('../lib/db');
 const { hashPassword } = require('../lib/auth');
 
 const username = process.env.ADMIN_USERNAME || 'admin';
-const email = process.env.ADMIN_EMAIL || '';
 const password = process.env.RESET_ADMIN_PASSWORD || '';
 
 if (!password) {
@@ -20,7 +19,7 @@ if (existing) {
   db.prepare('UPDATE users SET password = ?, suspended = 0 WHERE id = ?').run(hashPassword(password), existing.id);
   console.log(`Reset password for "${username}" (account reinstated if suspended).`);
 } else {
-  db.prepare('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)')
-    .run(username, email, hashPassword(password), 'admin');
+  db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)')
+    .run(username, hashPassword(password), 'admin');
   console.log(`Created admin "${username}".`);
 }

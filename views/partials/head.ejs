@@ -24,8 +24,8 @@
   <meta name="twitter:description" content="<%= _pageDesc %>" />
   <meta name="twitter:image" content="<%= _ogImg %>" />
   <link rel="icon" href="/assets/logo.png" type="image/png" />
-  <link rel="stylesheet" href="/assets/icons.css" />
-  <link rel="stylesheet" href="/assets/css/styles.css" />
+  <link rel="stylesheet" href="/assets/icons.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
+  <link rel="stylesheet" href="/assets/css/styles.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
   <script>
     // Dark is the default appearance (matches the original site's strict dark theme).
     (function () {

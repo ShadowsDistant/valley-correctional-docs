@@ -7,14 +7,10 @@
         <h2 id="policyTitle">Staff Policy Agreement</h2>
       </div>
     </div>
-    <p class="policy-intro">Before accessing staff resources, you must read and accept the terms below. This agreement is required once and is recorded against your account.</p>
+    <p class="policy-intro">Before accessing staff resources you must read and accept the terms below. Your acceptance is recorded against your account, and you'll be asked again whenever the policy is updated.</p>
     <div class="policy-body">
       <ul>
-        <li>I will comply with <strong>all</strong> Valley Correctional Facility policies — the community rules, my division handbook, the General Staff Handbook, and the Chain of Command — and act with professionalism, impartiality, and integrity at all times.</li>
-        <li>I understand that <strong>all internal documents are strictly confidential</strong> and are not to be shared, screenshotted, copied, paraphrased, or discussed with anyone outside the authorized staff team.</li>
-        <li><strong>I understand that leaking, disclosing, or facilitating access to any internal or classified VCF document — whether during or after my time on staff — is a Tier&nbsp;3 offense that will result in immediate termination and a permanent employment blacklist, and may be escalated to platform moderation.</strong></li>
-        <li>I understand that my access is logged and monitored, that documents are watermarked to my account, and that violations are investigated by the Specialized Investigations Division.</li>
-        <li>I accept that continued access is contingent on my ongoing compliance, and that VCF leadership may revise these policies at any time.</li>
+        <% policyClauses.forEach(function (c) { %><li><%- policyLine(c) %></li><% }); %>
       </ul>
     </div>
     <form method="post" action="/account/agree" class="policy-actions">

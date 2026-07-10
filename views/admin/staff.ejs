@@ -15,7 +15,6 @@
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <div class="field-grid">
             <label class="field">Username<input type="text" name="username" required autocomplete="off" /></label>
-            <label class="field">Email<input type="email" name="email" autocomplete="off" /></label>
             <label class="field">Password<input type="password" name="password" minlength="6" required autocomplete="new-password" /></label>
             <label class="field">Role
               <select name="role" id="roleSelect">
@@ -47,7 +46,7 @@
                 <% if (u.id === user.id) { %><span class="badge">you</span><% } %>
                 <% if (u.suspended) { %><span class="badge badge-danger"><%- icon('lock') %> Suspended</span><% } %>
               </div>
-              <div class="staff-email"><%= u.email || 'no email' %></div>
+              <div class="staff-since">Joined <%= (u.created_at || '').slice(0,10) %></div>
             </div>
             <div class="staff-facts">
               <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>

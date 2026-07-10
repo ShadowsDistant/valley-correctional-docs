@@ -1,8 +1,8 @@
-  <% if (user && !user.agreed_policy) { %><%- include('policy-modal') %><% } %>
-  <script src="/assets/js/app.js"></script>
-  <% if (user) { %><script src="/assets/js/access-guard.js"></script><% } %>
+  <% if (user && needsPolicy) { %><%- include('policy-modal') %><% } %>
+  <script src="/assets/js/app.js?v=<%= assetVersion %>"></script>
+  <% if (user) { %><script src="/assets/js/access-guard.js?v=<%= assetVersion %>"></script><% } %>
   <% if (typeof pageScripts !== 'undefined') { pageScripts.forEach(function (s) { %>
-    <script src="<%= s %>"></script>
+    <script src="<%= s %><%= s.indexOf('?') === -1 ? '?v=' + assetVersion : '' %>"></script>
   <% }); } %>
 </body>
 </html>

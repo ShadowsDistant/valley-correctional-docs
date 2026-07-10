@@ -10,14 +10,13 @@
 # Certificate), Caddy uses them (works with Cloudflare SSL "Full" AND "Full
 # (strict)"). Otherwise it falls back to a self-signed cert (needs SSL = "Full").
 #
-# Optional env: DOMAIN, ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD
+# Optional env: DOMAIN, ADMIN_USERNAME, ADMIN_PASSWORD
 set -euo pipefail
 
 DOMAIN="${DOMAIN:-docs.valleycorrectional.xyz}"
 APP_DIR="/opt/vcf-docs"
 REPO="https://github.com/ShadowsDistant/valley-correctional-docs.git"
 ADMIN_USERNAME="${ADMIN_USERNAME:-shadowsdistant}"
-ADMIN_EMAIL="${ADMIN_EMAIL:-shadowsdistant@gmail.com}"
 
 echo "==> [1/6] Docker"
 if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sh; fi
@@ -47,7 +46,6 @@ TRUST_PROXY=1
 SITE_URL=https://$DOMAIN
 SESSION_SECRET=$SECRET
 ADMIN_USERNAME=$ADMIN_USERNAME
-ADMIN_EMAIL=$ADMIN_EMAIL
 ADMIN_PASSWORD=$PASS
 EOF
   echo "$PASS" > /root/vcf-admin-password.txt

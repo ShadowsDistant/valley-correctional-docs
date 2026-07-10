@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
@@ -17,6 +18,50 @@ const auth = require('./lib/auth');
 const icons = require('./lib/icons');
 
 seed(); // idempotent: seeds pages + first admin on first boot
+
+// --- editable settings (key/value) -----------------------------------------
+const getSettingStmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+const setSettingStmt = db.prepare(
+  'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+);
+const setting = (key, def) => { const r = getSettingStmt.get(key); return r ? r.value : def; };
+const setSetting = (key, value) => setSettingStmt.run(key, String(value));
+
+// Staff policy agreement: the clauses are admin-editable and versioned. Bumping
+// the version re-prompts every user (their agreed_policy stores the version they
+// last accepted). Default version is 2 so accounts that agreed to the original
+// wording are re-prompted once for the "employment is a privilege" clause.
+const DEFAULT_POLICY_CLAUSES = [
+  'I will comply with **all** Valley Correctional Facility policies — the community rules, my division handbook, the General Staff Handbook, and the Chain of Command — and act with professionalism, impartiality, and integrity at all times.',
+  'I understand that **all internal documents are strictly confidential** and are not to be shared, screenshotted, copied, paraphrased, or discussed with anyone outside the authorized staff team.',
+  '**I understand that leaking, disclosing, or facilitating access to any internal or classified VCF document — whether during or after my time on staff — is a Tier 3 offense that will result in immediate termination and a permanent employment blacklist, and may be escalated to platform moderation.**',
+  'I understand that my access is logged and monitored, that documents are watermarked to my account, and that violations are investigated by the Specialized Investigations Division.',
+  '**I understand that my employment at Valley Correctional Facility is a privilege, not a right, and that it may be revoked at any time.**',
+  'I accept that continued access is contingent on my ongoing compliance, and that VCF leadership may revise these policies at any time.',
+];
+if (setting('policy_clauses') === undefined) setSetting('policy_clauses', JSON.stringify(DEFAULT_POLICY_CLAUSES));
+if (setting('policy_version') === undefined) setSetting('policy_version', '2');
+const policyVersion = () => Number(setting('policy_version', '1')) || 1;
+function policyClauses() {
+  try { return JSON.parse(setting('policy_clauses', '[]')); } catch (e) { return DEFAULT_POLICY_CLAUSES; }
+}
+
+// --- asset cache-busting ----------------------------------------------------
+// Every CSS/JS URL carries ?v=<hash>. The hash changes whenever any static asset
+// changes, so a deploy instantly invalidates stale browser caches (previously a
+// 7-day cache served old CSS against new HTML → the broken/partial renders).
+function computeAssetVersion() {
+  const h = crypto.createHash('sha1');
+  const dirs = ['css', 'js'].map((d) => path.join(__dirname, 'public', d));
+  for (const dir of dirs) {
+    let files = [];
+    try { files = fs.readdirSync(dir).sort(); } catch (e) { continue; }
+    for (const f of files) {
+      try { h.update(f).update(fs.readFileSync(path.join(dir, f))); } catch (e) { /* ignore */ }
+    }
+  }
+  return h.digest('hex').slice(0, 10);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,13 +94,28 @@ app.use(express.json({ limit: '2mb' }));
 
 // Generated icon stylesheet (custom SVG icons as CSS masks).
 const ICONS_CSS = icons.css();
+// One token that changes on any asset change; appended as ?v= to every asset URL.
+const ASSET_VERSION = crypto.createHash('sha1').update(computeAssetVersion()).update(ICONS_CSS).digest('hex').slice(0, 10);
 app.get('/assets/icons.css', (req, res) => {
   res.type('text/css');
-  if (isProd) res.set('Cache-Control', 'public, max-age=604800');
+  if (isProd) res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.send(ICONS_CSS);
 });
 
-app.use('/assets', express.static(path.join(__dirname, 'public'), { maxAge: isProd ? '7d' : 0 }));
+// Assets are content-versioned via ?v=, so they can be cached hard & immutable.
+app.use('/assets', express.static(path.join(__dirname, 'public'), {
+  maxAge: isProd ? '365d' : 0,
+  immutable: isProd,
+}));
+
+// Dynamic HTML must always revalidate so browsers pick up the new ?v= links
+// immediately after a deploy (never serve a stale page from cache).
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/assets') && !req.path.startsWith('/api')) {
+    res.set('Cache-Control', 'no-cache');
+  }
+  next();
+});
 
 app.use(
   session({
@@ -81,10 +141,10 @@ app.use(
 // (the realtime guard handles the page they're already looking at).
 app.use((req, res, next) => {
   if (req.session && req.session.user) {
-    const fresh = db.prepare('SELECT id, username, email, role, divisions, suspended, agreed_policy FROM users WHERE id = ?').get(req.session.user.id);
+    const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy FROM users WHERE id = ?').get(req.session.user.id);
     if (!fresh) return req.session.destroy(() => res.redirect('/'));
     req.session.user = {
-      id: fresh.id, username: fresh.username, email: fresh.email,
+      id: fresh.id, username: fresh.username,
       role: fresh.role, divisions: fresh.divisions || '', suspended: fresh.suspended,
       agreed_policy: fresh.agreed_policy,
     };
@@ -110,6 +170,15 @@ app.use((req, res, next) => {
       ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])
     );
   res.locals.icon = icons.icon;
+  res.locals.assetVersion = ASSET_VERSION;
+  // Staff-policy agreement state for the first-login / policy-changed gate.
+  const u = req.session && req.session.user;
+  res.locals.policyVersion = policyVersion();
+  res.locals.needsPolicy = !!(u && Number(u.agreed_policy || 0) < res.locals.policyVersion);
+  res.locals.policyClauses = policyClauses();
+  // Render a single policy clause: escape it, then allow simple **bold** spans.
+  res.locals.policyLine = (s) =>
+    res.locals.escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   next();
 });
 
@@ -216,7 +285,7 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
   const nextUrl = reqNext && !(reqNext.startsWith('/admin') && !auth.canEdit(user)) ? reqNext : landing;
   req.session.regenerate((err) => {
     if (err) return res.status(500).send('Session error');
-    req.session.user = { id: user.id, username: user.username, role: user.role, email: user.email, divisions: user.divisions || '' };
+    req.session.user = { id: user.id, username: user.username, role: user.role, divisions: user.divisions || '' };
     req.session.save(() => res.redirect(nextUrl));
   });
 });
@@ -278,11 +347,12 @@ app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf,
   res.redirect('/account?updated=1');
 });
 
-// Record acceptance of the first-login staff policy agreement.
+// Record acceptance of the staff policy agreement (stores the accepted version).
 app.post('/account/agree', auth.requireAuth, (req, res) => {
-  db.prepare('UPDATE users SET agreed_policy = 1 WHERE id = ?').run(req.session.user.id);
-  req.session.user.agreed_policy = 1;
-  audit(req.session.user.username, 'user.agree', req.session.user.username, 'accepted staff policy agreement');
+  const v = policyVersion();
+  db.prepare('UPDATE users SET agreed_policy = ? WHERE id = ?').run(v, req.session.user.id);
+  req.session.user.agreed_policy = v;
+  audit(req.session.user.username, 'user.agree', req.session.user.username, 'accepted staff policy v' + v);
   const ref = req.get('referer') || '';
   res.redirect(ref.includes('://' + req.get('host')) ? ref : '/home');
 });
@@ -588,13 +658,12 @@ const usesDivisions = (role) => role === 'staff' || role === 'editor';
 
 // Staff management (admins only)
 adminRouter.get('/staff', auth.requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, email, role, divisions, suspended, created_at, last_login FROM users ORDER BY id').all();
+  const users = db.prepare('SELECT id, username, role, divisions, suspended, created_at, last_login FROM users ORDER BY id').all();
   res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS });
 });
 
 adminRouter.post('/staff/create', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
   const username = (req.body.username || '').trim();
-  const email = (req.body.email || '').trim();
   const role = ['admin', 'editor', 'staff'].includes(req.body.role) ? req.body.role : 'staff';
   const divisions = usesDivisions(role) ? parseDivisions(req.body) : '';
   const password = req.body.password || '';
@@ -605,8 +674,8 @@ adminRouter.post('/staff/create', auth.requireAdmin, auth.verifyCsrf, (req, res)
     });
   }
   try {
-    db.prepare('INSERT INTO users (username, email, password, role, divisions) VALUES (?, ?, ?, ?, ?)')
-      .run(username, email, auth.hashPassword(password), role, divisions);
+    db.prepare('INSERT INTO users (username, password, role, divisions) VALUES (?, ?, ?, ?)')
+      .run(username, auth.hashPassword(password), role, divisions);
     audit(req.session.user.username, 'user.create', username, role + (divisions ? ' [' + divisions + ']' : ''));
   } catch (e) {
     return res.status(400).render('error', {
@@ -679,6 +748,36 @@ adminRouter.post('/staff/delete', auth.requireAdmin, auth.verifyCsrf, (req, res)
   }
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
   res.redirect('/admin/staff');
+});
+
+// Edit the staff policy agreement. Saving bumps the version, which re-prompts
+// every staff member to read and accept the updated terms on their next page.
+adminRouter.get('/policy', auth.requireAdmin, (req, res) => {
+  res.render('admin/policy', {
+    title: 'Admin · Staff Policy',
+    section: 'policy',
+    clauses: policyClauses(),
+    version: policyVersion(),
+    saved: req.query.saved === '1',
+  });
+});
+
+adminRouter.post('/policy', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+  const clauses = String(req.body.clauses || '')
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!clauses.length) {
+    return res.status(400).render('error', {
+      title: 'Invalid', heading: 'Policy cannot be empty',
+      message: 'Add at least one clause before saving.',
+    });
+  }
+  const v = policyVersion() + 1;
+  setSetting('policy_clauses', JSON.stringify(clauses));
+  setSetting('policy_version', String(v));
+  audit(req.session.user.username, 'policy.update', 'staff-policy', 'v' + v + ' · ' + clauses.length + ' clauses');
+  res.redirect('/admin/policy?saved=1');
 });
 
 app.use('/admin', adminRouter);
