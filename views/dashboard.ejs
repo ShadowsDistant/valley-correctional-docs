@@ -1,0 +1,115 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="dash-wrap">
+  <div class="dash-head">
+    <div>
+      <h1 class="admin-h1">Staff Dashboard <span class="beta-tag">Beta</span></h1>
+      <p class="admin-sub">
+        <% if (canModerate && canSID) { %>Log moderation punishments and issue SID staff infractions.
+        <% } else if (canModerate) { %>Log moderation punishments against Roblox users.
+        <% } else { %>Issue and review staff infractions.<% } %>
+      </p>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="/home"><%- icon('external') %> Docs</a>
+  </div>
+
+  <div class="stat-grid dash-stats">
+    <% if (canModerate) { %>
+      <div class="stat-card"><span class="stat-num"><%= stats.punTotal %></span><span class="stat-label">Active punishments</span></div>
+      <div class="stat-card"><span class="stat-num"><%= stats.pun7 %></span><span class="stat-label">Punishments · 7d</span></div>
+    <% } %>
+    <% if (canSID) { %>
+      <div class="stat-card"><span class="stat-num"><%= stats.infTotal %></span><span class="stat-label">Active infractions</span></div>
+      <div class="stat-card"><span class="stat-num"><%= stats.inf7 %></span><span class="stat-label">Infractions · 7d</span></div>
+    <% } %>
+  </div>
+
+  <form method="get" action="/dashboard" class="dash-search">
+    <%- icon('search') %>
+    <input type="text" name="q" value="<%= q %>" placeholder="<%= canModerate ? 'Search by Roblox user' : 'Search by staff member' %>…" autocomplete="off" />
+    <button class="btn btn-solid btn-sm" type="submit">Search</button>
+    <% if (q) { %><a class="btn btn-ghost btn-sm" href="/dashboard">Clear</a><% } %>
+  </form>
+
+  <div class="dash-cols">
+    <% if (canModerate) { %>
+    <section class="panel dash-panel">
+      <div class="panel-head"><h2><%- icon('shield') %> Moderation — Punishment Logs</h2></div>
+      <form method="post" action="/dashboard/punishment" class="dash-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="field-grid">
+          <label class="field">Roblox username<input type="text" name="roblox_user" required autocomplete="off" placeholder="Builderman" /></label>
+          <label class="field">Roblox ID <small>(optional)</small><input type="text" name="roblox_id" autocomplete="off" placeholder="156" /></label>
+          <label class="field">Type
+            <select name="type"><% punishTypes.forEach(function(t){ %><option value="<%= t %>"><%= t %></option><% }); %></select>
+          </label>
+          <label class="field">Duration <small>(if temp)</small><input type="text" name="duration" placeholder="7 days" autocomplete="off" /></label>
+        </div>
+        <label class="field">Reason<input type="text" name="reason" required placeholder="Exploiting during a shift" autocomplete="off" /></label>
+        <label class="field">Evidence <small>(link)</small><input type="text" name="evidence" placeholder="https://…" autocomplete="off" /></label>
+        <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> Log punishment</button></div>
+      </form>
+
+      <div class="table-scroll dash-list">
+        <table class="table">
+          <thead><tr><th>Roblox user</th><th>Type</th><th>Reason</th><th>By</th><th>When</th><th></th></tr></thead>
+          <tbody>
+            <% if (!punishments.length) { %><tr><td colspan="6" class="muted" style="padding:16px">No punishments logged<%= q ? ' for “'+q+'”' : '' %>.</td></tr><% } %>
+            <% punishments.forEach(function(p){ %>
+              <tr class="<%= p.voided ? 'row-void' : '' %>">
+                <td class="mono small"><%= p.roblox_user %><% if (p.roblox_id) { %> <span class="muted">#<%= p.roblox_id %></span><% } %></td>
+                <td><span class="pill pill-<%= p.type.toLowerCase().indexOf('ban')>=0 ? 'red' : (p.type==='Note'?'grey':'amber') %>"><%= p.type %></span><% if (p.duration) { %> <span class="muted small"><%= p.duration %></span><% } %></td>
+                <td class="small"><%= p.reason %><% if (p.evidence) { %> <a href="<%= p.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
+                <td class="small"><%= p.moderator %></td>
+                <td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,16) %></time></td>
+                <td><% if (!p.voided) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>?" data-confirm-title="Void punishment" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else { %><span class="badge">voided</span><% } %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <% } %>
+
+    <% if (canSID) { %>
+    <section class="panel dash-panel">
+      <div class="panel-head"><h2><%- icon('eye') %> SID — Staff Infractions</h2></div>
+      <form method="post" action="/dashboard/infraction" class="dash-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="field-grid">
+          <label class="field">Staff member
+            <select name="staff_user" required><option value="">— Select staff —</option><% staffList.forEach(function(s){ %><option value="<%= s %>"><%= s %></option><% }); %></select>
+          </label>
+          <label class="field">Type
+            <select name="type"><% infractionTypes.forEach(function(t){ %><option value="<%= t %>"><%= t %></option><% }); %></select>
+          </label>
+        </div>
+        <label class="field">Reason<input type="text" name="reason" required placeholder="Failure to follow shift protocol" autocomplete="off" /></label>
+        <label class="field">Evidence <small>(link)</small><input type="text" name="evidence" placeholder="https://…" autocomplete="off" /></label>
+        <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> Issue infraction</button></div>
+      </form>
+
+      <div class="table-scroll dash-list">
+        <table class="table">
+          <thead><tr><th>Staff</th><th>Type</th><th>Reason</th><th>By</th><th>When</th><th></th></tr></thead>
+          <tbody>
+            <% if (!infractions.length) { %><tr><td colspan="6" class="muted" style="padding:16px">No infractions issued<%= q ? ' for “'+q+'”' : '' %>.</td></tr><% } %>
+            <% infractions.forEach(function(f){ %>
+              <tr class="<%= f.voided ? 'row-void' : '' %>">
+                <td class="small"><strong><%= f.staff_user %></strong></td>
+                <td><span class="pill pill-<%= (f.type==='Termination'||f.type==='Demotion'||f.type==='Suspension')?'red':(f.type==='Strike'?'amber':'grey') %>"><%= f.type %></span></td>
+                <td class="small"><%= f.reason %><% if (f.evidence) { %> <a href="<%= f.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
+                <td class="small"><%= f.issued_by %></td>
+                <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></td>
+                <td><% if (!f.voided) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>?" data-confirm-title="Void infraction" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else { %><span class="badge">voided</span><% } %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <% } %>
+  </div>
+  <p class="muted small dash-foot"><%- icon('info') %> This dashboard is in <strong>beta</strong>. Data is logged and auditable. Report issues to an administrator.</p>
+</div>
+<%- include('partials/foot') %>

@@ -19,6 +19,19 @@
       <div class="stat-card"><span class="stat-num"><%= totals.views %></span><span class="stat-label">All-time views</span></div>
     </div>
 
+    <section class="panel live-panel" id="livePanel">
+      <div class="panel-head"><h2><span class="live-dot"></span> Live &mdash; last 5 minutes</h2><span class="muted small" id="liveClock"></span></div>
+      <div class="live-grid">
+        <div class="live-stat"><span class="live-num" id="liveActive">–</span><span class="stat-label">Active visitors</span></div>
+        <div class="live-stat"><span class="live-num" id="liveStaff">–</span><span class="stat-label">Staff online</span></div>
+        <div class="live-spark"><svg id="liveSpark" viewBox="0 0 300 48" preserveAspectRatio="none"></svg><span class="stat-label">Views · last 30 min</span></div>
+      </div>
+      <div class="live-body">
+        <div class="live-col"><div class="live-h">Online now</div><ul class="live-online" id="liveOnline"><li class="muted">—</li></ul></div>
+        <div class="live-col"><div class="live-h">Live feed</div><ul class="live-feed" id="liveFeed"><li class="muted">Connecting…</li></ul></div>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="panel-head"><h2>Views &amp; visitors per day</h2><span class="muted small"><span class="legend-dot dot-views"></span> Views &nbsp; <span class="legend-dot dot-visitors"></span> Visitors</span></div>
       <%
@@ -106,4 +119,34 @@
     <p class="muted small">No third-party trackers are used. All metrics are computed from first-party server logs.</p>
   </main>
 </div>
+<script>
+(function () {
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); };
+  function ago(t) { var s = Math.max(0, (Date.now() - new Date(t.replace(' ', 'T') + 'Z')) / 1000); if (s < 60) return Math.floor(s) + 's'; if (s < 3600) return Math.floor(s / 60) + 'm'; return Math.floor(s / 3600) + 'h'; }
+  function spark(pts) {
+    if (!pts.length) return '';
+    var max = 1; pts.forEach(function (p) { if (p.n > max) max = p.n; });
+    var n = pts.length, dx = 300 / Math.max(1, n - 1);
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + (i * dx).toFixed(1) + ' ' + (46 - p.n / max * 44).toFixed(1); }).join(' ');
+    return '<path d="' + d + '" fill="none" stroke="#ffa200" stroke-width="2" stroke-linejoin="round"/>';
+  }
+  function tick() {
+    fetch('/api/analytics/live', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) return;
+      document.getElementById('liveActive').textContent = d.active;
+      document.getElementById('liveStaff').textContent = d.activeStaff;
+      document.getElementById('liveSpark').innerHTML = spark(d.perMin || []);
+      document.getElementById('liveClock').textContent = 'updated ' + new Date().toLocaleTimeString();
+      document.getElementById('liveOnline').innerHTML = (d.onlineNow && d.onlineNow.length)
+        ? d.onlineNow.map(function (o) { return '<li><span class="acct-avatar sm">' + esc(o.username[0].toUpperCase()) + '</span>' + esc(o.username) + ' <span class="muted">' + ago(o.ts) + '</span></li>'; }).join('')
+        : '<li class="muted">No staff online</li>';
+      document.getElementById('liveFeed').innerHTML = (d.recent && d.recent.length)
+        ? d.recent.map(function (r) { return '<li><span class="muted mono">' + ago(r.ts) + '</span> <strong>' + esc(r.who) + '</strong> → ' + esc(r.title || r.slug) + '</li>'; }).join('')
+        : '<li class="muted">No recent views</li>';
+    }).catch(function () {});
+  }
+  tick(); var iv = setInterval(tick, 5000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
+})();
+</script>
 <%- include('../partials/foot') %>

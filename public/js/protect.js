@@ -50,24 +50,50 @@
   // continually clear any selection that slips through
   setInterval(function () { var s = window.getSelection && window.getSelection(); if (s && String(s).length) s.removeAllRanges(); }, 400);
 
-  // --- keyboard: block copy/save/print/view-source; PrintScreen -> blur + clear ---
+  // --- screenshot attempt reporting (logged & traced to the account) ---
+  var lastReport = 0;
+  function report(method) {
+    var now = Date.now();
+    if (now - lastReport < 1500) return; // throttle bursts
+    lastReport = now;
+    try {
+      var body = JSON.stringify({ method: method, slug: location.pathname });
+      if (navigator.sendBeacon) navigator.sendBeacon('/api/screenshot-attempt', new Blob([body], { type: 'application/json' }));
+      else fetch('/api/screenshot-attempt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true });
+    } catch (x) {}
+  }
+  function onCapture(method) {
+    try { navigator.clipboard && navigator.clipboard.writeText(''); } catch (x) {}
+    flashBlur(2000);
+    flash('Screenshots are logged and traced to your account.');
+    report(method);
+  }
+
+  // --- keyboard: block copy/save/print/view-source; detect screenshot combos ---
   document.addEventListener('keydown', function (e) {
     var k = (e.key || '').toLowerCase();
-    // Ctrl/Cmd+Shift+S is the browser/OS screenshot shortcut in several browsers.
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && k === 's') {
-      e.preventDefault(); flashBlur(1800); flash('Screenshots are logged and traced to your account.'); return false;
+    // OS/browser screenshot combos: PrintScreen, Win/Cmd+Shift+S/3/4/5, Ctrl+Shift+S
+    var win = e.getModifierState && (e.getModifierState('Meta') || e.getModifierState('OS'));
+    if (e.key === 'PrintScreen' || k === 'printscreen') { onCapture('PrintScreen'); return; }
+    if ((e.metaKey || win) && e.shiftKey && (k === 's' || k === '3' || k === '4' || k === '5')) {
+      e.preventDefault(); onCapture('Win/Cmd+Shift+' + k.toUpperCase()); return false;
     }
+    if (e.ctrlKey && e.shiftKey && k === 's') { e.preventDefault(); onCapture('Ctrl+Shift+S'); return false; }
     if ((e.ctrlKey || e.metaKey) && (k === 'p' || k === 's' || k === 'c' || k === 'u' || k === 'a')) {
-      e.preventDefault(); flash('That action is disabled on confidential documents.'); return false;
-    }
-    if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey)) {
-      try { navigator.clipboard && navigator.clipboard.writeText(''); } catch (x) {}
-      flashBlur(1800);
-      flash('Screenshots are logged and traced to your account.');
+      e.preventDefault();
+      if (k === 'p') report('Print');
+      flash('That action is disabled on confidential documents.'); return false;
     }
   });
   window.addEventListener('keyup', function (e) {
     if (e.key === 'PrintScreen') { try { navigator.clipboard && navigator.clipboard.writeText(''); } catch (x) {} }
+  });
+  // Snipping tools / OS capture often blur the tab briefly — treat a very short
+  // hidden/visible flicker as a likely capture and blur defensively.
+  var hiddenAt = 0;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt < 900) { flashBlur(1400); }
   });
   window.addEventListener('beforeprint', function () { setHidden(true); });
   window.addEventListener('afterprint', function () { setHidden(false); });

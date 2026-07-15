@@ -10,3 +10,11 @@ docs.valleycorrectional.xyz {
 	tls /certs/origin.pem /certs/origin.key
 	reverse_proxy app:3000
 }
+
+# Staff dashboard subdomain (same app, host-detected). Needs a DNS record for
+# `dashboard` and the Origin Certificate to cover *.valleycorrectional.xyz.
+dashboard.valleycorrectional.xyz {
+	encode gzip zstd
+	tls /certs/origin.pem /certs/origin.key
+	reverse_proxy app:3000
+}

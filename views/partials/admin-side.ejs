@@ -6,7 +6,7 @@
         <li><a class="nav-link <%= section === 'dashboard' ? 'active' : '' %>" href="/admin"><span class="nav-ico"><%- icon('chart') %></span><span class="nav-label">Dashboard</span></a></li>
         <li><a class="nav-link <%= section === 'pages' ? 'active' : '' %>" href="/admin/pages"><span class="nav-ico"><%- icon('file') %></span><span class="nav-label">Pages</span></a></li>
         <% if (user && user.role === 'admin') { %>
-          <li><a class="nav-link <%= section === 'shifts' ? 'active' : '' %>" href="/admin/shifts"><span class="nav-ico"><%- icon('calendar') %></span><span class="nav-label">Shift scheduler</span></a></li>
+          <li><a class="nav-link <%= section === 'shifts' ? 'active' : '' %>" href="/admin/shifts"><span class="nav-ico"><%- icon('calendar') %></span><span class="nav-label">Event scheduler</span></a></li>
           <li><a class="nav-link <%= section === 'analytics' ? 'active' : '' %>" href="/admin/analytics"><span class="nav-ico"><%- icon('chart') %></span><span class="nav-label">Analytics</span></a></li>
           <li><a class="nav-link <%= section === 'logs' ? 'active' : '' %>" href="/admin/logs"><span class="nav-ico"><%- icon('scroll') %></span><span class="nav-label">Activity log</span></a></li>
           <li><a class="nav-link <%= section === 'staff' ? 'active' : '' %>" href="/admin/staff"><span class="nav-ico"><%- icon('users') %></span><span class="nav-label">Staff</span></a></li>

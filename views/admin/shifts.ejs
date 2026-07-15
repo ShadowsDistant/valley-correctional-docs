@@ -5,19 +5,19 @@
   <main class="content admin-content <%= canEdit ? '' : 'admin-content-wide' %>">
     <div class="admin-titlerow">
       <div>
-        <h1 class="admin-h1">Shift Scheduler</h1>
-        <p class="admin-sub">Add shifts here and they appear automatically on the public <a href="/shifts/shift-schedule" target="_blank">Shift Schedule</a> page.</p>
+        <h1 class="admin-h1">Event Scheduler</h1>
+        <p class="admin-sub">Add events here and they appear automatically on the public <a href="/shifts/shift-schedule" target="_blank">schedule</a> page.</p>
       </div>
       <a class="btn btn-ghost btn-sm" href="/home"><%- icon('external') %> View site</a>
     </div>
 
     <% if (saved) { %>
-      <div class="account-ok"><%- icon('check') %> <span>Shift added — it's now live on the public schedule.</span></div>
+      <div class="account-ok"><%- icon('check') %> <span>Event added — it's now live on the public schedule.</span></div>
     <% } %>
 
     <div class="admin-cols admin-cols-policy">
       <section class="panel">
-        <div class="panel-head"><h2>Add a shift</h2></div>
+        <div class="panel-head"><h2>Add an event</h2></div>
         <form method="post" action="/admin/shifts/add" class="stack-form">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <div class="field-grid">
@@ -36,9 +36,9 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>Scheduled shifts</h2><span class="muted small"><%= shifts.length %> total</span></div>
+        <div class="panel-head"><h2>Scheduled events</h2><span class="muted small"><%= shifts.length %> total</span></div>
         <% if (!shifts.length) { %>
-          <p class="muted">No shifts scheduled yet. Add one on the left.</p>
+          <p class="muted">No events scheduled yet. Add one on the left.</p>
         <% } else { %>
           <div class="table-scroll">
             <table class="table">
@@ -52,7 +52,7 @@
                     <td class="small"><%= s.type %></td>
                     <td class="small"><%= s.host || '—' %></td>
                     <td>
-                      <form method="post" action="/admin/shifts/delete" class="inline" onsubmit="return confirm('Remove this shift?');">
+                      <form method="post" action="/admin/shifts/delete" class="inline" data-confirm="Remove this event?" data-confirm-title="Remove event" data-confirm-ok="Remove">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= s.id %>" />
                         <button class="btn btn-ghost btn-sm danger" type="submit">Remove</button>
                       </form>

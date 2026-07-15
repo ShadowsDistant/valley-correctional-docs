@@ -28,7 +28,8 @@
         <% if (user) { %>
           <div class="acct-dd-head"><strong><%= user.username %></strong><span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
           <% if (canEdit) { %><a href="/admin"><%- icon('chart') %> Dashboard</a><% } %>
-          <% if (canManageShifts && !canEdit) { %><a href="/admin/shifts"><%- icon('calendar') %> Shift scheduler</a><% } %>
+          <% if (typeof canStaffDashboard !== 'undefined' && canStaffDashboard) { %><a href="/dashboard"><%- icon('shield') %> Staff Dashboard <span class="beta-tag sm">Beta</span></a><% } %>
+          <% if (canManageShifts && !canEdit) { %><a href="/admin/shifts"><%- icon('calendar') %> Event scheduler</a><% } %>
           <a href="/account"><%- icon('users') %> Profile</a>
           <form action="/logout" method="post"><button type="submit"><%- icon('logout') %> Log out</button></form>
         <% } else { %>

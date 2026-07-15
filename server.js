@@ -128,6 +128,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// dashboard.<domain> serves the staff dashboard at its root (assets shared).
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').toLowerCase();
+  res.locals.isDashboardHost = host.startsWith('dashboard.');
+  if (res.locals.isDashboardHost && (req.path === '/' || req.path === '/home')) {
+    return res.redirect('/dashboard');
+  }
+  next();
+});
+
 app.use(
   session({
     store: new SqliteStore({
@@ -187,6 +197,9 @@ app.use((req, res, next) => {
   res.locals.icon = icons.icon;
   res.locals.assetVersion = ASSET_VERSION;
   res.locals.canManageShifts = auth.canManageShifts(req.session && req.session.user);
+  res.locals.canStaffDashboard = auth.canStaffDashboard(req.session && req.session.user);
+  res.locals.canModerate = auth.canModerate(req.session && req.session.user);
+  res.locals.canSID = auth.canSID(req.session && req.session.user);
   // Staff-policy agreement state for the first-login / policy-changed gate.
   const u = req.session && req.session.user;
   res.locals.policyVersion = policyVersion();
@@ -207,6 +220,37 @@ const allPagesAny = db.prepare('SELECT * FROM pages ORDER BY group_name, sort, t
 
 function navPages() {
   return allPages.all();
+}
+
+// --- render cache: markdown is expensive; cache HTML per (slug, updated_at) ---
+const renderCache = new Map();
+function renderPage(page) {
+  const key = page.slug;
+  const cached = renderCache.get(key);
+  if (cached && cached.v === page.updated_at) return cached;
+  const stripped = stripDocTitle(page.content, page.title);
+  const out = md.render(stripped);
+  const rec = { v: page.updated_at, html: out.html, toc: out.toc, plain: md.toPlainText(page.content).slice(0, 4000) };
+  renderCache.set(key, rec);
+  return rec;
+}
+function invalidateRenderCache(slug) { if (slug) renderCache.delete(slug); else renderCache.clear(); searchIndexCache = null; }
+
+// Search index is rebuilt only when content changes (invalidated on save).
+let searchIndexCache = null;
+function buildSearchIndex() {
+  if (searchIndexCache) return searchIndexCache;
+  searchIndexCache = navPages().map((p) => {
+    const content = String(p.content || '').replace(/\[\[SHIFTS_TABLE\]\]/g, '');
+    const { toc } = md.render(content);
+    return {
+      slug: p.slug, title: p.title, group: p.group_name, internal: !!p.internal,
+      description: p.description,
+      headings: toc.map((h) => ({ text: h.text, id: h.id })),
+      text: md.toPlainText(content).slice(0, 4000),
+    };
+  });
+  return searchIndexCache;
 }
 
 // Flattened, nav-ordered list (respects group order) for prev/next links.
@@ -321,21 +365,9 @@ app.post('/logout', (req, res) => {
 
 app.get('/search-index.json', (req, res) => {
   const user = req.session && req.session.user;
-  const pages = navPages().filter((p) => auth.canViewPage(user, p));
-  const index = pages.map((p) => {
-    // Dynamic placeholders (e.g. the live shift table) shouldn't leak into search.
-    const content = String(p.content || '').replace(/\[\[SHIFTS_TABLE\]\]/g, '');
-    const { toc } = md.render(content);
-    return {
-      slug: p.slug,
-      title: p.title,
-      group: p.group_name,
-      internal: !!p.internal,
-      description: p.description,
-      // headings become deep-link search hits
-      headings: toc.map((h) => ({ text: h.text, id: h.id })),
-      text: md.toPlainText(content).slice(0, 4000),
-    };
+  const index = buildSearchIndex().filter((p) => {
+    const pg = getPageAny.get(p.slug);
+    return pg && auth.canViewPage(user, pg);
   });
   res.set('Cache-Control', 'no-store');
   res.json(index);
@@ -352,6 +384,40 @@ app.get('/api/access', (req, res) => {
   if (!page) return res.json({ ok: true });
   const ok = auth.canViewPage(user, page);
   res.json({ ok: ok, suspended: false, reason: ok ? '' : 'no-access' });
+});
+
+// Screenshot / capture attempt reported by protect.js — logged & traced.
+const screenshotLimiter = rateLimit({ windowMs: 10000, max: 8, standardHeaders: false, legacyHeaders: false });
+app.post('/api/screenshot-attempt', screenshotLimiter, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const u = req.session && req.session.user;
+  const who = u ? u.username : 'anonymous';
+  const method = String((req.body && req.body.method) || 'unknown').slice(0, 40);
+  const slug = String((req.body && req.body.slug) || '').slice(0, 120);
+  audit(who, 'security.screenshot', slug || '(page)', method + ' · ' + (req.ip || ''));
+  res.json({ ok: true });
+});
+
+// Live analytics feed — active users + rolling event stream (polled by the page).
+app.get('/api/analytics/live', auth.requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (req.session.user.role !== 'admin') return res.status(403).json({ ok: false });
+  const active = db.prepare(
+    "SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE ts >= datetime('now','-5 minutes')"
+  ).get().n;
+  const activeStaff = db.prepare(
+    "SELECT COUNT(DISTINCT username) AS n FROM page_views WHERE username IS NOT NULL AND ts >= datetime('now','-5 minutes')"
+  ).get().n;
+  const perMin = db.prepare(
+    "SELECT strftime('%H:%M', ts) AS m, COUNT(*) AS n FROM page_views WHERE ts >= datetime('now','-30 minutes') GROUP BY m ORDER BY m"
+  ).all();
+  const recent = db.prepare(
+    'SELECT slug, path, ts, authed, username FROM page_views ORDER BY id DESC LIMIT 15'
+  ).all().map((r) => ({ title: (r.slug && getPageAny.get(r.slug) || {}).title || r.slug || r.path, slug: r.slug, ts: r.ts, who: r.username || (r.authed ? 'Staff' : 'Anon') }));
+  const onlineNow = db.prepare(
+    "SELECT username, MAX(ts) AS ts FROM page_views WHERE username IS NOT NULL AND ts >= datetime('now','-5 minutes') GROUP BY username ORDER BY ts DESC LIMIT 12"
+  ).all();
+  res.json({ ok: true, active, activeStaff, perMin, recent, onlineNow, serverTime: new Date().toISOString() });
 });
 
 // --- self-service account: any logged-in user can change their own password --
@@ -558,6 +624,7 @@ adminRouter.post('/save', auth.verifyCsrf, (req, res) => {
     'INSERT INTO page_revisions (slug, title, content, editor) VALUES (?, ?, ?, ?)'
   ).run(slug, payload.title, payload.content, editor);
   audit(editor, existing ? 'page.update' : 'page.create', '/' + slug, payload.title);
+  invalidateRenderCache();
 
   res.json({ ok: true, slug, url: '/' + slug });
 });
@@ -573,6 +640,7 @@ adminRouter.post('/delete', auth.verifyCsrf, (req, res) => {
   const page = getPageAny.get(slug);
   db.prepare('DELETE FROM pages WHERE slug = ?').run(slug);
   audit(req.session.user.username, 'page.delete', '/' + slug, page ? page.title : '');
+  invalidateRenderCache();
   res.json({ ok: true });
 });
 
@@ -585,6 +653,7 @@ adminRouter.post('/restore', auth.verifyCsrf, (req, res) => {
     "UPDATE pages SET content = ?, title = ?, updated_at = datetime('now'), updated_by = ? WHERE slug = ?"
   ).run(rev.content, rev.title, req.session.user.username + ' (restore)', rev.slug);
   audit(req.session.user.username, 'page.restore', '/' + rev.slug, 'revision #' + rev.id);
+  invalidateRenderCache();
   res.json({ ok: true, slug: rev.slug });
 });
 
@@ -867,9 +936,9 @@ adminRouter.post('/policy', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
   res.redirect('/admin/policy?saved=1');
 });
 
-// --- shift scheduler -------------------------------------------------------
+// --- event scheduler -------------------------------------------------------
 // Managed by admins + Management/Oversight staff; shown on the public schedule.
-const SHIFT_TYPES = ['Standard Shift', 'Training Shift', 'Event Shift', 'Special Operation', 'Inspection'];
+const SHIFT_TYPES = ['Roleplay Shift', 'Gamenight', 'Training Event', 'Recruitment Event'];
 const upcomingShiftsStmt = db.prepare("SELECT * FROM shifts WHERE date >= date('now','-1 day') ORDER BY date, time");
 const allShiftsStmt = db.prepare('SELECT * FROM shifts ORDER BY date DESC, time');
 
@@ -887,7 +956,7 @@ function requireShiftManager(req, res, next) {
 
 app.get('/admin/shifts', requireShiftManager, auth.csrfToken, (req, res) => {
   res.render('admin/shifts', {
-    title: 'Admin · Shift Scheduler',
+    title: 'Admin · Event Scheduler',
     section: 'shifts',
     shifts: allShiftsStmt.all(),
     shiftTypes: SHIFT_TYPES,
@@ -900,7 +969,7 @@ app.post('/admin/shifts/add', requireShiftManager, auth.csrfToken, auth.verifyCs
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).render('error', { title: 'Invalid', heading: 'Invalid date', message: 'Pick a valid shift date.' });
   }
-  const type = SHIFT_TYPES.includes(req.body.type) ? req.body.type : 'Standard Shift';
+  const type = SHIFT_TYPES.includes(req.body.type) ? req.body.type : SHIFT_TYPES[0];
   const time = String(req.body.time || '').trim().slice(0, 80);
   const host = String(req.body.host || '').trim().slice(0, 80);
   const notes = String(req.body.notes || '').trim().slice(0, 200);
@@ -969,6 +1038,85 @@ adminRouter.get('/staff/activity', auth.requireAdmin, (req, res) => {
   });
 });
 
+// --- staff dashboard (BETA) — Moderation punishments + SID infractions ------
+const PUNISH_TYPES = ['Warning', 'Kick', 'Server Ban', 'Game Ban', 'Permanent Ban', 'Mute', 'Note'];
+const INFRACTION_TYPES = ['Verbal Warning', 'Written Warning', 'Strike', 'Suspension', 'Demotion', 'Termination'];
+
+function requireDashboard(req, res, next) {
+  const u = req.session && req.session.user;
+  if (u && auth.canStaffDashboard(u)) return next();
+  if (u) return res.status(403).render('error', { title: 'Forbidden', heading: '403 — No dashboard access', message: 'The staff dashboard is limited to Moderation and Specialized Investigations staff.' });
+  return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl || '/dashboard'));
+}
+
+app.get('/dashboard', requireDashboard, auth.csrfToken, (req, res) => {
+  const u = req.session.user;
+  const q = String(req.query.q || '').trim();
+  let punishments = [], infractions = [];
+  if (auth.canModerate(u)) {
+    punishments = q
+      ? db.prepare("SELECT * FROM punishments WHERE roblox_user LIKE ? ORDER BY created_at DESC LIMIT 100").all('%' + q + '%')
+      : db.prepare('SELECT * FROM punishments ORDER BY created_at DESC LIMIT 50').all();
+  }
+  if (auth.canSID(u)) {
+    infractions = q
+      ? db.prepare("SELECT * FROM infractions WHERE staff_user LIKE ? ORDER BY created_at DESC LIMIT 100").all('%' + q + '%')
+      : db.prepare('SELECT * FROM infractions ORDER BY created_at DESC LIMIT 50').all();
+  }
+  const stats = {
+    punTotal: db.prepare('SELECT COUNT(*) AS n FROM punishments WHERE voided=0').get().n,
+    pun7: db.prepare("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND created_at >= datetime('now','-7 days')").get().n,
+    infTotal: db.prepare('SELECT COUNT(*) AS n FROM infractions WHERE voided=0').get().n,
+    inf7: db.prepare("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND created_at >= datetime('now','-7 days')").get().n,
+  };
+  res.render('dashboard', {
+    title: 'Staff Dashboard', bodyClass: 'has-dashboard',
+    punishments, infractions, stats, q,
+    punishTypes: PUNISH_TYPES, infractionTypes: INFRACTION_TYPES,
+    staffList: db.prepare("SELECT username FROM users WHERE suspended=0 ORDER BY username").all().map((r) => r.username),
+  });
+});
+
+app.post('/dashboard/punishment', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  if (!auth.canModerate(req.session.user)) return res.status(403).render('error', { title: 'Forbidden', heading: 'Moderation only', message: 'Only Moderation staff can log punishments.' });
+  const rblx = String(req.body.roblox_user || '').trim().slice(0, 60);
+  if (!rblx) return res.status(400).render('error', { title: 'Invalid', heading: 'Roblox user required', message: 'Enter the Roblox username being punished.' });
+  const type = PUNISH_TYPES.includes(req.body.type) ? req.body.type : 'Warning';
+  db.prepare('INSERT INTO punishments (roblox_user, roblox_id, type, reason, evidence, duration, moderator) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(rblx, String(req.body.roblox_id || '').trim().slice(0, 40), type,
+      String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500),
+      String(req.body.duration || '').trim().slice(0, 40), req.session.user.username);
+  audit(req.session.user.username, 'punish.create', rblx, type);
+  res.redirect('/dashboard?saved=punish');
+});
+
+app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  if (!auth.canModerate(req.session.user)) return res.status(403).json({ ok: false });
+  const p = db.prepare('SELECT roblox_user FROM punishments WHERE id = ?').get(Number(req.body.id));
+  db.prepare('UPDATE punishments SET voided = 1 WHERE id = ?').run(Number(req.body.id));
+  if (p) audit(req.session.user.username, 'punish.void', p.roblox_user, '');
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/infraction', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  if (!auth.canSID(req.session.user)) return res.status(403).render('error', { title: 'Forbidden', heading: 'SID only', message: 'Only Specialized Investigations staff can issue infractions.' });
+  const staffUser = String(req.body.staff_user || '').trim().slice(0, 60);
+  if (!staffUser) return res.status(400).render('error', { title: 'Invalid', heading: 'Staff member required', message: 'Select the staff member being issued an infraction.' });
+  const type = INFRACTION_TYPES.includes(req.body.type) ? req.body.type : 'Verbal Warning';
+  db.prepare('INSERT INTO infractions (staff_user, type, reason, evidence, issued_by) VALUES (?, ?, ?, ?, ?)')
+    .run(staffUser, type, String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500), req.session.user.username);
+  audit(req.session.user.username, 'infraction.create', staffUser, type);
+  res.redirect('/dashboard?saved=infraction');
+});
+
+app.post('/dashboard/infraction/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  if (!auth.canSID(req.session.user)) return res.status(403).json({ ok: false });
+  const inf = db.prepare('SELECT staff_user FROM infractions WHERE id = ?').get(Number(req.body.id));
+  db.prepare('UPDATE infractions SET voided = 1 WHERE id = ?').run(Number(req.body.id));
+  if (inf) audit(req.session.user.username, 'infraction.void', inf.staff_user, '');
+  res.redirect('/dashboard');
+});
+
 app.use('/admin', adminRouter);
 
 // --- public docs (catch-all, must be last) ---------------------------------
@@ -1014,12 +1162,15 @@ app.get(/.*/, (req, res) => {
 
   recordView(req, page);
 
-  // The public shift schedule injects live shifts in place of [[SHIFTS_TABLE]].
-  let pageContent = stripDocTitle(page.content, page.title);
+  // The public schedule injects live events in place of [[SHIFTS_TABLE]] (not
+  // cacheable); every other page uses the render cache.
+  let html, toc;
   if (page.slug === 'shifts/shift-schedule') {
-    pageContent = pageContent.replace(/\[\[SHIFTS_TABLE\]\]/g, shiftScheduleMarkdown());
+    const pageContent = stripDocTitle(page.content, page.title).replace(/\[\[SHIFTS_TABLE\]\]/g, shiftScheduleMarkdown());
+    ({ html, toc } = md.render(pageContent));
+  } else {
+    ({ html, toc } = renderPage(page));
   }
-  const { html, toc } = md.render(pageContent);
   const flat = orderedPages(canView);
   const idx = flat.findIndex((p) => p.slug === page.slug);
   const prev = idx > 0 ? flat[idx - 1] : null;

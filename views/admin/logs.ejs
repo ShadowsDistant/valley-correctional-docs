@@ -17,7 +17,10 @@
         'user.delete': ['Deleted account', 'act-delete'], 'user.password': ['Changed own password', 'act-edit'],
         'user.password_reset': ['Reset password', 'act-edit'], 'user.agree': ['Accepted policy', 'act-neutral'],
         'policy.update': ['Updated staff policy', 'act-edit'], 'policy.decline': ['Declined policy (deleted)', 'act-delete'],
-        'shift.create': ['Added shift', 'act-create'], 'shift.delete': ['Removed shift', 'act-delete'],
+        'shift.create': ['Added event', 'act-create'], 'shift.delete': ['Removed event', 'act-delete'],
+        'security.screenshot': ['Screenshot attempt', 'act-delete'],
+        'punish.create': ['Punishment logged', 'act-edit'], 'punish.void': ['Punishment voided', 'act-neutral'],
+        'infraction.create': ['Infraction issued', 'act-delete'], 'infraction.void': ['Infraction voided', 'act-neutral'],
       };
       function actionLabel(a) { return (ACTION[a] || [a, 'act-neutral']); }
     %>

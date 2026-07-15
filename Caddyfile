@@ -5,6 +5,13 @@ docs.valleycorrectional.xyz {
 	reverse_proxy app:3000
 }
 
+# Staff dashboard on its own subdomain (same app; it detects the host and serves
+# /dashboard at the root). Add a DNS record for `dashboard` pointing to this host.
+dashboard.valleycorrectional.xyz {
+	encode gzip zstd
+	reverse_proxy app:3000
+}
+
 # Local / IP testing without a domain: uncomment the block below and comment
 # out the domain block above. Then browse to http://<droplet-ip>.
 # :80 {
