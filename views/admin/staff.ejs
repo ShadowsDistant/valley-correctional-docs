@@ -1,10 +1,18 @@
 <%- include('../partials/head') %>
 <%- include('../partials/topbar') %>
+<%
+  var divLabel = {};
+  divisions.forEach(function (d) { divLabel[d.key] = d.label; });
+  function canGovern(d) { return governed.indexOf(d) !== -1; }
+%>
 <div class="layout">
   <%- include('../partials/admin-side') %>
   <main class="content admin-content">
     <div class="admin-titlerow">
-      <div><h1 class="admin-h1">Staff accounts</h1><p class="admin-sub"><strong>Admin</strong> = full control · <strong>Editor</strong> = edits assigned division handbooks · <strong>Staff</strong> = reads assigned handbooks.</p></div>
+      <div>
+        <h1 class="admin-h1">Staff accounts</h1>
+        <p class="admin-sub">Manage staff access, ranks, and divisions. <strong>Roles:</strong> Admin (full control) · Editor (edits assigned handbooks) · Staff (reads assigned handbooks). Ranks set dashboard authority and the SID/Moderation approval chain.<% if (!isAdmin) { %> You can manage: <strong><%= governed.map(function(d){return divLabel[d]||d;}).join(', ') || 'your division' %></strong>.<% } %></p>
+      </div>
       <button class="btn btn-solid" type="button" id="addToggle"><%- icon('plus') %> Add account</button>
     </div>
 
@@ -14,33 +22,55 @@
         <form method="post" action="/admin/staff/create" class="stack-form">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <div class="field-grid">
-            <label class="field">Username<input type="text" name="username" required autocomplete="off" /></label>
+            <div class="field">Roblox / staff username
+              <div class="rbx-search"><input type="text" name="username" id="new-username" required autocomplete="off" placeholder="Start typing a Roblox name…" /><div class="rbx-suggest" hidden></div></div>
+            </div>
             <label class="field">Password<input type="password" name="password" minlength="6" required autocomplete="new-password" /></label>
             <label class="field">Role
               <select name="role" id="roleSelect">
                 <option value="staff">Staff — read-only</option>
-                <option value="editor">Editor — edit assigned divisions</option>
-                <option value="admin">Admin — full control</option>
+                <% if (canGrantEditor) { %><option value="editor">Editor — edit assigned handbooks</option><% } %>
+                <% if (isAdmin) { %><option value="admin">Admin — full control</option><% } %>
               </select>
             </label>
           </div>
           <div class="field field-full" id="divisionPicker">
             <span class="field-label">Division access</span>
             <div class="chk-row">
-              <% divisions.forEach(function (d) { %><label class="chk"><input type="checkbox" name="divisions" value="<%= d.key %>" /> <%= d.label %></label><% }); %>
+              <% divisions.forEach(function (d) { if (canGovern(d.key)) { %><label class="chk"><input type="checkbox" name="divisions" value="<%= d.key %>" /> <%= d.label %></label><% } }); %>
             </div>
-            <span class="muted small">For <strong>staff</strong> this is what they can read; for <strong>editors</strong> what they can edit. Chain of Command &amp; General Staff Handbook are readable by all staff.</span>
+          </div>
+          <div class="field field-full" id="newRanks">
+            <span class="field-label">Ranks <small>(optional)</small></span>
+            <div class="rank-row">
+              <% ['moderation','sid','management','osc'].forEach(function(dk){ if (canGovern(dk) && ranksByDiv[dk] && ranksByDiv[dk].length) { %>
+                <label class="rank-field"><%= divLabel[dk] %>
+                  <select name="rank_<%= dk %>"><option value="">— None —</option><% ranksByDiv[dk].forEach(function(r){ %><option value="<%= r.key %>"><%= r.label %></option><% }); %></select>
+                </label>
+              <% } }); %>
+            </div>
           </div>
           <div><button class="btn btn-solid" type="submit">Create account</button></div>
         </form>
       </div>
     </section>
 
-    <div class="staff-list">
+    <div class="staff-filters">
+      <label class="field field-sm">Division
+        <select id="f-division"><option value="">All divisions</option><% divisions.forEach(function(d){ %><option value="<%= d.key %>"><%= d.label %></option><% }); %></select>
+      </label>
+      <label class="field field-sm">Rank
+        <select id="f-rank"><option value="">All ranks</option><% Object.keys(ranksByDiv).forEach(function(dk){ ranksByDiv[dk].forEach(function(r){ %><option value="<%= r.label %>"><%= r.label %></option><% }); }); %></select>
+      </label>
+      <label class="field field-sm">Search<input type="text" id="f-q" placeholder="Username…" autocomplete="off" /></label>
+      <span class="muted small staff-count" id="staffCount"></span>
+    </div>
+
+    <div class="staff-list" id="staffList">
       <% users.forEach(function (u) { var have=(u.divisions||'').split(',').filter(Boolean); %>
-        <div class="staff-card <%= u.suspended ? 'is-suspended' : '' %>">
+        <div class="staff-card <%= u.suspended ? 'is-suspended' : '' %>" data-divs="<%= (u.role==='admin'?'management,moderation,sid,osc':have.join(',')) %>" data-ranks="<%= (u.rankLabels||[]).join('|') %>" data-name="<%= u.username.toLowerCase() %>">
           <div class="staff-head">
-            <div class="staff-avatar" aria-hidden="true"><%= (u.username||'?').slice(0,1).toUpperCase() %></div>
+            <div class="staff-avatar" aria-hidden="true" data-rbx-avatar="<%= u.username %>"><%= (u.username||'?').slice(0,1).toUpperCase() %></div>
             <div class="staff-id">
               <div class="staff-name"><%= u.username %>
                 <% if (u.id === user.id) { %><span class="badge">you</span><% } %>
@@ -50,29 +80,27 @@
             </div>
             <div class="staff-facts">
               <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>
-              <div class="staff-fact"><span class="fact-label">Divisions</span><span class="fact-val"><%= u.role==='admin' ? 'All' : (have.length ? have.join(', ') : '—') %></span></div>
-              <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val"><% if (u.last_login) { %><time data-time="<%= u.last_login %>"><%= u.last_login.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
+              <div class="staff-fact"><span class="fact-label">Divisions</span><span class="fact-val"><%= u.role==='admin' ? 'All' : (have.length ? have.map(function(d){return divLabel[d]||d;}).join(', ') : '—') %></span></div>
               <div class="staff-fact"><span class="fact-label">Last seen</span><span class="fact-val"><% if (u.last_seen) { %><time data-time="<%= u.last_seen %>"><%= u.last_seen.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
-              <div class="staff-fact"><span class="fact-label">Doc views</span><span class="fact-val mono"><%= u.doc_views %></span></div>
               <% if (u.rankLabels && u.rankLabels.length) { %><div class="staff-fact"><span class="fact-label">Ranks</span><span class="fact-val"><% u.rankLabels.forEach(function(rl){ %><span class="badge badge-internal"><%= rl %></span> <% }); %></span></div><% } %>
             </div>
           </div>
 
           <div class="staff-actions">
-            <a class="btn btn-ghost btn-sm" href="/admin/staff/activity?id=<%= u.id %>"><%- icon('chart') %> Activity</a>
+            <a class="btn btn-ghost btn-sm" href="/admin/staff/overview?id=<%= u.id %>"><%- icon('users') %> Overview</a>
             <button class="btn btn-ghost btn-sm" type="button" data-panel="access-<%= u.id %>"><%- icon('edit') %> Edit access</button>
-            <button class="btn btn-ghost btn-sm" type="button" data-panel="pw-<%= u.id %>">Reset password</button>
-            <% if (u.id !== user.id) { %>
-              <form method="post" action="/admin/staff/suspend" class="inline"
-                <% if (!u.suspended) { %>data-confirm="Suspend <%= u.username %>? They will immediately lose all access until reinstated." data-confirm-title="Suspend account" data-confirm-ok="Suspend"<% } %>>
-                <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" /><input type="hidden" name="suspend" value="<%= u.suspended ? '0' : '1' %>" />
-                <button class="btn btn-ghost btn-sm <%= u.suspended ? '' : 'danger' %>" type="submit"><%= u.suspended ? 'Reinstate' : 'Suspend' %></button>
-              </form>
-              <form method="post" action="/admin/staff/delete" class="inline"
-                data-confirm="Delete <%= u.username %>? This permanently removes the account and cannot be undone." data-confirm-title="Delete account" data-confirm-ok="Delete account">
-                <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
-                <button class="btn btn-ghost btn-sm danger" type="submit">Delete</button>
-              </form>
+            <% if (canAdminActions) { %>
+              <button class="btn btn-ghost btn-sm" type="button" data-panel="pw-<%= u.id %>">Reset password</button>
+              <% if (u.id !== user.id) { %>
+                <form method="post" action="/admin/staff/suspend" class="inline" <% if (!u.suspended) { %>data-confirm="Suspend <%= u.username %>? They will immediately lose all access until reinstated." data-confirm-title="Suspend account" data-confirm-ok="Suspend"<% } %>>
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" /><input type="hidden" name="suspend" value="<%= u.suspended ? '0' : '1' %>" />
+                  <button class="btn btn-ghost btn-sm <%= u.suspended ? '' : 'danger' %>" type="submit"><%= u.suspended ? 'Reinstate' : 'Suspend' %></button>
+                </form>
+                <form method="post" action="/admin/staff/delete" class="inline" data-confirm="Delete <%= u.username %>? This permanently removes the account and cannot be undone." data-confirm-title="Delete account" data-confirm-ok="Delete account">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
+                  <button class="btn btn-ghost btn-sm danger" type="submit">Delete</button>
+                </form>
+              <% } %>
             <% } %>
           </div>
 
@@ -81,34 +109,26 @@
               <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
               <div class="access-grid">
                 <label class="field field-sm">Role
-                  <select name="role" class="role-sel">
+                  <select name="role" class="role-sel" <%= !isAdmin && u.role==='admin' ? 'disabled' : '' %>>
                     <option value="staff" <%= u.role==='staff'?'selected':'' %>>Staff</option>
-                    <option value="editor" <%= u.role==='editor'?'selected':'' %>>Editor</option>
-                    <option value="admin" <%= u.role==='admin'?'selected':'' %>>Admin</option>
+                    <% if (canGrantEditor || u.role==='editor') { %><option value="editor" <%= u.role==='editor'?'selected':'' %>>Editor</option><% } %>
+                    <% if (isAdmin || u.role==='admin') { %><option value="admin" <%= u.role==='admin'?'selected':'' %> <%= isAdmin?'':'disabled' %>>Admin</option><% } %>
                   </select>
                 </label>
                 <div class="field div-picker">
-                  <span class="field-label">Dashboard ranks</span>
+                  <span class="field-label">Ranks</span>
                   <div class="rank-row">
-                    <label class="rank-field">Moderation
-                      <select name="rank_moderation">
-                        <option value="">— None —</option>
-                        <% ranksByDiv.moderation.forEach(function (r) { %><option value="<%= r.key %>" <%= u.rankMod===r.key?'selected':'' %>><%= r.label %></option><% }); %>
-                      </select>
-                    </label>
-                    <label class="rank-field">SID
-                      <select name="rank_sid">
-                        <option value="">— None —</option>
-                        <% ranksByDiv.sid.forEach(function (r) { %><option value="<%= r.key %>" <%= u.rankSID===r.key?'selected':'' %>><%= r.label %></option><% }); %>
-                      </select>
-                    </label>
+                    <% ['moderation','sid','management','osc'].forEach(function(dk){ if (ranksByDiv[dk] && ranksByDiv[dk].length && (canGovern(dk) || isAdmin)) { var cur = dk==='moderation'?u.rankMod:(dk==='sid'?u.rankSID:(dk==='management'?u.rankMgmt:u.rankOSC)); %>
+                      <label class="rank-field"><%= divLabel[dk] %>
+                        <select name="rank_<%= dk %>"><option value="">— None —</option><% ranksByDiv[dk].forEach(function(r){ var dis = !isAdmin && r.key==='lead_inv'; %><option value="<%= r.key %>" <%= cur===r.key?'selected':'' %> <%= dis?'disabled':'' %>><%= r.label %></option><% }); %></select>
+                      </label>
+                    <% } }); %>
                   </div>
-                  <span class="muted small">Ranks apply only if the matching division is enabled below. Junior ranks require senior approval for their logs.</span>
                 </div>
                 <div class="field div-picker">
                   <span class="field-label">Divisions</span>
                   <div class="chk-row">
-                    <% divisions.forEach(function (d) { %><label class="chk"><input type="checkbox" name="divisions" value="<%= d.key %>" <%= have.includes(d.key)?'checked':'' %> /> <%= d.label %></label><% }); %>
+                    <% divisions.forEach(function (d) { var dis = !canGovern(d.key); %><label class="chk <%= dis?'chk-disabled':'' %>"><input type="checkbox" name="divisions" value="<%= d.key %>" <%= have.includes(d.key)?'checked':'' %> <%= dis?'disabled':'' %> /> <%= d.label %></label><% }); %>
                   </div>
                 </div>
               </div>
@@ -116,6 +136,7 @@
             </form>
           </div>
 
+          <% if (canAdminActions) { %>
           <div class="staff-panel" id="pw-<%= u.id %>" hidden>
             <form method="post" action="/admin/staff/password" class="pw-form">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
@@ -123,32 +144,60 @@
               <button class="btn btn-solid btn-sm" type="submit">Set password</button>
             </form>
           </div>
+          <% } %>
         </div>
       <% }); %>
     </div>
+    <p class="muted small" id="staffEmpty" hidden style="padding:16px">No staff match your filters.</p>
   </main>
 </div>
 <script>
-  (function () {
-    var addBtn = document.getElementById('addToggle'), addPanel = document.getElementById('addPanel');
-    addBtn.addEventListener('click', function () { addPanel.hidden = !addPanel.hidden; });
-    var role = document.getElementById('roleSelect'), picker = document.getElementById('divisionPicker');
-    function sync() { picker.style.display = (role.value === 'staff' || role.value === 'editor') ? '' : 'none'; }
-    role.addEventListener('change', sync); sync();
-    // per-card panel toggles (only one open per card)
-    document.querySelectorAll('[data-panel]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var el = document.getElementById(b.getAttribute('data-panel'));
-        var card = b.closest('.staff-card');
-        card.querySelectorAll('.staff-panel').forEach(function (p) { if (p !== el) p.hidden = true; });
-        el.hidden = !el.hidden;
-      });
+(function () {
+  var addBtn = document.getElementById('addToggle'), addPanel = document.getElementById('addPanel');
+  addBtn.addEventListener('click', function () { addPanel.hidden = !addPanel.hidden; });
+  var role = document.getElementById('roleSelect'), picker = document.getElementById('divisionPicker'), newRanks = document.getElementById('newRanks');
+  function sync() { var show = role.value === 'staff' || role.value === 'editor'; picker.style.display = show ? '' : 'none'; if (newRanks) newRanks.style.display = show ? '' : 'none'; }
+  if (role) { role.addEventListener('change', sync); sync(); }
+  document.querySelectorAll('[data-panel]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var el = document.getElementById(b.getAttribute('data-panel'));
+      var card = b.closest('.staff-card');
+      card.querySelectorAll('.staff-panel').forEach(function (p) { if (p !== el) p.hidden = true; });
+      el.hidden = !el.hidden;
     });
-    document.querySelectorAll('.access-form').forEach(function (f) {
-      var sel = f.querySelector('.role-sel'), dp = f.querySelector('.div-picker');
-      function s() { dp.style.display = (sel.value === 'staff' || sel.value === 'editor') ? '' : 'none'; }
-      sel.addEventListener('change', s); s();
+  });
+  // filters
+  var fd = document.getElementById('f-division'), fr = document.getElementById('f-rank'), fq = document.getElementById('f-q');
+  function applyFilters() {
+    var d = fd.value, rk = fr.value, q = (fq.value || '').toLowerCase().trim(), shown = 0;
+    document.querySelectorAll('#staffList .staff-card').forEach(function (c) {
+      var ok = (!d || (c.getAttribute('data-divs') || '').split(',').indexOf(d) !== -1)
+        && (!rk || (c.getAttribute('data-ranks') || '').split('|').indexOf(rk) !== -1)
+        && (!q || (c.getAttribute('data-name') || '').indexOf(q) !== -1);
+      c.style.display = ok ? '' : 'none'; if (ok) shown++;
     });
-  })();
+    document.getElementById('staffCount').textContent = shown + ' shown';
+    document.getElementById('staffEmpty').hidden = shown > 0;
+  }
+  [fd, fr, fq].forEach(function (el) { if (el) el.addEventListener('input', applyFilters); });
+  applyFilters();
+  // roblox username autocomplete on the create form
+  var uName = document.getElementById('new-username');
+  if (uName) {
+    var box = uName.parentNode.querySelector('.rbx-suggest'), t;
+    uName.addEventListener('input', function () {
+      clearTimeout(t); var q = uName.value.trim(); if (q.length < 2) { box.hidden = true; return; }
+      t = setTimeout(function () {
+        fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.data || !d.data.length) { box.hidden = true; return; }
+          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + u.name + '"><strong>' + u.name + '</strong> <span class="muted">' + u.displayName + '</span></div>'; }).join('');
+          box.hidden = false;
+        }).catch(function () {});
+      }, 250);
+    });
+    box.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); uName.value = o.getAttribute('data-name'); box.hidden = true; } });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search')) box.hidden = true; });
+  }
+})();
 </script>
 <%- include('../partials/foot') %>

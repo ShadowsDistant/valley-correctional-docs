@@ -238,6 +238,24 @@
   Array.prototype.forEach.call(document.querySelectorAll('[data-time]'), fillTime);
   window.fillTimes = function () { Array.prototype.forEach.call(document.querySelectorAll('[data-time]'), fillTime); };
 
+  // ---------- roblox headshot avatars ----------
+  // Any [data-rbx-avatar="username"] element gets the user's Roblox headshot as
+  // a background image (falls back to the existing initial). Batched in one call.
+  (function () {
+    var els = Array.prototype.slice.call(document.querySelectorAll('[data-rbx-avatar]'));
+    if (!els.length) return;
+    var names = {}; els.forEach(function (el) { var n = (el.getAttribute('data-rbx-avatar') || '').trim(); if (n) names[n.toLowerCase()] = n; });
+    var list = Object.values(names); if (!list.length) return;
+    fetch('/api/roblox-thumbs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: list }) })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok || !d.avatars) return;
+        els.forEach(function (el) {
+          var url = d.avatars[(el.getAttribute('data-rbx-avatar') || '').toLowerCase()];
+          if (url) { el.style.backgroundImage = 'url("' + url + '")'; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center'; el.classList.add('has-rbx'); }
+        });
+      }).catch(function () {});
+  })();
+
   // ---------- TOC scrollspy ----------
   var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
   if (tocLinks.length && 'IntersectionObserver' in window) {

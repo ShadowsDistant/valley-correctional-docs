@@ -19,7 +19,7 @@
 
   // ---------------------------------------------------------------- select
   function enhanceSelect(sel) {
-    if (sel.multiple || sel.dataset.enhanced || sel.closest('.cselect')) return;
+    if (sel.multiple || sel.dataset.enhanced || sel.dataset.noEnhance !== undefined || sel.closest('.cselect')) return;
     sel.dataset.enhanced = '1';
 
     var wrap = document.createElement('div'); wrap.className = 'cselect';

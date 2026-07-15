@@ -38,8 +38,9 @@
       <div class="panel-head"><h2><%- icon('shield') %> Log a punishment</h2></div>
       <form method="post" action="/dashboard/punishment" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-        <label class="field">Offense preset <small>(auto-escalates on repeat)</small>
-          <select class="preset-sel" id="pun-preset"><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= p.type || '' %>" data-reason="<%= p.reason %>" data-escalate='<%= JSON.stringify(p.escalate||[]) %>'><%= p.label %></option><% }); %></select>
+        <label class="field">Offense preset <small>(auto-escalates on repeat · right-click a preset for the handbook)</small>
+          <select class="preset-sel" id="pun-preset" data-no-enhance><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= (p.escalate&&p.escalate[0]&&p.escalate[0].type)||p.type||'' %>" data-reason="<%= p.reason %>" data-hb="<%= p.hb || '' %>" data-escalate='<%= JSON.stringify(p.escalate||[]) %>'><%= p.label %></option><% }); %></select>
+          <a href="#" class="hb-link" id="pun-hb" hidden><%- icon('book') %> Open handbook section</a>
         </label>
         <div class="field-grid">
           <div class="field">Roblox username
@@ -53,7 +54,7 @@
         </div>
         <div class="rbx-card" id="rbx-card" hidden></div>
         <div class="escalate-note" id="escalate-note" hidden></div>
-        <label class="field">Reason<input type="text" name="reason" id="pun-reason" required placeholder="What happened" autocomplete="off" /></label>
+        <label class="field">Reason<textarea name="reason" id="pun-reason" required placeholder="What happened — include context" rows="3" class="reason-ta"></textarea></label>
         <div class="evidence-row">
           <label class="field">Evidence <small>(link or file)</small><input type="text" name="evidence" class="ev-input" placeholder="https://… or attach" autocomplete="off" /></label>
           <div class="ev-upload"><input type="file" class="ev-file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" hidden /><button type="button" class="btn btn-ghost btn-sm ev-attach"><%- icon('files') %> Attach</button><span class="ev-status muted small"></span></div>
@@ -96,8 +97,9 @@
       <form method="post" action="/dashboard/infraction" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="mandatory" id="inf-mandatory" value="0" />
-        <label class="field">Violation preset
-          <select class="preset-sel" id="inf-preset"><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.label %>" data-reason="<%= p.reason %>" data-points="<%= p.points %>" data-mandatory="<%= p.mandatory?1:0 %>"><%= p.label %> (<%= p.mandatory ? 'mandatory term.' : p.points+'pt' %>)</option><% }); %></select>
+        <label class="field">Violation preset <small>(right-click for the handbook)</small>
+          <select class="preset-sel" id="inf-preset" data-no-enhance><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.label %>" data-reason="<%= p.reason %>" data-points="<%= p.points %>" data-mandatory="<%= p.mandatory?1:0 %>" data-hb="<%= p.hb || '' %>"><%= p.label %> (<%= p.mandatory ? 'mandatory term.' : p.points+'pt' %>)</option><% }); %></select>
+          <a href="#" class="hb-link" id="inf-hb" hidden><%- icon('book') %> Open handbook section</a>
         </label>
         <div class="field-grid">
           <label class="field">Staff member
@@ -108,7 +110,7 @@
             <select name="points" id="inf-points"><% for (var i=1;i<=6;i++){ %><option value="<%= i %>"><%= i %> pt<%= i>1?'s':'' %></option><% } %></select>
           </label>
         </div>
-        <label class="field">Reason<input type="text" name="reason" id="inf-reason" required placeholder="What happened" autocomplete="off" /></label>
+        <label class="field">Reason<textarea name="reason" id="inf-reason" required placeholder="What happened — include context" rows="3" class="reason-ta"></textarea></label>
         <div class="evidence-row">
           <label class="field">Evidence <small>(link or file)</small><input type="text" name="evidence" class="ev-input" placeholder="https://… or attach" autocomplete="off" /></label>
           <div class="ev-upload"><input type="file" class="ev-file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" hidden /><button type="button" class="btn btn-ghost btn-sm ev-attach"><%- icon('files') %> Attach</button><span class="ev-status muted small"></span></div>
@@ -150,7 +152,7 @@
       <p class="muted small" style="margin:-4px 0 12px">Search a user by name (staff names are their Roblox names) to see their full punishment and infraction history.</p>
       <div class="dash-search" style="margin-bottom:16px">
         <%- icon('search') %>
-        <input type="text" id="file-input" placeholder="Roblox / staff username…" autocomplete="off" />
+        <div class="rbx-search" style="flex:1"><input type="text" id="file-input" placeholder="Roblox / staff username…" autocomplete="off" style="width:100%;background:none;border:none;outline:none;color:var(--text);font:inherit" /><div class="rbx-suggest" id="file-suggest" hidden></div></div>
         <button class="btn btn-solid btn-sm" id="file-go" type="button">Open file</button>
       </div>
       <div id="file-result"></div>
@@ -191,6 +193,9 @@
 <script>
 (function () {
   function esc(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+  function ago(t){var s=Math.max(0,(Date.now()-new Date(String(t).replace(' ','T')+'Z'))/1000);if(s<60)return Math.floor(s)+'s';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';return Math.floor(s/86400)+'d';}
+  var CSRF = (document.querySelector('input[name=_csrf]')||{}).value || '';
+
   // tabs
   var tabs = document.getElementById('dashTabs');
   if (tabs) tabs.addEventListener('click', function (e) {
@@ -199,20 +204,36 @@
     document.querySelectorAll('.dash-tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== b.getAttribute('data-tab'); });
   });
 
-  // moderation preset (with escalation ladder)
+  // right-click / link -> open the handbook section for the selected preset
+  function wireHandbook(selId, linkId) {
+    var sel = document.getElementById(selId), link = document.getElementById(linkId);
+    if (!sel) return;
+    function hb() { var o = sel.options[sel.selectedIndex]; return o ? o.getAttribute('data-hb') : ''; }
+    function upd() { var h = hb(); if (link) { link.hidden = !h; if (h) link.href = h; } }
+    sel.addEventListener('change', upd);
+    sel.addEventListener('contextmenu', function (e) { var h = hb(); if (h) { e.preventDefault(); window.open(h, '_blank'); } });
+    if (link) link.addEventListener('click', function (e) { if (!hb()) e.preventDefault(); });
+    upd();
+  }
+  wireHandbook('pun-preset', 'pun-hb');
+  wireHandbook('inf-preset', 'inf-hb');
+
+  // moderation preset (escalation ladder of {type,duration})
   var priorCount = 0;
   var punPreset = document.getElementById('pun-preset');
+  function ladderOf() { try { return JSON.parse(punPreset.options[punPreset.selectedIndex].getAttribute('data-escalate') || '[]'); } catch (e) { return []; } }
   function applyPunPreset() {
-    if (!punPreset || !punPreset.value && !punPreset.options[punPreset.selectedIndex].getAttribute('data-escalate')) return;
+    if (!punPreset) return;
     var opt = punPreset.options[punPreset.selectedIndex];
     var reason = opt.getAttribute('data-reason'); if (reason) document.getElementById('pun-reason').value = reason;
-    var ladder = []; try { ladder = JSON.parse(opt.getAttribute('data-escalate') || '[]'); } catch (e) {}
-    var note = document.getElementById('escalate-note');
+    var ladder = ladderOf(), note = document.getElementById('escalate-note');
+    var durEl = document.querySelector('#pun-preset').closest('form').querySelector('[name=duration]');
     if (ladder.length) {
-      var idx = Math.min(priorCount, ladder.length - 1);
-      document.getElementById('pun-type').value = ladder[idx];
+      var idx = Math.min(priorCount, ladder.length - 1), step = ladder[idx];
+      document.getElementById('pun-type').value = step.type;
+      if (durEl) durEl.value = step.duration || '';
       note.hidden = false;
-      note.innerHTML = 'Auto-escalated to <strong>' + esc(ladder[idx]) + '</strong> (' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '). Ladder: ' + ladder.map(esc).join(' → ');
+      note.innerHTML = 'Auto-escalated to <strong>' + esc(step.type) + (step.duration ? ' (' + esc(step.duration) + ')' : '') + '</strong> — ' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '. Ladder: ' + ladder.map(function (s) { return esc(s.type) + (s.duration ? ' ' + esc(s.duration) : ''); }).join(' → ');
     } else if (opt.value) { document.getElementById('pun-type').value = opt.value; note.hidden = true; }
     else note.hidden = true;
   }
@@ -229,39 +250,53 @@
     document.getElementById('inf-mandatory').value = opt.getAttribute('data-mandatory') || '0';
   });
 
-  // Roblox autocomplete + lookup
-  var rbxName = document.getElementById('rbx-name');
-  if (rbxName) {
-    var box = document.querySelector('.rbx-suggest'), t;
-    function pick(name) {
-      rbxName.value = name; box.hidden = true;
-      fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
-        var card = document.getElementById('rbx-card');
-        if (!d.ok) { card.hidden = false; card.innerHTML = '<span class="muted">No Roblox user found.</span>'; return; }
-        document.getElementById('rbx-id').value = d.id;
-        priorCount = d.priorPunishments || 0;
-        card.hidden = false;
-        card.innerHTML = (d.avatar ? '<img src="' + d.avatar + '" alt="" width="44" height="44" />' : '')
-          + '<div><strong>' + esc(d.displayName) + '</strong> <span class="muted">@' + esc(d.name) + '</span> · <a href="#" class="view-file" data-user="' + esc(d.name) + '">view file</a><br>'
-          + '<span class="muted small">ID ' + d.id + ' · ' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '</span></div>';
-        if (punPreset && punPreset.value !== '') applyPunPreset();
-      }).catch(function () {});
-    }
-    rbxName.addEventListener('input', function () {
-      clearTimeout(t); var q = rbxName.value.trim();
-      if (q.length < 2) { box.hidden = true; return; }
+  // Roblox autocomplete on a field, with race protection + exact fallback.
+  function attachRoblox(input, suggest, onPick) {
+    var t, token = 0;
+    function hide() { suggest.hidden = true; }
+    input.addEventListener('input', function () {
+      clearTimeout(t); var q = input.value.trim();
+      if (q.length < 2) { hide(); return; }
       t = setTimeout(function () {
+        var my = ++token;
         fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
-          if (!d.data || !d.data.length) { box.hidden = true; return; }
-          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></div>'; }).join('');
-          box.hidden = false;
+          if (my !== token) return; // stale
+          var data = (d && d.data) || [];
+          if (!data.length) {
+            // fallback: exact lookup (search hides some moderated names)
+            fetch('/api/roblox/' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (ex) {
+              if (my !== token) return;
+              if (ex && ex.ok) { render([{ name: ex.name, displayName: ex.displayName }]); } else hide();
+            }).catch(hide);
+            return;
+          }
+          render(data);
         }).catch(function () {});
-      }, 250);
+      }, 220);
     });
-    box.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); pick(o.getAttribute('data-name')); } });
-    document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search')) box.hidden = true; });
-    document.addEventListener('click', function (e) { var v = e.target.closest('.view-file'); if (v) { e.preventDefault(); openFile(v.getAttribute('data-user')); } });
+    function render(data) {
+      suggest.innerHTML = data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></div>'; }).join('');
+      suggest.hidden = false;
+    }
+    suggest.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); input.value = o.getAttribute('data-name'); hide(); onPick(o.getAttribute('data-name')); } });
+    input.addEventListener('blur', function () { setTimeout(hide, 150); });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search') || (!suggest.contains(e.target) && e.target !== input)) hide(); });
   }
+
+  var rbxName = document.getElementById('rbx-name');
+  if (rbxName) attachRoblox(rbxName, rbxName.parentNode.querySelector('.rbx-suggest'), function (name) {
+    fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
+      var card = document.getElementById('rbx-card');
+      if (!d.ok) { card.hidden = false; card.innerHTML = '<span class="muted">No Roblox user found.</span>'; return; }
+      document.getElementById('rbx-id').value = d.id; priorCount = d.priorPunishments || 0;
+      card.hidden = false;
+      card.innerHTML = (d.avatar ? '<img src="' + d.avatar + '" alt="" width="44" height="44" />' : '')
+        + '<div><strong>' + esc(d.displayName) + '</strong> <span class="muted">@' + esc(d.name) + '</span> · <a href="#" class="view-file" data-user="' + esc(d.name) + '">view file</a><br>'
+        + '<span class="muted small">ID ' + d.id + ' · ' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '</span></div>';
+      if (punPreset && punPreset.value !== '') applyPunPreset();
+    }).catch(function () {});
+  });
+  document.addEventListener('click', function (e) { var v = e.target.closest('.view-file'); if (v) { e.preventDefault(); openFile(v.getAttribute('data-user')); } });
 
   // evidence upload
   document.querySelectorAll('.ev-upload').forEach(function (wrap) {
@@ -284,7 +319,7 @@
     });
   });
 
-  // user file lookup
+  // user file lookup (+ roblox dropdown)
   function openFile(name) {
     if (tabs) { tabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === 'file'); }); document.querySelectorAll('.dash-tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== 'file'; }); }
     var inp = document.getElementById('file-input'); if (inp) inp.value = name;
@@ -295,16 +330,55 @@
     fetch('/api/user-file?user=' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) { out.innerHTML = '<p class="muted">No file found.</p>'; return; }
       var html = '<div class="file-head"><strong>' + esc(d.user) + '</strong> · <span class="pill pill-' + (d.points >= 3 ? 'red' : 'grey') + '">' + d.points + ' pts (6mo)</span></div>';
-      html += '<h3 class="file-h">Punishments (' + d.punishments.length + ')</h3>';
-      html += d.punishments.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span></td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
-      html += '<h3 class="file-h">Infractions (' + d.infractions.length + ')</h3>';
-      html += d.infractions.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      html += '<h3 class="file-h">Punishments (' + (d.punishments || []).length + ')</h3>';
+      html += (d.punishments || []).length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span></td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      html += '<h3 class="file-h">Infractions (' + (d.infractions || []).length + ')</h3>';
+      html += (d.infractions || []).length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
       out.innerHTML = html;
     }).catch(function () { out.innerHTML = '<p class="muted">Lookup failed.</p>'; });
   }
-  var fileGo = document.getElementById('file-go');
-  if (fileGo) { fileGo.addEventListener('click', function () { var v = document.getElementById('file-input').value.trim(); if (v) loadFile(v); });
-    document.getElementById('file-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); fileGo.click(); } }); }
+  var fileInput = document.getElementById('file-input'), fileGo = document.getElementById('file-go');
+  if (fileInput) attachRoblox(fileInput, document.getElementById('file-suggest'), function (name) { loadFile(name); });
+  if (fileGo) { fileGo.addEventListener('click', function () { var v = fileInput.value.trim(); if (v) loadFile(v); });
+    fileInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); fileGo.click(); } }); }
+
+  // ---------- realtime updates ----------
+  function timeCell(ts) { return '<time data-time="' + esc(ts) + '">' + esc(String(ts).slice(0, 16)) + '</time>'; }
+  function punRow(p) {
+    var pill = /ban/i.test(p.type) ? 'red' : (p.type === 'Note' ? 'grey' : 'amber');
+    return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td class="mono small">' + esc(p.roblox_user) + (p.roblox_id ? ' <span class="muted">#' + esc(p.roblox_id) + '</span>' : '') + '</td>'
+      + '<td><span class="pill pill-' + pill + '">' + esc(p.type) + '</span>' + (p.duration ? ' <span class="muted small">' + esc(p.duration) + '</span>' : '') + '</td>'
+      + '<td class="small">' + esc(p.reason) + (p.evidence ? ' <a href="' + esc(p.evidence) + '" target="_blank" rel="noopener" class="ev-link">evidence</a>' : '') + '</td>'
+      + '<td class="small">' + esc(p.moderator) + '</td><td class="small nowrap">' + timeCell(p.created_at) + '</td>'
+      + '<td><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against ' + esc(p.roblox_user) + '?" data-confirm-title="Void punishment" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + p.id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td></tr>';
+  }
+  function infRow(f) {
+    var out = f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '—';
+    return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small"><strong>' + esc(f.staff_user) + '</strong></td><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + '</td><td class="small">' + out + '</td><td class="small">' + esc(f.issued_by) + '</td><td class="small nowrap">' + timeCell(f.created_at) + '</td>'
+      + '<td><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against ' + esc(f.staff_user) + '?" data-confirm-title="Void infraction" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + f.id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td></tr>';
+  }
+  var sig = '';
+  function pollLive() {
+    fetch('/api/dashboard/live', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) return;
+      var ns = JSON.stringify([d.punishments && d.punishments.map(function (x) { return x.id; }), d.infractions && d.infractions.map(function (x) { return x.id; }), d.stats && d.stats.pending]);
+      // update stat numbers
+      var cards = document.querySelectorAll('.dash-stats .stat-num');
+      if (cards.length && d.stats) { /* leave counts; light touch */ }
+      if (ns === sig) return; sig = ns;
+      var focusInForm = document.activeElement && document.activeElement.closest && document.activeElement.closest('.dash-form');
+      if (focusInForm) return; // don't disrupt someone typing
+      var pt = document.querySelector('.dash-tabpane[data-pane=mod] tbody');
+      if (pt && d.punishments) pt.innerHTML = d.punishments.length ? d.punishments.map(punRow).join('') : '<tr><td colspan="6" class="muted" style="padding:16px">No active punishments.</td></tr>';
+      var it = document.querySelector('.dash-tabpane[data-pane=sid] tbody');
+      if (it && d.infractions) it.innerHTML = d.infractions.length ? d.infractions.map(infRow).join('') : '<tr><td colspan="7" class="muted" style="padding:16px">No active infractions.</td></tr>';
+      if (window.fillTimes) window.fillTimes();
+      var badge = document.querySelector('.dash-tab[data-tab=pending] .tab-count');
+      if (badge && d.stats) badge.textContent = d.stats.pending;
+    }).catch(function () {});
+  }
+  setInterval(pollLive, 7000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pollLive(); });
 })();
 </script>
 <%- include('partials/foot') %>

@@ -15,11 +15,48 @@
     <div class="admin-titlerow">
       <div>
         <a class="back-link" href="/admin/staff">← Back to staff</a>
-        <h1 class="admin-h1"><span class="staff-avatar sm"><%= (target.username||'?').slice(0,1).toUpperCase() %></span> <%= target.username %></h1>
-        <p class="admin-sub">Document activity — pages visited, when, and estimated time on page. <span class="badge <%= target.role==='admin'?'badge-internal':'' %>"><%= target.role %></span></p>
+        <h1 class="admin-h1"><span class="staff-avatar sm" data-rbx-avatar="<%= target.username %>"><%= (target.username||'?').slice(0,1).toUpperCase() %></span> <%= target.username %></h1>
+        <p class="admin-sub">Staff overview. <span class="badge <%= target.role==='admin'?'badge-internal':'' %>"><%= target.role %></span><% (rankLabels||[]).forEach(function(rl){ %> <span class="badge badge-internal"><%= rl %></span><% }); %><% if (target.terminated) { %> <span class="badge badge-danger">Terminated</span><% } else if (target.suspended) { %> <span class="badge badge-danger">Suspended</span><% } %></p>
       </div>
     </div>
 
+    <!-- Roblox account (extensive) -->
+    <div class="ov-roblox" id="ovRoblox" data-user="<%= target.username %>">
+      <div class="ov-rbx-avatar" data-rbx-avatar="<%= target.username %>"></div>
+      <div class="ov-rbx-info"><div class="roblox-label">Roblox account</div><div class="ov-rbx-name"><strong>@<%= target.username %></strong> <span class="muted small">— loading…</span></div><div class="ov-rbx-meta muted small"></div></div>
+    </div>
+
+    <% if (typeof points === 'number' && points !== null) { %>
+      <div class="ov-points">Disciplinary points (6-month rolling): <span class="pill pill-<%= points>=6?'red':(points>=3?'amber':'grey') %>"><%= points %> pts</span></div>
+    <% } %>
+
+    <!-- Disciplinary records (gated by viewer division access) -->
+    <% if (seeSID && (infReceived || infIssued)) { %>
+      <div class="admin-cols">
+        <section class="panel"><div class="panel-head"><h2>Infractions received (<%= (infReceived||[]).length %>)</h2></div>
+          <% if (!(infReceived||[]).length) { %><p class="muted small">None.</p><% } else { %><div class="table-scroll"><table class="table"><thead><tr><th>Type</th><th class="num">Pts</th><th>Outcome</th><th>By</th><th>When</th></tr></thead><tbody>
+            <% infReceived.forEach(function(f){ %><tr class="<%= f.voided?'row-void':'' %>"><td class="small"><%= f.type %></td><td class="num mono"><%= f.points %></td><td class="small"><% if(f.outcome){ %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } %></td><td class="small"><%= f.issued_by %></td><td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,10) %></time></td></tr><% }); %>
+          </tbody></table></div><% } %></section>
+        <section class="panel"><div class="panel-head"><h2>Infractions issued (<%= (infIssued||[]).length %>)</h2></div>
+          <% if (!(infIssued||[]).length) { %><p class="muted small">None.</p><% } else { %><div class="table-scroll"><table class="table"><thead><tr><th>Staff</th><th class="num">Pts</th><th>Type</th><th>When</th></tr></thead><tbody>
+            <% infIssued.forEach(function(f){ %><tr class="<%= f.voided?'row-void':'' %>"><td class="small"><strong><%= f.staff_user %></strong></td><td class="num mono"><%= f.points %></td><td class="small"><%= f.type %></td><td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,10) %></time></td></tr><% }); %>
+          </tbody></table></div><% } %></section>
+      </div>
+    <% } %>
+    <% if (seeMod && (punReceived || punIssued)) { %>
+      <div class="admin-cols">
+        <section class="panel"><div class="panel-head"><h2>Punishments received (<%= (punReceived||[]).length %>)</h2></div>
+          <% if (!(punReceived||[]).length) { %><p class="muted small">None.</p><% } else { %><div class="table-scroll"><table class="table"><thead><tr><th>Type</th><th>Reason</th><th>By</th><th>When</th></tr></thead><tbody>
+            <% punReceived.forEach(function(p){ %><tr class="<%= p.voided?'row-void':'' %>"><td><span class="pill pill-<%= /ban/i.test(p.type)?'red':'amber' %>"><%= p.type %></span></td><td class="small"><%= p.reason %></td><td class="small"><%= p.moderator %></td><td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,10) %></time></td></tr><% }); %>
+          </tbody></table></div><% } %></section>
+        <section class="panel"><div class="panel-head"><h2>Punishments issued (<%= (punIssued||[]).length %>)</h2></div>
+          <% if (!(punIssued||[]).length) { %><p class="muted small">None.</p><% } else { %><div class="table-scroll"><table class="table"><thead><tr><th>Roblox user</th><th>Type</th><th>When</th></tr></thead><tbody>
+            <% punIssued.forEach(function(p){ %><tr class="<%= p.voided?'row-void':'' %>"><td class="mono small"><%= p.roblox_user %></td><td><span class="pill pill-<%= /ban/i.test(p.type)?'red':'amber' %>"><%= p.type %></span></td><td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,10) %></time></td></tr><% }); %>
+          </tbody></table></div><% } %></section>
+      </div>
+    <% } %>
+
+    <h2 class="ov-section-h">Document activity</h2>
     <div class="stat-grid">
       <div class="stat-card"><span class="stat-num"><%= stats.totalViews %></span><span class="stat-label">Total page views</span></div>
       <div class="stat-card"><span class="stat-num"><%= stats.uniquePages %></span><span class="stat-label">Unique pages</span></div>
@@ -51,4 +88,17 @@
     <p class="muted small">Time on page is estimated from the gap between consecutive views (capped at 15 minutes); the most recent view has no measured duration.</p>
   </main>
 </div>
+<script>
+(function () {
+  var box = document.getElementById('ovRoblox'); if (!box) return;
+  var name = box.getAttribute('data-user');
+  fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
+    var nm = box.querySelector('.ov-rbx-name'), meta = box.querySelector('.ov-rbx-meta');
+    if (!d.ok) { nm.innerHTML = '<strong>@' + name + '</strong> <span class="muted small">— no matching Roblox account</span>'; return; }
+    nm.innerHTML = '<strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span>';
+    meta.innerHTML = 'Roblox ID ' + d.id + ' · <a href="https://www.roblox.com/users/' + d.id + '/profile" target="_blank" rel="noopener">open profile ↗</a>'
+      + (typeof d.priorPunishments === 'number' ? ' · ' + d.priorPunishments + ' prior punishment' + (d.priorPunishments === 1 ? '' : 's') : '');
+  }).catch(function () {});
+})();
+</script>
 <%- include('../partials/foot') %>

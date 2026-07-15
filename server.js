@@ -205,6 +205,7 @@ app.use((req, res, next) => {
   res.locals.assetVersion = ASSET_VERSION;
   res.locals.canManageShifts = auth.canManageShifts(req.session && req.session.user);
   res.locals.canStaffDashboard = auth.canStaffDashboard(req.session && req.session.user);
+  res.locals.canManageStaffNav = auth.canManageStaff(req.session && req.session.user);
   res.locals.canModerate = auth.canModerate(req.session && req.session.user);
   res.locals.canSID = auth.canSID(req.session && req.session.user);
   // Staff-policy agreement state for the first-login / policy-changed gate.
@@ -811,9 +812,29 @@ function parseDivisions(body) {
 }
 // Divisions are meaningful for staff (read access) and editors (edit access).
 const usesDivisions = (role) => role === 'staff' || role === 'editor';
+// Staff page: admins + managers. Managers are scoped to their governed divisions.
+function requireStaffMgr(req, res, next) {
+  if (auth.canManageStaff(req.session && req.session.user)) return next();
+  return res.status(403).render('error', { title: 'Forbidden', heading: '403 — No staff access', message: 'Only administrators and Managers can manage staff accounts.' });
+}
+// Filter a submitted divisions CSV to only those the actor may assign.
+function scopedDivisions(actor, body) {
+  return parseDivisions(body).split(',').filter(Boolean).filter((d) => auth.canAssignDivision(actor, d)).join(',');
+}
+function scopedRanks(actor, body, divisions) {
+  const map = {};
+  const divList = divisions.split(',');
+  ['moderation', 'sid', 'management', 'osc'].forEach((d) => {
+    const key = body['rank_' + d];
+    // management/osc ranks don't require the division checkbox (role-based tiers).
+    const divHeld = (d === 'management' || d === 'osc') ? divList.includes(d) || auth.RANKS[key] : divList.includes(d);
+    if (auth.RANKS[key] && auth.RANKS[key].division === d && divHeld && auth.canAssignRank(actor, key)) map[d] = key;
+  });
+  return Object.keys(map).length ? JSON.stringify(map) : '';
+}
 
-// Staff management (admins only)
-adminRouter.get('/staff', auth.requireAdmin, (req, res) => {
+adminRouter.get('/staff', requireStaffMgr, (req, res) => {
+  const actor = req.session.user;
   const users = db.prepare('SELECT id, username, role, divisions, suspended, terminated, created_at, last_login, last_seen, rank, ranks FROM users ORDER BY id').all();
   const viewCounts = new Map(
     db.prepare('SELECT username, COUNT(*) AS n FROM page_views WHERE username IS NOT NULL GROUP BY username').all()
@@ -824,58 +845,75 @@ adminRouter.get('/staff', auth.requireAdmin, (req, res) => {
     u.rankMod = auth.rankForDivision(u, 'moderation');
     u.rankSID = auth.rankForDivision(u, 'sid');
     u.rankLabels = [u.rankMod, u.rankSID].filter(Boolean).map(auth.rankLabel);
+    u.rankMgmt = auth.rankForDivision(u, 'management');
+    u.rankOSC = auth.rankForDivision(u, 'osc');
+    if (u.rankMgmt) u.rankLabels.push(auth.rankLabel(u.rankMgmt));
+    if (u.rankOSC) u.rankLabels.push(auth.rankLabel(u.rankOSC));
   });
-  const ranksByDiv = { moderation: [], sid: [] };
+  const ranksByDiv = { moderation: [], sid: [], management: [], osc: [] };
   Object.keys(auth.RANKS).forEach((k) => { const r = auth.RANKS[k]; if (ranksByDiv[r.division]) ranksByDiv[r.division].push({ key: k, label: r.label }); });
-  res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS, ranksByDiv });
+  res.render('admin/staff', {
+    title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS, ranksByDiv,
+    governed: auth.governedDivisions(actor), canGrantEditor: auth.canGrantEditor(actor),
+    canAdminActions: auth.canAdminStaffActions(actor), isAdmin: actor.role === 'admin',
+    filter: { division: String(req.query.division || ''), rank: String(req.query.rank || ''), q: String(req.query.q || '') },
+  });
 });
 
-adminRouter.post('/staff/create', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+adminRouter.post('/staff/create', requireStaffMgr, auth.verifyCsrf, (req, res) => {
+  const actor = req.session.user;
   const username = (req.body.username || '').trim();
-  const role = ['admin', 'editor', 'staff'].includes(req.body.role) ? req.body.role : 'staff';
-  const divisions = usesDivisions(role) ? parseDivisions(req.body) : '';
+  let role = ['admin', 'editor', 'staff'].includes(req.body.role) ? req.body.role : 'staff';
+  // Managers may only create 'staff' (or 'editor' if they're a Community Manager).
+  if (actor.role !== 'admin') { if (role === 'admin') role = 'staff'; if (role === 'editor' && !auth.canGrantEditor(actor)) role = 'staff'; }
+  const divisions = usesDivisions(role) ? scopedDivisions(actor, req.body) : '';
+  const ranks = scopedRanks(actor, req.body, divisions);
   const password = req.body.password || '';
   if (!username || password.length < 6) {
-    return res.status(400).render('error', {
-      title: 'Invalid', heading: 'Could not create staff member',
-      message: 'Username is required and password must be at least 6 characters.',
-    });
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Could not create staff member', message: 'Username is required and password must be at least 6 characters.' });
   }
   try {
-    db.prepare('INSERT INTO users (username, password, role, divisions) VALUES (?, ?, ?, ?)')
-      .run(username, auth.hashPassword(password), role, divisions);
-    audit(req.session.user.username, 'user.create', username, role + (divisions ? ' [' + divisions + ']' : ''));
+    db.prepare('INSERT INTO users (username, password, role, divisions, ranks) VALUES (?, ?, ?, ?, ?)')
+      .run(username, auth.hashPassword(password), role, divisions, ranks);
+    audit(actor.username, 'user.create', username, role + (divisions ? ' [' + divisions + ']' : ''));
   } catch (e) {
-    return res.status(400).render('error', {
-      title: 'Invalid', heading: 'Could not create staff member',
-      message: 'That username is already taken.',
-    });
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Could not create staff member', message: 'That username is already taken.' });
   }
   res.redirect('/admin/staff');
 });
 
-// Update a member's role and/or division access.
-adminRouter.post('/staff/access', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+// Update a member's role and/or division access (managers are scoped).
+adminRouter.post('/staff/access', requireStaffMgr, auth.verifyCsrf, (req, res) => {
+  const actor = req.session.user;
   const id = Number(req.body.id);
-  const role = ['admin', 'editor', 'staff'].includes(req.body.role) ? req.body.role : 'staff';
-  const divisions = usesDivisions(role) ? parseDivisions(req.body) : '';
-  if (id === req.session.user.id && role !== 'admin') {
-    return res.status(400).render('error', {
-      title: 'Invalid', heading: 'Cannot demote yourself',
-      message: 'You cannot change your own account out of the admin role.',
-    });
+  const target = db.prepare('SELECT id, username, role, divisions, ranks, rank FROM users WHERE id = ?').get(id);
+  if (!target) return res.redirect('/admin/staff');
+  let role = ['admin', 'editor', 'staff'].includes(req.body.role) ? req.body.role : 'staff';
+  if (actor.role !== 'admin') {
+    // Managers can't set admin, and only Community Managers can set editor.
+    if (role === 'admin') role = target.role === 'admin' ? 'admin' : 'staff';
+    if (role === 'editor' && !auth.canGrantEditor(actor)) role = target.role;
   }
-  // Per-division ranks (only kept for divisions the member actually holds).
-  const rankMap = {};
-  ['moderation', 'sid'].forEach((d) => {
-    const key = req.body['rank_' + d];
-    if (auth.RANKS[key] && auth.RANKS[key].division === d && divisions.split(',').includes(d)) rankMap[d] = key;
-  });
-  const ranksJson = Object.keys(rankMap).length ? JSON.stringify(rankMap) : '';
-  const target = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
+  if (id === actor.id && role !== 'admin' && actor.role === 'admin') {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Cannot demote yourself', message: 'You cannot change your own account out of the admin role.' });
+  }
+  // Divisions: keep the ones the actor can't touch; apply the actor's scoped set.
+  const existingDivs = (target.divisions || '').split(',').filter(Boolean);
+  const keepDivs = existingDivs.filter((d) => !auth.canAssignDivision(actor, d));
+  const newScoped = usesDivisions(role) ? scopedDivisions(actor, req.body).split(',').filter(Boolean) : [];
+  const divisions = Array.from(new Set([...keepDivs, ...newScoped])).join(',');
+  // Ranks: preserve ranks in divisions the actor can't govern; apply scoped ranks.
+  let existingRanks = {}; try { existingRanks = target.ranks ? JSON.parse(target.ranks) : {}; } catch (e) {}
+  const keepRanks = {};
+  Object.keys(existingRanks).forEach((d) => { if (!auth.governedDivisions(actor).includes(d)) keepRanks[d] = existingRanks[d]; });
+  let scoped = {}; try { scoped = JSON.parse(scopedRanks(actor, req.body, divisions) || '{}'); } catch (e) {}
+  const finalRanks = Object.assign({}, keepRanks, scoped);
+  // drop ranks for divisions no longer held
+  Object.keys(finalRanks).forEach((d) => { if (d !== 'management' && d !== 'osc' && !divisions.split(',').includes(d)) delete finalRanks[d]; });
+  const ranksJson = Object.keys(finalRanks).length ? JSON.stringify(finalRanks) : '';
   db.prepare("UPDATE users SET role = ?, divisions = ?, ranks = ?, rank = '' WHERE id = ?").run(role, divisions, ranksJson, id);
-  const rankSummary = Object.values(rankMap).map(auth.rankLabel).join(', ');
-  audit(req.session.user.username, 'user.role', target ? target.username : '#' + id, role + (divisions ? ' [' + divisions + ']' : '') + (rankSummary ? ' · ' + rankSummary : ''));
+  const rankSummary = Object.values(finalRanks).map(auth.rankLabel).join(', ');
+  audit(actor.username, 'user.role', target.username, role + (divisions ? ' [' + divisions + ']' : '') + (rankSummary ? ' · ' + rankSummary : ''));
   res.redirect('/admin/staff');
 });
 
@@ -1036,10 +1074,11 @@ function shiftScheduleMarkdown() {
   return out;
 }
 
-// A staff member's document activity: pages visited, when, and how long. Time
-// on a page is estimated as the gap to their next view (capped at 15 min).
-adminRouter.get('/staff/activity', auth.requireAdmin, (req, res) => {
-  const target = db.prepare('SELECT id, username, role, divisions, last_login, created_at, suspended FROM users WHERE id = ?').get(Number(req.query.id));
+// Staff Overview: Roblox details, disciplinary records (issued + received), and
+// document activity. Record sections are hidden from viewers outside the division.
+function staffOverview(req, res) {
+  const viewer = req.session.user;
+  const target = db.prepare('SELECT id, username, role, divisions, ranks, rank, last_login, last_seen, created_at, suspended, terminated FROM users WHERE id = ?').get(Number(req.query.id));
   if (!target) {
     return res.status(404).render('error', { title: 'Not found', heading: 'Staff member not found', message: 'That account does not exist.' });
   }
@@ -1062,38 +1101,26 @@ adminRouter.get('/staff/activity', auth.requireAdmin, (req, res) => {
     uniquePages: new Set(rowsAsc.map((r) => r.slug || r.path)).size,
     totalTime: items.reduce((a, b) => a + (b.duration || 0), 0),
   };
-  items.reverse(); // newest first
+  items.reverse();
+  // Disciplinary records, gated by the viewer's division visibility.
+  const seeMod = auth.canSeeModRecords(viewer), seeSID = auth.canSeeSIDRecords(viewer);
+  const punReceived = seeMod ? db.prepare('SELECT * FROM punishments WHERE roblox_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 100').all(target.username) : null;
+  const punIssued = seeMod ? db.prepare('SELECT * FROM punishments WHERE moderator = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 100').all(target.username) : null;
+  const infReceived = seeSID ? db.prepare('SELECT * FROM infractions WHERE staff_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 100').all(target.username) : null;
+  const infIssued = seeSID ? db.prepare('SELECT * FROM infractions WHERE issued_by = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 100').all(target.username) : null;
+  const rankLabels = ['moderation', 'sid', 'management', 'osc'].map((d) => auth.rankForDivision(target, d)).filter(Boolean).map(auth.rankLabel);
   res.render('admin/activity', {
-    title: 'Admin · ' + target.username + ' activity',
-    section: 'staff', target, stats, items: items.slice(0, 300),
+    title: 'Overview · ' + target.username, section: 'staff',
+    target, stats, items: items.slice(0, 300),
+    rankLabels, seeMod, seeSID, punReceived, punIssued, infReceived, infIssued,
+    points: seeSID ? staffPoints(target.username) : null,
   });
-});
+}
+adminRouter.get('/staff/overview', requireStaffMgr, staffOverview);
+adminRouter.get('/staff/activity', requireStaffMgr, staffOverview); // legacy alias
 
 // --- staff dashboard (BETA) — Moderation punishments + SID infractions ------
-const PUNISH_TYPES = ['Timeout', 'Discord Kick', 'Discord Ban', 'Discord Warning', 'Game Warning', 'Game Kick', 'Game Ban', 'Note'];
-// Auto-escalating presets: `escalate` is a ladder climbed by the number of the
-// same user's prior active punishments (0 -> [0], 1 -> [1], 2+ -> last).
-const PUNISH_PRESETS = [
-  { label: 'Exploiting / cheating', escalate: ['Game Warning', 'Game Kick', 'Game Ban'], reason: 'Use of exploits or cheats.' },
-  { label: 'RDM / random killing', escalate: ['Game Warning', 'Game Kick', 'Game Ban'], reason: 'Random deathmatch without valid roleplay reason.' },
-  { label: 'Fail roleplay (FRP)', escalate: ['Game Warning', 'Game Kick'], reason: 'Failure to follow roleplay standards (FRP).' },
-  { label: 'Chat spam', escalate: ['Discord Warning', 'Timeout', 'Discord Kick'], reason: 'Spamming in chat.' },
-  { label: 'Toxicity / harassment', escalate: ['Discord Warning', 'Timeout', 'Discord Ban'], reason: 'Toxic behavior or harassment toward members.' },
-  { label: 'Ban evasion', escalate: ['Discord Ban', 'Game Ban'], reason: 'Evading a prior ban on an alternate account.' },
-  { label: 'Behavioral note', type: 'Note', reason: 'Logged for awareness — no action taken.' },
-];
-// SID infractions use the handbook POINT SYSTEM: each carries points; the
-// resulting action is derived from the rolling 6-month total.
-const INFRACTION_PRESETS = [
-  { label: 'Inactivity', points: 1, reason: 'Failure to meet activity requirements.' },
-  { label: 'Minor procedural lapse', points: 1, reason: 'Minor procedural mistake during duties.' },
-  { label: 'Repeated minor issues', points: 2, reason: 'Repeated minor issues after prior warnings.' },
-  { label: 'Moderate conduct violation', points: 3, reason: 'Moderate conduct or policy violation.' },
-  { label: 'Serious conduct failure', points: 4, reason: 'Serious conduct or enforcement failure.' },
-  { label: 'Severe enforcement failure', points: 5, reason: 'Severe enforcement failure.' },
-  { label: 'Disclosure of classified info', points: 6, mandatory: true, reason: 'Disclosure of classified information (mandatory termination).' },
-  { label: 'Retaliation (whistleblower)', points: 6, mandatory: true, reason: 'Retaliation against a whistleblower — Tier 3 (mandatory termination).' },
-];
+const { PUNISH_TYPES, PUNISH_PRESETS, INFRACTION_PRESETS } = require('./lib/dashboard');
 
 // Roblox usernames == staff usernames. Rolling 6-month active point total.
 function staffPoints(staffUser) {
@@ -1123,13 +1150,22 @@ function requireDashboard(req, res, next) {
   return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl || '/dashboard'));
 }
 
-// SID may only infract staff below their authority: not admins, not
-// Management / Oversight members, and not themselves (per handbook scope).
+// SID infraction scope (per chain of command): not themselves, not admins, not
+// the Oversight Committee (SID reports TO the OSC). The Community Manager may
+// only be infracted with Lead Overseer authority. Admins may target anyone.
 function sidTargets(user) {
-  return db.prepare("SELECT username, role, divisions FROM users WHERE suspended=0 AND terminated=0").all()
-    .filter((s) => s.username.toLowerCase() !== user.username.toLowerCase()
-      && s.role !== 'admin'
-      && !(s.divisions || '').split(',').some((d) => d === 'management' || d === 'osc'))
+  const isAdmin = user.role === 'admin';
+  const isLeadOver = auth.userRanks(user).osc === 'lead_over';
+  return db.prepare('SELECT id, username, role, divisions, ranks, rank FROM users WHERE suspended=0 AND terminated=0').all()
+    .filter((s) => {
+      if (s.username.toLowerCase() === user.username.toLowerCase()) return false;
+      if (isAdmin) return s.role !== 'admin';
+      if (s.role === 'admin') return false;
+      if ((s.divisions || '').split(',').includes('osc')) return false;
+      const sr = auth.userRanks(s);
+      if ((sr.management === 'community_mgr' || sr.management === 'asst_community_mgr') && !isLeadOver) return false;
+      return true;
+    })
     .map((s) => s.username).sort();
 }
 
@@ -1211,6 +1247,30 @@ app.get('/api/roblox-search', auth.requireAuth, async (req, res) => {
   } catch (e) { res.json({ ok: false, data: [] }); }
 });
 
+// Batch Roblox headshots by username (staff usernames == Roblox usernames).
+app.post('/api/roblox-thumbs', auth.requireAuth, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let names = (req.body && req.body.usernames) || [];
+  if (!Array.isArray(names)) names = [];
+  names = names.map((n) => String(n || '').slice(0, 60)).filter(Boolean).slice(0, 60);
+  if (!names.length) return res.json({ ok: true, avatars: {} });
+  try {
+    const r = await fetch('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernames: names, excludeBannedUsers: false }),
+    });
+    const j = await r.json();
+    const users = (j && j.data) || [];
+    const byId = new Map(users.map((u) => [u.id, u.requestedUsername || u.name]));
+    if (!users.length) return res.json({ ok: true, avatars: {} });
+    const t = await fetch('https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=' + users.map((u) => u.id).join(',') + '&size=150x150&format=Png&isCircular=false');
+    const tj = await t.json();
+    const avatars = {};
+    (tj && tj.data ? tj.data : []).forEach((d) => { const uname = byId.get(d.targetId); if (uname && d.imageUrl) avatars[uname.toLowerCase()] = d.imageUrl; });
+    res.json({ ok: true, avatars });
+  } catch (e) { res.json({ ok: false, avatars: {} }); }
+});
+
 // Unified user file: a Roblox/staff name's punishments + infractions + points.
 app.get('/api/user-file', requireDashboard, (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -1222,6 +1282,27 @@ app.get('/api/user-file', requireDashboard, (req, res) => {
   const infractions = auth.canSID(u)
     ? db.prepare("SELECT id, type, points, reason, outcome, issued_by, created_at, voided, status FROM infractions WHERE staff_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : [];
   res.json({ ok: true, user: name, punishments, infractions, points: staffPoints(name) });
+});
+
+// Realtime dashboard feed — polled by the page to update lists live.
+app.get('/api/dashboard/live', requireDashboard, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const u = req.session.user;
+  const isMod = auth.canModerate(u), isSID = auth.canSID(u);
+  const out = { ok: true };
+  if (isMod) out.punishments = db.prepare("SELECT id, roblox_user, roblox_id, type, reason, duration, evidence, moderator, created_at, voided FROM punishments WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
+  if (isSID) out.infractions = db.prepare("SELECT id, staff_user, type, points, reason, outcome, evidence, issued_by, created_at, voided FROM infractions WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
+  if (isMod && auth.canApprove(u, 'moderation')) out.pendingPun = db.prepare("SELECT id, roblox_user, type, reason, evidence, moderator, created_at FROM punishments WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
+  if (isSID && auth.canApprove(u, 'sid')) out.pendingInf = db.prepare("SELECT id, staff_user, type, points, reason, evidence, issued_by, created_at FROM infractions WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
+  const cnt = (sql) => db.prepare(sql).get().n;
+  out.stats = {
+    punTotal: cnt("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND status='active'"),
+    pun7: cnt("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND status='active' AND created_at >= datetime('now','-7 days')"),
+    infTotal: cnt("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND status='active'"),
+    inf7: cnt("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND status='active' AND created_at >= datetime('now','-7 days')"),
+    pending: (out.pendingPun ? out.pendingPun.length : 0) + (out.pendingInf ? out.pendingInf.length : 0),
+  };
+  res.json(out);
 });
 
 // Evidence file upload (base64 JSON). Restricted type + size.

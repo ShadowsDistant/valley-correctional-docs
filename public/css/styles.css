@@ -1169,6 +1169,22 @@ time[data-time] { border-bottom: 1px dotted var(--border-2); cursor: help; white
 .roblox-avatar-slot:empty { width: 52px; height: 52px; border-radius: 10px; background: var(--surface); flex: none; }
 .roblox-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 700; }
 .account-record { text-align: left; margin-top: 8px; }
+/* dashboard v4: handbook links, multiline reason, staff filters, overview */
+.hb-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--accent-strong); margin-top: 6px; }
+.hb-link .ic { width: 13px; height: 13px; }
+.reason-ta { width: 100%; resize: vertical; min-height: 62px; font: inherit; font-size: 14px; line-height: 1.5; padding: 10px 12px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--r-sm); outline: none; }
+.reason-ta:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.staff-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.staff-filters .field-sm { min-width: 160px; }
+.staff-count { margin-left: auto; }
+.chk-disabled { opacity: .45; }
+.staff-avatar[data-rbx-avatar].has-rbx, .staff-avatar.sm[data-rbx-avatar].has-rbx { color: transparent; text-shadow: none; }
+.ov-roblox { display: flex; align-items: center; gap: 16px; padding: 16px 18px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); }
+.ov-rbx-avatar { width: 64px; height: 64px; border-radius: 12px; background: var(--surface); flex: none; }
+.ov-rbx-name { font-size: 16px; }
+.ov-rbx-meta { margin-top: 4px; }
+.ov-points { margin: 0 0 18px; font-size: 14px; }
+.ov-section-h { font-size: 16px; margin: 26px 0 12px; }
 
 /* ---------- live analytics ---------- */
 .live-panel { border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }
