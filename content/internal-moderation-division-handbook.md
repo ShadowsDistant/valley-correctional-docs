@@ -155,15 +155,15 @@ Minimum **4 hours** per calendar month. Use `/shiftmanage` in Discord to clock i
 
 ### General & Discord Conduct
 
-:::warning ToS violations require SID escalation
-All confirmed Terms of Service violations on Discord or Roblox must be logged and escalated to SID, even when the moderation action (ban, mute) is already applied. SID maintains the cross-platform reporting record for escalations to Discord Trust & Safety, Roblox moderation, or Valley Prison staff.
+:::danger Any ToS violation is a ban — no exceptions
+Any confirmed violation of Discord's or Roblox's Terms of Service results in a permanent ban **regardless of severity**. Every ToS violation must also be logged and escalated to SID, which maintains the cross-platform reporting record for escalations to Discord Trust & Safety, Roblox moderation, or Valley Prison staff.
 :::
 
 | Violation | First Offense | Second Offense | Third Offense | Severity Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| **ToS Violations (Discord/Roblox)** | Permanent Ban | — | — | High to Zero-Tolerance. Severe violations (CSAM, real-world threats, ban evasion, malware) are immediate permanent bans on first offense. |
+| **ToS Violations (Discord/Roblox)** | Permanent Ban | — | — | Zero-Tolerance. Any confirmed ToS violation is a permanent ban regardless of severity. |
 | **Harassment & Bullying** | Formal Warning & Mute (1–24h) | Temporary Ban (3–7 days) | Permanent Ban | High — severe first offenses may warrant immediate ban |
-| **Disclosure of Classified Info** | Temporary Ban (7–14 days) | Permanent Ban | — | High — malicious leaks = immediate permanent ban |
+| **Disclosure of Classified Info** | Employment Blacklist · possible Permanent Ban (case-by-case) | — | — | Zero-Tolerance. Staff offenders are terminated and permanently employment-blacklisted; a permanent community ban may also be applied case-by-case. |
 | **Sharing PII** | Kick & Formal Warning | Permanent Ban | — | High — escalates with malicious intent |
 | **Profanity as Insult** | Formal Warning & Mute (12h) | Mute (24h) or Temp Ban (3d) | Temp Ban (7+ days) | Medium — context matters |
 | **Spamming / Mass Mentioning** | Formal Warning | Mute (1–12h) | Mute (24h) or Kick | Low |
@@ -181,7 +181,3 @@ All confirmed Terms of Service violations on Discord or Roblox must be logged an
 | **Unauthorized Team Access** | Kick & Formal Warning | Shift Ban (7 days) | Shift Ban (14 days) | Medium |
 | **Forbidden RP Themes** | Kick & Formal Warning | Shift Ban (31 days) | Permanent Ban | High |
 | **Non-Compliance with Staff (OOC)** | Kick from Shift | Shift Ban (14 days) | Permanent Shift Ban | High |
-
-:::details Internal Information
-**Authorized Division(s):** Moderation, SID, Management · **Authorization Personnel:** `somoto96` (Community Manager), `froogydy` (Internal Operations Manager), `shadowsdistant` (Lead Overseer) · **Last Updated:** 4/22/2026
-:::

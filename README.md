@@ -24,7 +24,15 @@ All 20 pages from the original site (public + internal placeholders) are pre-loa
 | Views | EJS server-side templates |
 | Auth | `express-session` + `bcryptjs`, sessions persisted in SQLite |
 | Markdown | `marked` + `sanitize-html` (safe rendering) |
+| Realtime | `yjs` + `ws` — live co-editing in the page editor (WebSocket at `/ws/edit`) |
 | Proxy/TLS | Caddy (automatic Let's Encrypt HTTPS) |
+
+> The browser Yjs bundle is committed at `public/vendor/y.js`. After upgrading
+> `yjs`, rebuild it once with:
+> `npx esbuild scripts/y-entry.js --bundle --minify --format=iife --global-name=YB --outfile=public/vendor/y.js`
+>
+> Behind Cloudflare → Caddy set `TRUST_PROXY=2` in `.env` so rate limits key on
+> the real client IP (two proxy hops).
 
 ---
 

@@ -24,21 +24,49 @@
   document.body.appendChild(wm);
 
   // --- blur shield ---
+  // A real tab-away LOCKS the shield: the page stays blurred until the reader
+  // clicks "I've Returned". Brief defensive blurs (pointer toward OS chrome)
+  // still auto-clear without showing the card.
   var shield = document.createElement('div');
   shield.className = 'blur-shield';
-  shield.textContent = 'Content hidden — return focus to this window to continue reading.';
+  shield.innerHTML = '<div class="shield-card"><span class="shield-ico ic ic-eye"></span><h2>Off-Tab Detected</h2>'
+    + '<p>We’ve detected that you’ve left the tab. In order to prevent screenshots we’ve blurred the page until you return.</p>'
+    + '<button type="button" class="btn btn-solid" id="shieldReturn">I’ve Returned</button></div>';
   document.body.appendChild(shield);
-  var unblurT;
-  function setHidden(hidden) {
+  var unblurT, locked = false, navigatingAway = false;
+  function setHidden(hidden, lock) {
+    if (hidden && navigatingAway) return; // same-site navigation, not a tab-away
+    if (!hidden && locked) return;        // only the button releases a lock
     clearTimeout(unblurT);
+    if (hidden && lock) locked = true;
     doc.classList.toggle('blurred', hidden);
     document.body.classList.toggle('blurred', hidden);
+    shield.classList.toggle('locked', locked);
   }
-  function flashBlur(ms) { setHidden(true); unblurT = setTimeout(function () { setHidden(false); }, ms || 1400); }
+  shield.querySelector('#shieldReturn').addEventListener('click', function () {
+    locked = false;
+    shield.classList.remove('locked');
+    setHidden(false);
+  });
+  function flashBlur(ms) { if (locked) return; setHidden(true); unblurT = setTimeout(function () { setHidden(false); }, ms || 1400); }
 
-  document.addEventListener('visibilitychange', function () { setHidden(document.hidden); });
-  window.addEventListener('blur', function () { setHidden(true); });
-  window.addEventListener('focus', function () { setHidden(false); });
+  // Same-site navigation also fires blur/visibilitychange on the outgoing page —
+  // don't treat leaving via a link/form on our own site as a tab-away.
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (a && a.origin === location.origin && a.target !== '_blank') {
+      navigatingAway = true;
+      setTimeout(function () { navigatingAway = false; }, 3000);
+    }
+  }, true);
+  document.addEventListener('submit', function () {
+    navigatingAway = true;
+    setTimeout(function () { navigatingAway = false; }, 3000);
+  }, true);
+  window.addEventListener('pagehide', function () { navigatingAway = true; });
+
+  document.addEventListener('visibilitychange', function () { if (document.hidden) setHidden(true, true); });
+  window.addEventListener('blur', function () { setHidden(true, true); });
   // pointer leaving toward the top (toward a snipping toolbar / OS chrome)
   document.addEventListener('mouseleave', function (e) { if (e.clientY <= 0) flashBlur(1600); });
   document.addEventListener('mouseout', function (e) { if (!e.relatedTarget && e.clientY <= 2) flashBlur(1600); });

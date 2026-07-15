@@ -30,7 +30,7 @@ Adherence to these principles is non-negotiable for every manager.
 | Executive Role | Jurisdictional Oversight | Executive Authority |
 | :--- | :--- | :--- |
 | **Community Manager** | Moderation, SID, Management | :i[check]: Authorized |
-| **Prison Admin. Manager** | Prison Administration (DoC) | :i[x]: Restricted |
+| **Facility Admin. Manager** | Facility Administration (DoC) | :i[x]: Restricted |
 | **Internal Ops. Manager** | Moderation, SID | :i[x]: Restricted |
 | **Development Manager** | Development Division | :i[x]: Restricted |
 
@@ -50,7 +50,7 @@ Adherence to these principles is non-negotiable for every manager.
 - Verification of operational integrity across all sectors.
 :::
 
-:::details Prison Administration (DoC)
+:::details Facility Administration (DoC)
 - Primary liaison for Department of Corrections operations.
 - Oversight of shift scheduling, host quality control, and server management.
 - End-to-end management of the DoC recruitment and training pipeline.
@@ -145,7 +145,3 @@ When a staff member leaves or is terminated:
 1. **T+0 — Notification** — The managing authority notifies SID, the Oversight Committee, and the Development team.
 2. **T+24 hours — Access Revocation** — All Discord roles, Melonly access, and administrative permissions must be fully revoked within 24 hours.
 3. **T+7 days — Audit Log** — SID conducts a short audit of the departing member's final 30 days of activity to identify any outstanding compliance issues.
-
-:::details Internal Information
-**Authorized Division(s):** Management Division · **Authorization Personnel:** `August_crblx` (Community Manager), `shadowsdistant` (Lead Overseer) · **Last Updated:** 4/22/2026
-:::

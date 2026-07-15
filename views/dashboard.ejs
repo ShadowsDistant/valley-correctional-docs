@@ -27,7 +27,7 @@
     <% if (canModerate) { %><button type="button" class="dash-tab active" data-tab="mod"><%- icon('shield') %> Moderation</button><% } %>
     <% if (canSID) { %><button type="button" class="dash-tab <%= canModerate ? '' : 'active' %>" data-tab="sid"><%- icon('eye') %> SID</button><% } %>
     <button type="button" class="dash-tab" data-tab="file"><%- icon('search') %> User File</button>
-    <% if (canApproveMod || canApproveSID) { %><button type="button" class="dash-tab" data-tab="pending">Pending <% if (stats.pending) { %><span class="tab-count"><%= stats.pending %></span><% } %></button><% } %>
+    <% if (canApproveMod || canApproveSID) { %><button type="button" class="dash-tab" data-tab="pending"><%- icon('clock') %> Pending <% if (stats.pending) { %><span class="tab-count"><%= stats.pending %></span><% } %></button><% } %>
   </div>
 
   <!-- MODERATION -->
@@ -38,7 +38,7 @@
       <div class="panel-head"><h2><%- icon('shield') %> Log a punishment</h2></div>
       <form method="post" action="/dashboard/punishment" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-        <label class="field">Offense preset <small>(auto-escalates on repeat · right-click a preset for the handbook)</small>
+        <label class="field">Offense preset <small>(auto-escalates on repeat)</small>
           <select class="preset-sel" id="pun-preset"><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= (p.escalate&&p.escalate[0]&&p.escalate[0].type)||p.type||'' %>" data-reason="<%= p.reason %>" data-hb="<%= p.hb || '' %>" data-escalate='<%= JSON.stringify(p.escalate||[]) %>'><%= p.label %></option><% }); %></select>
           <a href="#" class="hb-link" id="pun-hb" hidden><%- icon('book') %> Open handbook section</a>
         </label>
@@ -77,7 +77,7 @@
                 <td class="small"><%= p.reason %><% if (p.evidence) { %> <a href="<%= p.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
                 <td class="small"><%= p.moderator %></td>
                 <td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,16) %></time></td>
-                <td><% if (!p.voided) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>?" data-confirm-title="Void punishment" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else { %><span class="badge">voided</span><% } %></td>
+                <td><% if (!p.voided && canVoidPun) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>? A reason is required." data-confirm-title="Void punishment" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (p.voided) { %><span class="badge void-pill" title="<%= p.void_reason || '' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -97,7 +97,7 @@
       <form method="post" action="/dashboard/infraction" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="mandatory" id="inf-mandatory" value="0" />
-        <label class="field">Violation preset <small>(right-click for the handbook)</small>
+        <label class="field">Violation preset
           <select class="preset-sel" id="inf-preset"><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.label %>" data-reason="<%= p.reason %>" data-points="<%= p.points %>" data-mandatory="<%= p.mandatory?1:0 %>" data-hb="<%= p.hb || '' %>"><%= p.label %> (<%= p.mandatory ? 'mandatory term.' : p.points+'pt' %>)</option><% }); %></select>
           <a href="#" class="hb-link" id="inf-hb" hidden><%- icon('book') %> Open handbook section</a>
         </label>
@@ -135,7 +135,7 @@
                 <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
                 <td class="small"><%= f.issued_by %></td>
                 <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></td>
-                <td><% if (!f.voided) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>?" data-confirm-title="Void infraction" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else { %><span class="badge">voided</span><% } %></td>
+                <td><% if (!f.voided && canVoidInf) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>? A reason is required." data-confirm-title="Void infraction" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (f.voided) { %><span class="badge void-pill" title="<%= f.void_reason || '' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -195,23 +195,33 @@
   function esc(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
   function ago(t){var s=Math.max(0,(Date.now()-new Date(String(t).replace(' ','T')+'Z'))/1000);if(s<60)return Math.floor(s)+'s';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';return Math.floor(s/86400)+'d';}
   var CSRF = (document.querySelector('input[name=_csrf]')||{}).value || '';
+  var CAN_VOID_PUN = <%= (typeof canVoidPun !== 'undefined' && canVoidPun) ? 'true' : 'false' %>;
+  var CAN_VOID_INF = <%= (typeof canVoidInf !== 'undefined' && canVoidInf) ? 'true' : 'false' %>;
 
-  // tabs
+  // tabs (with a re-triggered slide-in animation on switch)
   var tabs = document.getElementById('dashTabs');
+  function showTab(name) {
+    if (!tabs) return;
+    tabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
+    document.querySelectorAll('.dash-tabpane').forEach(function (p) {
+      var on = p.getAttribute('data-pane') === name;
+      p.classList.remove('pane-in');
+      p.hidden = !on;
+      if (on) { void p.offsetWidth; p.classList.add('pane-in'); }
+    });
+  }
   if (tabs) tabs.addEventListener('click', function (e) {
     var b = e.target.closest('.dash-tab'); if (!b) return;
-    tabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t === b); });
-    document.querySelectorAll('.dash-tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== b.getAttribute('data-tab'); });
+    showTab(b.getAttribute('data-tab'));
   });
 
-  // right-click / link -> open the handbook section for the selected preset
+  // "Open handbook section" link follows the selected preset
   function wireHandbook(selId, linkId) {
     var sel = document.getElementById(selId), link = document.getElementById(linkId);
     if (!sel) return;
     function hb() { var o = sel.options[sel.selectedIndex]; return o ? o.getAttribute('data-hb') : ''; }
     function upd() { var h = hb(); if (link) { link.hidden = !h; if (h) link.href = h; } }
     sel.addEventListener('change', upd);
-    sel.addEventListener('contextmenu', function (e) { var h = hb(); if (h) { e.preventDefault(); window.open(h, '_blank'); } });
     if (link) link.addEventListener('click', function (e) { if (!hb()) e.preventDefault(); });
     upd();
   }
@@ -277,7 +287,7 @@
       }, 220);
     });
     function render(data) {
-      suggest.innerHTML = data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></div>'; }).join('');
+      suggest.innerHTML = data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></span></div>'; }).join('');
       suggest.hidden = false;
     }
     suggest.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); input.value = o.getAttribute('data-name'); hide(); onPick(o.getAttribute('data-name')); } });
@@ -323,42 +333,93 @@
 
   // user file lookup (+ roblox dropdown)
   function openFile(name) {
-    if (tabs) { tabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === 'file'); }); document.querySelectorAll('.dash-tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== 'file'; }); }
+    showTab('file');
     var inp = document.getElementById('file-input'); if (inp) inp.value = name;
     loadFile(name);
+  }
+  function voidCell(kind, id, who) {
+    if (!(kind === 'pun' ? CAN_VOID_PUN : CAN_VOID_INF)) return '';
+    return ' <button class="btn btn-ghost btn-sm void-btn" type="button" data-void="' + kind + '" data-id="' + id + '" data-who="' + esc(who) + '">Void</button>';
+  }
+  function voidMark(r) {
+    return r.voided ? ' <span class="pill pill-grey void-pill" title="' + esc(r.void_reason || '') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span>' : '';
   }
   function loadFile(name) {
     var out = document.getElementById('file-result'); out.innerHTML = '<p class="muted">Loading…</p>';
     fetch('/api/user-file?user=' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) { out.innerHTML = '<p class="muted">No file found.</p>'; return; }
-      var html = '<div class="file-head"><strong>' + esc(d.user) + '</strong> · <span class="pill pill-' + (d.points >= 3 ? 'red' : 'grey') + '">' + d.points + ' pts (6mo)</span></div>';
-      html += '<h3 class="file-h">Punishments (' + (d.punishments || []).length + ')</h3>';
-      html += (d.punishments || []).length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span></td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
-      html += '<h3 class="file-h">Infractions (' + (d.infractions || []).length + ')</h3>';
-      html += (d.infractions || []).length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      var html = '<div class="file-rbx" id="file-rbx" hidden><div class="file-rbx-avatar"></div><div class="file-rbx-info"></div></div>';
+      html += '<div class="file-head"><strong>' + esc(d.user) + '</strong>' + (d.points != null ? ' · <span class="pill pill-' + (d.points >= 3 ? 'red' : 'grey') + '">' + d.points + ' pts (6mo)</span>' : '') + '</div>';
+      if (d.punishments) {
+        html += '<h3 class="file-h">Punishments (' + d.punishments.length + ')</h3>';
+        html += d.punishments.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span>' + voidMark(p) + '</td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td><td class="num">' + (p.voided ? '' : voidCell('pun', p.id, d.user)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      }
+      if (d.infractions) {
+        html += '<h3 class="file-h">Infractions (' + d.infractions.length + ')</h3>';
+        html += d.infractions.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + voidMark(f) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td><td class="num">' + (f.voided ? '' : voidCell('inf', f.id, d.user)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      }
       out.innerHTML = html;
+      // Roblox account details for the file's subject (hidden until data lands)
+      fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (rb) {
+        if (!rb.ok) return;
+        var card = document.getElementById('file-rbx'); if (!card) return;
+        card.querySelector('.file-rbx-avatar').innerHTML = rb.avatar ? '<img src="' + esc(rb.avatar) + '" alt="" width="56" height="56" />' : '';
+        card.querySelector('.file-rbx-info').innerHTML = '<div class="roblox-label">Roblox account</div><div><strong>' + esc(rb.displayName) + '</strong> <span class="muted">@' + esc(rb.name) + '</span></div>'
+          + '<div class="muted small">ID ' + rb.id + ' · <a href="https://www.roblox.com/users/' + rb.id + '/profile" target="_blank" rel="noopener">open profile ↗</a>'
+          + (typeof rb.priorPunishments === 'number' ? ' · ' + rb.priorPunishments + ' prior punishment' + (rb.priorPunishments === 1 ? '' : 's') : '') + '</div>';
+        card.hidden = false;
+      }).catch(function () {});
     }).catch(function () { out.innerHTML = '<p class="muted">Lookup failed.</p>'; });
   }
   var fileInput = document.getElementById('file-input'), fileGo = document.getElementById('file-go');
   if (fileInput) attachRoblox(fileInput, document.getElementById('file-suggest'), function (name) { loadFile(name); });
   if (fileGo) { fileGo.addEventListener('click', function () { var v = fileInput.value.trim(); if (v) loadFile(v); });
     fileInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); fileGo.click(); } }); }
+  // Deep link: /dashboard?tab=file&open=<name> (used right after logging an action)
+  (function () {
+    var qp = new URLSearchParams(location.search);
+    var open = qp.get('open'), tab = qp.get('tab');
+    if (tab === 'file' && open) openFile(open);
+    else if (tab) showTab(tab);
+  })();
 
   // ---------- realtime updates ----------
   function timeCell(ts) { return '<time data-time="' + esc(ts) + '">' + esc(String(ts).slice(0, 16)) + '</time>'; }
+  function voidFormCell(action, id, msg, allowed, r) {
+    if (r.voided) return '<td><span class="badge void-pill" title="' + esc(r.void_reason || '') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span></td>';
+    if (!allowed) return '<td></td>';
+    return '<td><form method="post" action="' + action + '" class="inline" data-confirm="' + esc(msg) + ' A reason is required." data-confirm-title="Void" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td>';
+  }
   function punRow(p) {
     var pill = /ban/i.test(p.type) ? 'red' : (p.type === 'Note' ? 'grey' : 'amber');
     return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td class="mono small">' + esc(p.roblox_user) + (p.roblox_id ? ' <span class="muted">#' + esc(p.roblox_id) + '</span>' : '') + '</td>'
       + '<td><span class="pill pill-' + pill + '">' + esc(p.type) + '</span>' + (p.duration ? ' <span class="muted small">' + esc(p.duration) + '</span>' : '') + '</td>'
       + '<td class="small">' + esc(p.reason) + (p.evidence ? ' <a href="' + esc(p.evidence) + '" target="_blank" rel="noopener" class="ev-link">evidence</a>' : '') + '</td>'
       + '<td class="small">' + esc(p.moderator) + '</td><td class="small nowrap">' + timeCell(p.created_at) + '</td>'
-      + '<td><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against ' + esc(p.roblox_user) + '?" data-confirm-title="Void punishment" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + p.id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td></tr>';
+      + voidFormCell('/dashboard/punishment/void', p.id, 'Void this punishment against ' + esc(p.roblox_user) + '?', CAN_VOID_PUN, p) + '</tr>';
   }
   function infRow(f) {
     var out = f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '—';
     return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small"><strong>' + esc(f.staff_user) + '</strong></td><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + '</td><td class="small">' + out + '</td><td class="small">' + esc(f.issued_by) + '</td><td class="small nowrap">' + timeCell(f.created_at) + '</td>'
-      + '<td><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against ' + esc(f.staff_user) + '?" data-confirm-title="Void infraction" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + f.id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td></tr>';
+      + voidFormCell('/dashboard/infraction/void', f.id, 'Void this infraction against ' + esc(f.staff_user) + '?', CAN_VOID_INF, f) + '</tr>';
   }
+  // Void from the User File: reason modal, then POST via a synthesized form.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.void-btn'); if (!b) return;
+    var kind = b.getAttribute('data-void'), id = b.getAttribute('data-id'), who = b.getAttribute('data-who');
+    if (!window.vcfConfirm) return;
+    window.vcfConfirm({
+      title: 'Void ' + (kind === 'pun' ? 'punishment' : 'infraction'),
+      message: 'Void this ' + (kind === 'pun' ? 'punishment' : 'infraction') + ' against ' + who + '? A reason is required.',
+      okLabel: 'Void', input: true, inputPlaceholder: 'Why is this being voided?'
+    }, function (reason) {
+      var f = document.createElement('form');
+      f.method = 'post'; f.action = kind === 'pun' ? '/dashboard/punishment/void' : '/dashboard/infraction/void';
+      f.innerHTML = '<input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + esc(id) + '"/><input type="hidden" name="reason"/>';
+      f.querySelector('input[name=reason]').value = reason || '';
+      document.body.appendChild(f); f.submit();
+    });
+  });
   var sig = '';
   function pollLive() {
     fetch('/api/dashboard/live', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {

@@ -1,0 +1,155 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="account-wrap fb-wrap">
+  <div class="account-card">
+    <header class="fb-head">
+      <h1 class="admin-h1">Share Feedback</h1>
+      <p class="admin-sub">Ideas, bug reports, and suggestions for Valley Correctional Facility. Management and Oversight read everything — and if your idea gets implemented and you included your Roblox username, you'll receive the <strong>Contributor</strong> role.</p>
+    </header>
+
+    <div class="profile-grid fb-grid">
+      <section class="panel account-panel">
+        <div class="panel-head"><h2><%- icon('message') %> New feedback</h2></div>
+        <form id="fbForm" class="stack-form">
+          <label class="field">Title
+            <input type="text" id="fb-title" maxlength="120" required placeholder="A short summary" />
+          </label>
+          <label class="field">Description
+            <textarea id="fb-body" class="reason-ta" rows="5" maxlength="4000" required placeholder="What's your idea, or what went wrong?"></textarea>
+          </label>
+          <div class="field">Roblox username <small>(optional — for the Contributor role)</small>
+            <div class="rbx-search"><input type="text" id="fb-roblox" autocomplete="off" placeholder="Start typing…" /><div class="rbx-suggest" id="fb-suggest" hidden></div></div>
+          </div>
+          <div id="fb-error" class="auth-error" hidden><%- icon('danger') %> <span></span></div>
+          <div id="fb-ok" class="account-ok" hidden><%- icon('check') %> <span>Feedback submitted — thank you! It now appears under “Your submissions”.</span></div>
+          <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> Submit feedback</button></div>
+        </form>
+      </section>
+
+      <section class="panel account-panel">
+        <div class="panel-head"><h2><%- icon('files') %> Your submissions</h2></div>
+        <p class="muted small" style="margin:-4px 0 10px">Saved to this device<%= user ? ' and your account' : '' %>. Staff replies appear here.</p>
+        <div id="fb-mine"><p class="muted small">Loading…</p></div>
+      </section>
+    </div>
+
+    <!-- Thread view -->
+    <section class="panel account-panel fb-thread" id="fbThread" hidden>
+      <div class="panel-head"><h2 id="fbThreadTitle">Thread</h2><button class="btn btn-ghost btn-sm" type="button" id="fbThreadClose">Close</button></div>
+      <div class="fb-msgs" id="fbMsgs"></div>
+      <form id="fbReply" class="fb-reply">
+        <textarea class="reason-ta" id="fb-reply-body" rows="2" maxlength="2000" placeholder="Reply to staff…"></textarea>
+        <button class="btn btn-solid btn-sm" type="submit">Send</button>
+      </form>
+      <div id="fb-thread-error" class="auth-error" hidden><%- icon('danger') %> <span></span></div>
+    </section>
+  </div>
+</div>
+<script>
+(function () {
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Device secret: identifies this browser's submissions even when logged out.
+  var token = '';
+  try {
+    token = localStorage.getItem('vcfFbToken') || '';
+    if (!token) {
+      var bytes = new Uint8Array(32); (window.crypto || {}).getRandomValues && crypto.getRandomValues(bytes);
+      token = Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      localStorage.setItem('vcfFbToken', token);
+    }
+  } catch (e) {}
+
+  var statusPill = { open: '<span class="pill pill-amber">Open</span>', approved: '<span class="pill pill-grey" style="color:#22c55e">Approved</span>', rejected: '<span class="pill pill-red">Rejected</span>' };
+  function loadMine() {
+    fetch('/api/feedback/mine?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
+      var box = document.getElementById('fb-mine');
+      if (!d.ok || !d.items.length) { box.innerHTML = '<p class="muted small">No submissions yet.</p>'; return; }
+      box.innerHTML = d.items.map(function (f) {
+        return '<button type="button" class="fb-item" data-id="' + f.id + '">'
+          + '<span class="fb-item-title">' + esc(f.title) + '</span>'
+          + '<span class="fb-item-meta">' + (statusPill[f.status] || '') + ' <span class="muted small">' + f.msgs + ' message' + (f.msgs === 1 ? '' : 's') + (f.last_sender === 'staff' ? ' · <strong>staff replied</strong>' : '') + '</span></span>'
+          + '</button>';
+      }).join('');
+    }).catch(function () {});
+  }
+  loadMine();
+
+  // submit
+  document.getElementById('fbForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var err = document.getElementById('fb-error'), ok = document.getElementById('fb-ok');
+    err.hidden = true; ok.hidden = true;
+    fetch('/api/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: document.getElementById('fb-title').value, body: document.getElementById('fb-body').value, roblox_user: document.getElementById('fb-roblox').value, token: token })
+    }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); }).then(function (x) {
+      if (!x.d.ok) { err.querySelector('span').textContent = x.d.error || 'Submission failed.'; err.hidden = false; return; }
+      ok.hidden = false;
+      document.getElementById('fb-title').value = ''; document.getElementById('fb-body').value = ''; document.getElementById('fb-roblox').value = '';
+      loadMine();
+    }).catch(function () { err.querySelector('span').textContent = 'Submission failed — try again.'; err.hidden = false; });
+  });
+
+  // roblox autocomplete
+  (function () {
+    var input = document.getElementById('fb-roblox'), box = document.getElementById('fb-suggest'), t;
+    input.addEventListener('input', function () {
+      clearTimeout(t);
+      var q = input.value.trim();
+      if (q.length < 2) { box.hidden = true; return; }
+      t = setTimeout(function () {
+        fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok || !d.data.length) { box.hidden = true; return; }
+          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></span></div>'; }).join('');
+          box.hidden = false;
+        }).catch(function () { box.hidden = true; });
+      }, 250);
+    });
+    box.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); input.value = o.getAttribute('data-name'); box.hidden = true; } });
+    input.addEventListener('blur', function () { setTimeout(function () { box.hidden = true; }, 150); });
+  })();
+
+  // thread
+  var openId = null, pollT = null;
+  function loadThread(id, scroll) {
+    fetch('/api/feedback/' + id + '/messages?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) return;
+      openId = id;
+      document.getElementById('fbThread').hidden = false;
+      document.getElementById('fbThreadTitle').innerHTML = esc(d.feedback.title) + ' ' + (statusPill[d.feedback.status] || '');
+      var msgs = document.getElementById('fbMsgs');
+      var html = '<div class="fb-msg is-submitter"><div class="fb-msg-body">' + esc(d.feedback.body) + '</div><div class="fb-msg-meta muted small">you · original submission</div></div>';
+      html += d.messages.map(function (m) {
+        return '<div class="fb-msg ' + (m.sender === 'staff' ? 'is-staff' : 'is-submitter') + '"><div class="fb-msg-body">' + esc(m.body) + '</div><div class="fb-msg-meta muted small">' + (m.sender === 'staff' ? esc(m.sender_name || 'staff') + ' (staff)' : 'you') + ' · <time data-time="' + esc(m.created_at) + '">' + esc(m.created_at.slice(0, 16)) + '</time></div></div>';
+      }).join('');
+      msgs.innerHTML = html;
+      if (window.fillTimes) window.fillTimes();
+      if (scroll) msgs.scrollTop = msgs.scrollHeight;
+    }).catch(function () {});
+  }
+  document.getElementById('fb-mine').addEventListener('click', function (e) {
+    var it = e.target.closest('.fb-item'); if (!it) return;
+    loadThread(+it.getAttribute('data-id'), true);
+    clearInterval(pollT); pollT = setInterval(function () { if (openId) loadThread(openId); }, 10000);
+    document.getElementById('fbThread').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  document.getElementById('fbThreadClose').addEventListener('click', function () {
+    document.getElementById('fbThread').hidden = true; openId = null; clearInterval(pollT);
+  });
+  document.getElementById('fbReply').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!openId) return;
+    var ta = document.getElementById('fb-reply-body'), err = document.getElementById('fb-thread-error');
+    err.hidden = true;
+    if (!ta.value.trim()) return;
+    fetch('/api/feedback/' + openId + '/message', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: ta.value, token: token })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; return; }
+      ta.value = ''; loadThread(openId, true); loadMine();
+    }).catch(function () {});
+  });
+})();
+</script>
+<%- include('partials/foot') %>

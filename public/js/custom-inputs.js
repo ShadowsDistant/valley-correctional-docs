@@ -218,9 +218,108 @@
     syncLabel();
   }
 
+  // ------------------------------------------------------------------ time
+  // A 12-hour time picker for input[data-timepicker]. The native input keeps a
+  // 24h "HH:MM" value so scripts/forms read it directly.
+  var CLOCK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  function enhanceTime(input) {
+    if (input.dataset.enhanced || input.closest('.ctime')) return;
+    input.dataset.enhanced = '1';
+
+    var wrap = document.createElement('div'); wrap.className = 'cdate ctime';
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'cdate-btn';
+    var ico = document.createElement('span'); ico.className = 'cdate-ico'; ico.innerHTML = CLOCK;
+    var label = document.createElement('span'); label.className = 'cdate-label';
+    btn.appendChild(ico); btn.appendChild(label);
+    var pop = document.createElement('div'); pop.className = 'cdate-pop ctime-pop'; pop.hidden = true;
+
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input); wrap.appendChild(btn); wrap.appendChild(pop);
+    input.classList.add('cdate-native'); input.tabIndex = -1;
+    if (input.required) btn.setAttribute('aria-required', 'true');
+
+    function parts() {
+      var m = /^(\d{2}):(\d{2})$/.exec(input.value || '');
+      if (!m) return null;
+      return { h: +m[1], m: +m[2] };
+    }
+    function fmt12(h, m) {
+      var ap = h >= 12 ? 'PM' : 'AM', h12 = h % 12 || 12;
+      return h12 + ':' + pad(m) + ' ' + ap;
+    }
+    function syncLabel() {
+      var p = parts();
+      if (p) { label.textContent = fmt12(p.h, p.m); wrap.classList.add('has-val'); }
+      else { label.textContent = input.getAttribute('placeholder') || 'Select a time'; wrap.classList.remove('has-val'); }
+    }
+    function commit(h, m) {
+      input.value = pad(h) + ':' + pad(m);
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      syncLabel();
+    }
+    function render() {
+      var p = parts() || { h: 18, m: 0 };
+      var ap = p.h >= 12 ? 1 : 0, h12 = p.h % 12 || 12;
+      var html = '<div class="ctime-cols">';
+      html += '<div class="ctime-col" data-col="h">';
+      for (var h = 1; h <= 12; h++) html += '<button type="button" class="ctime-opt' + (h === h12 ? ' selected' : '') + '" data-h="' + h + '">' + h + '</button>';
+      html += '</div><div class="ctime-col" data-col="m">';
+      [0, 15, 30, 45].forEach(function (m) { html += '<button type="button" class="ctime-opt' + (m === p.m ? ' selected' : '') + '" data-m="' + m + '">:' + pad(m) + '</button>'; });
+      html += '</div><div class="ctime-col" data-col="ap">';
+      ['AM', 'PM'].forEach(function (a, i) { html += '<button type="button" class="ctime-opt' + (i === ap ? ' selected' : '') + '" data-ap="' + i + '">' + a + '</button>'; });
+      html += '</div></div>';
+      if (input.value) html += '<div class="cdate-foot"><button type="button" class="cdate-link" data-clear>Clear</button></div>';
+      pop.innerHTML = html;
+    }
+    function current() {
+      var h12 = +((pop.querySelector('[data-col=h] .selected') || {}).getAttribute ? pop.querySelector('[data-col=h] .selected').getAttribute('data-h') : 6) || 6;
+      var m = +((pop.querySelector('[data-col=m] .selected') || {}).getAttribute ? pop.querySelector('[data-col=m] .selected').getAttribute('data-m') : 0) || 0;
+      var ap = pop.querySelector('[data-col=ap] .selected') ? +pop.querySelector('[data-col=ap] .selected').getAttribute('data-ap') : 1;
+      var h = (h12 % 12) + (ap ? 12 : 0);
+      return { h: h, m: m };
+    }
+    function position() {
+      var r = btn.getBoundingClientRect();
+      pop.style.position = 'fixed';
+      pop.style.left = Math.min(r.left, window.innerWidth - 240) + 'px';
+      var need = pop.offsetHeight || 240;
+      if (r.bottom + need + 10 > window.innerHeight && r.top > need) {
+        pop.classList.add('up'); pop.style.top = ''; pop.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+      } else {
+        pop.classList.remove('up'); pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px';
+      }
+    }
+    function open() {
+      closeOpen(); render(); document.body.appendChild(pop);
+      pop.hidden = false; wrap.classList.add('open'); position();
+      var s = pop.querySelector('[data-col=h] .selected'); if (s) s.scrollIntoView({ block: 'center' });
+      window.addEventListener('scroll', position, true); window.addEventListener('resize', position);
+      openWidget = close;
+    }
+    function close() {
+      pop.hidden = true; wrap.classList.remove('open');
+      window.removeEventListener('scroll', position, true); window.removeEventListener('resize', position);
+      if (pop.parentNode === document.body) wrap.appendChild(pop);
+    }
+    function isOpen() { return !pop.hidden; }
+
+    btn.addEventListener('click', function (e) { e.preventDefault(); isOpen() ? close() : open(); });
+    pop.addEventListener('click', function (e) {
+      if (e.target.closest('[data-clear]')) { input.value = ''; input.dispatchEvent(new Event('change', { bubbles: true })); syncLabel(); close(); return; }
+      var o = e.target.closest('.ctime-opt'); if (!o) return;
+      var col = o.parentNode.getAttribute('data-col');
+      o.parentNode.querySelectorAll('.ctime-opt').forEach(function (x) { x.classList.toggle('selected', x === o); });
+      var c = current(); commit(c.h, c.m);
+      if (col === 'ap') close();
+    });
+    input.addEventListener('change', syncLabel);
+    syncLabel();
+  }
+
   function run(root) {
     (root || document).querySelectorAll('select').forEach(enhanceSelect);
     (root || document).querySelectorAll('input[type="date"]').forEach(enhanceDate);
+    (root || document).querySelectorAll('input[data-timepicker]').forEach(enhanceTime);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { run(); });
   else run();

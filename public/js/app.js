@@ -76,6 +76,27 @@
     return (start > 0 ? '…' : '') + highlight(text.slice(start, end), terms) + (end < text.length ? '…' : '');
   }
 
+  // Edit-distance-1 check for typo tolerance ("moderaton" still finds
+  // Moderation). Only applied to terms of 5+ chars against page words.
+  function near(word, term) {
+    var la = word.length, lb = term.length;
+    if (Math.abs(la - lb) > 1) return false;
+    var i = 0, j = 0, edits = 0;
+    while (i < la && j < lb) {
+      if (word[i] === term[j]) { i++; j++; continue; }
+      if (++edits > 1) return false;
+      if (la > lb) i++; else if (lb > la) j++; else { i++; j++; }
+    }
+    return edits + (la - i) + (lb - j) <= 1;
+  }
+  function termMatch(p, t) {
+    if (p._hay.indexOf(t) !== -1) return 1;                 // exact / prefix substring
+    if (t.length >= 5) {                                     // typo tolerance
+      var words = p._words || (p._words = p._hay.split(/[^a-z0-9]+/));
+      for (var i = 0; i < words.length; i++) if (words[i].length >= 4 && near(words[i], t)) return 0.5;
+    }
+    return 0;
+  }
   function search(q) {
     if (!index) return [];
     q = q.toLowerCase().trim();
@@ -83,20 +104,24 @@
     var terms = q.split(/\s+/).filter(Boolean);
     var scored = [];
     index.forEach(function (p) {
-      var ok = terms.every(function (t) { return p._hay.indexOf(t) !== -1; });
-      if (!ok) return;
-      var score = 0;
+      var quality = 0;
+      for (var i = 0; i < terms.length; i++) {
+        var m = termMatch(p, terms[i]);
+        if (!m) return; // every term must match (exactly or fuzzily)
+        quality += m;
+      }
+      var score = quality;
       terms.forEach(function (t) {
         if (p._t === q) score += 100;
+        if (p._t.indexOf(t) === 0) score += 8;              // title starts with term
         if (p._t.indexOf(t) !== -1) score += 12;
         if ((p.description || '').toLowerCase().indexOf(t) !== -1) score += 4;
-        score += 1;
       });
       var hs = (p.headings || []).filter(function (h) {
         var hl = h.text.toLowerCase();
         return terms.some(function (t) { return hl.indexOf(t) !== -1; });
       }).slice(0, 3);
-      score += hs.length * 3;
+      score += hs.length * 4;
       scored.push({ p: p, score: score, headings: hs, terms: terms });
     });
     scored.sort(function (a, b) { return b.score - a.score; });
@@ -163,35 +188,54 @@
     var back = document.createElement('div');
     back.className = 'confirm-back';
     var danger = opts.danger !== false;
+    // opts.input: show a required textarea and pass its value to onOk(value)
     back.innerHTML =
       '<div class="confirm-card" role="alertdialog" aria-modal="true">'
       + '<div class="confirm-ico' + (danger ? ' danger' : '') + '">' + WARN_SVG + '</div>'
       + '<h3>' + esc(opts.title || 'Are you sure?') + '</h3>'
       + '<p>' + esc(opts.message || '') + '</p>'
+      + (opts.input ? '<textarea class="confirm-input" rows="3" placeholder="' + esc(opts.inputPlaceholder || 'Reason…') + '"></textarea>' : '')
       + '<div class="confirm-actions">'
       + '<button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
       + '<button type="button" class="btn btn-solid ' + (danger ? 'danger' : '') + '" data-ok>' + esc(opts.okLabel || 'Confirm') + '</button>'
       + '</div></div>';
     document.body.appendChild(back);
     var okBtn = back.querySelector('[data-ok]');
+    var input = back.querySelector('.confirm-input');
+    function ok() {
+      if (input && !input.value.trim()) { input.classList.add('input-error'); input.focus(); return; }
+      close(); onOk(input ? input.value.trim() : undefined);
+    }
     function close() { back.classList.add('closing'); setTimeout(function () { back.remove(); }, 150); document.removeEventListener('keydown', key); }
-    function key(e) { if (e.key === 'Escape') close(); else if (e.key === 'Enter') { close(); onOk(); } }
+    function key(e) { if (e.key === 'Escape') close(); else if (e.key === 'Enter' && !(input && e.target === input)) { ok(); } }
     back.querySelector('[data-cancel]').addEventListener('click', close);
-    okBtn.addEventListener('click', function () { close(); onOk(); });
+    okBtn.addEventListener('click', ok);
     back.addEventListener('mousedown', function (e) { if (e.target === back) close(); });
     document.addEventListener('keydown', key);
-    setTimeout(function () { okBtn.focus(); }, 30);
+    setTimeout(function () { (input || okBtn).focus(); }, 30);
   }
+  window.vcfConfirm = showConfirm; // reusable by page scripts (dashboard voids, editor)
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (form && form.matches && form.matches('form[data-confirm]')) {
       e.preventDefault();
+      var wantsInput = form.hasAttribute('data-confirm-input');
       showConfirm({
         title: form.getAttribute('data-confirm-title') || 'Please confirm',
         message: form.getAttribute('data-confirm'),
         okLabel: form.getAttribute('data-confirm-ok') || 'Confirm',
-        danger: form.getAttribute('data-confirm-variant') !== 'safe'
-      }, function () { form.submit(); });
+        danger: form.getAttribute('data-confirm-variant') !== 'safe',
+        input: wantsInput,
+        inputPlaceholder: form.getAttribute('data-confirm-input') || 'Reason…'
+      }, function (val) {
+        if (wantsInput) {
+          var name = form.getAttribute('data-confirm-input-name') || 'reason';
+          var hidden = form.querySelector('input[name="' + name + '"]');
+          if (!hidden) { hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.name = name; form.appendChild(hidden); }
+          hidden.value = val || '';
+        }
+        form.submit();
+      });
     }
   }, true);
 
@@ -225,18 +269,46 @@
     var n = Math.floor(val), label = units[i][0];
     return n + ' ' + label + (n === 1 ? '' : 's') + ' ago';
   }
-  function fillTime(el) {
-    var raw = el.getAttribute('data-time');
-    if (!raw) return;
+  function parseUtc(raw) {
+    if (!raw) return null;
     var iso = raw.trim().replace(' ', 'T');
     if (!/[zZ]|[+][0-9]/.test(iso)) iso += 'Z'; // DB times are UTC
     var d = new Date(iso);
-    if (isNaN(d.getTime())) return;
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function tzName() {
+    try { return new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).filter(function (p) { return p.type === 'timeZoneName'; })[0].value; } catch (e) { return ''; }
+  }
+  function fillTime(el) {
+    var d = parseUtc(el.getAttribute('data-time'));
+    if (!d) return;
     el.title = d.toLocaleString();
-    el.textContent = ago(d);
+    // data-time-format: relative (default) | date | range | datetime — all
+    // rendered in the viewer's local timezone.
+    var fmt = el.getAttribute('data-time-format');
+    if (fmt === 'date') {
+      el.textContent = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    } else if (fmt === 'range') {
+      var t = function (x) { return x.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+      var end = parseUtc(el.getAttribute('data-time-end'));
+      el.textContent = t(d) + (end ? ' – ' + t(end) : '') + ' ' + tzName();
+    } else if (fmt === 'datetime') {
+      el.textContent = d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } else {
+      el.textContent = ago(d);
+    }
   }
   Array.prototype.forEach.call(document.querySelectorAll('[data-time]'), fillTime);
   window.fillTimes = function () { Array.prototype.forEach.call(document.querySelectorAll('[data-time]'), fillTime); };
+
+  // Report the viewer's timezone once per tab session (staff overview display).
+  if (document.body.hasAttribute('data-authed') && !sessionStorage.getItem('tzSent')) {
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) fetch('/api/tz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tz: tz }) })
+        .then(function () { sessionStorage.setItem('tzSent', '1'); }).catch(function () {});
+    } catch (e) {}
+  }
 
   // ---------- roblox headshot avatars ----------
   // Any [data-rbx-avatar="username"] element gets the user's Roblox headshot as

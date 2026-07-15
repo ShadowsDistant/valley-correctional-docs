@@ -36,7 +36,7 @@ Falling short of the professional and procedural standards expected of staff.
 :::
 
 :::details Disclosure of Classified Information
-Unauthorized sharing of confidential information. **Zero-tolerance offense.**
+Unauthorized sharing of confidential information. **Zero-tolerance offense** — confirmed disclosure results in immediate **termination**, a **permanent employment blacklist**, and possibly a **permanent community ban** (assessed case-by-case).
 :::
 
 :::details Mismanagement
@@ -48,7 +48,7 @@ Any breach of the baseline expectations set out in the [General Staff Handbook](
 :::
 
 :::details Terms of Service Violations
-Platform ToS violations by staff — treated as a severe breach and escalated accordingly.
+Any violation of Discord's or Roblox's Terms of Service by staff results in a permanent community ban **regardless of severity**, alongside staff disciplinary action.
 :::
 
 ## Disciplinary Point System
@@ -78,9 +78,9 @@ Points accumulate on a **6-month rolling basis**. Older points expire once they 
 
 Certain offenses warrant immediate termination regardless of accumulated points:
 
-- Confirmed disclosure of classified information (malicious).
+- Confirmed disclosure of classified information — termination plus a permanent employment blacklist, and possibly a permanent community ban (case-by-case).
 - Retaliation against a whistleblower (Tier 3 offense).
-- Serious Terms of Service violations (CSAM, real-world threats, ban evasion).
+- Any Terms of Service violation (all ToS violations also carry a permanent community ban regardless of severity).
 - Command abuse causing significant harm.
 - Fraud in the application or investigation process.
 - Direct threats to VCF operations.
@@ -95,10 +95,10 @@ Certain offenses warrant immediate termination regardless of accumulated points:
 ## SID-Specific Policies
 
 :::details ToS Violation Escalation Protocol
-All confirmed ToS violations are logged and escalated so SID can maintain the cross-platform reporting record.
+Any confirmed ToS violation results in a permanent ban regardless of severity. All confirmed ToS violations are logged and escalated so SID can maintain the cross-platform reporting record.
 
 1. Confirm and document the violation with evidence.
-2. Apply the immediate moderation action (ban/mute) if not already applied.
+2. Apply the permanent ban if not already applied.
 3. Escalate to SID for record-keeping and potential reporting to Discord Trust & Safety, Roblox moderation, or Valley Prison staff.
 :::
 
@@ -153,9 +153,5 @@ Any SID investigation targeting the **Community Manager** requires mandatory **L
 ## Confidentiality Agreement
 
 :::danger Strict confidentiality
-Investigators shall not share, release, discuss, or publicize classified information. A violation of this agreement results in **immediate termination and blacklisting**. This obligation persists after departure from the staff team.
-:::
-
-:::details Internal Information
-**Authorized Division(s):** Specialized Investigations Division · **Authorization Personnel:** `shadowsdistant` (Lead Overseer), `somoto96` (Community Manager), `froogydy` (Internal Operations Manager) · **Last Updated:** 4/22/2026
+Investigators shall not share, release, discuss, or publicize classified information. A violation of this agreement results in **immediate termination, a permanent employment blacklist, and possibly a permanent community ban** (case-by-case). This obligation persists after departure from the staff team.
 :::

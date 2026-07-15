@@ -16,6 +16,8 @@ const nav = require('./lib/nav');
 const md = require('./lib/markdown');
 const auth = require('./lib/auth');
 const icons = require('./lib/icons');
+const profanity = require('./lib/profanity');
+const collab = require('./lib/collab');
 
 seed(); // idempotent: seeds pages + first admin on first boot
 
@@ -91,7 +93,7 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'https:'],
         fontSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", 'wss:'].concat(isProd ? [] : ['ws:']),
         objectSrc: ["'none'"],
         frameAncestors: ["'self'"],
       },
@@ -156,26 +158,26 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(
-  session({
-    store: new SqliteStore({
-      client: db,
-      expired: { clear: true, intervalMs: 900000 },
-    }),
-    secret: process.env.SESSION_SECRET || 'dev-insecure-secret-change-me',
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isProd,
-      // Shared across subdomains (docs.* + dashboard.*) so login persists.
-      domain: process.env.COOKIE_DOMAIN || undefined,
-      maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
-    },
-  })
-);
+// Named so the collab WebSocket upgrade can run the same session parsing.
+const sessionMw = session({
+  store: new SqliteStore({
+    client: db,
+    expired: { clear: true, intervalMs: 900000 },
+  }),
+  secret: process.env.SESSION_SECRET || 'dev-insecure-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProd,
+    // Shared across subdomains (docs.* + dashboard.*) so login persists.
+    domain: process.env.COOKIE_DOMAIN || undefined,
+    maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
+  },
+});
+app.use(sessionMw);
 
 // Reload the logged-in user from the DB on every request so role, division,
 // and suspension changes take effect immediately on the next navigation
@@ -183,14 +185,23 @@ app.use(
 const touchLastSeen = db.prepare(
   "UPDATE users SET last_seen = datetime('now') WHERE id = ? AND (last_seen IS NULL OR last_seen < datetime('now','-60 seconds'))"
 );
+// Expired timed suspensions lift automatically (both fields compare as UTC strings).
+const clearExpiredSuspension = db.prepare(
+  "UPDATE users SET suspended=0, suspended_until=NULL WHERE id=? AND suspended=1 AND terminated=0 AND suspended_until IS NOT NULL AND suspended_until <= datetime('now')"
+);
 app.use((req, res, next) => {
   if (req.session && req.session.user) {
-    const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy, rank, ranks, terminated FROM users WHERE id = ?').get(req.session.user.id);
-    if (!fresh) return req.session.destroy(() => res.redirect('/'));
+    let fresh = db.prepare('SELECT id, username, role, divisions, suspended, suspended_until, agreed_policy, rank, ranks, terminated, deleted FROM users WHERE id = ?').get(req.session.user.id);
+    if (!fresh || fresh.deleted) return req.session.destroy(() => res.redirect('/'));
+    if (fresh.suspended && clearExpiredSuspension.run(fresh.id).changes) {
+      audit(fresh.username, 'user.suspension_expired', fresh.username, 'timed suspension lifted');
+      fresh = Object.assign({}, fresh, { suspended: 0, suspended_until: null });
+    }
     try { touchLastSeen.run(fresh.id); } catch (e) { /* non-critical */ }
     req.session.user = {
       id: fresh.id, username: fresh.username,
       role: fresh.role, divisions: fresh.divisions || '', suspended: fresh.suspended,
+      suspended_until: fresh.suspended_until || null,
       agreed_policy: fresh.agreed_policy, rank: fresh.rank || '', ranks: fresh.ranks || '', terminated: fresh.terminated || 0,
     };
   }
@@ -221,6 +232,9 @@ app.use((req, res, next) => {
   res.locals.canManageStaffNav = auth.canManageStaff(req.session && req.session.user);
   res.locals.canModerate = auth.canModerate(req.session && req.session.user);
   res.locals.canSID = auth.canSID(req.session && req.session.user);
+  res.locals.canFeedbackStaff = auth.canFeedbackStaff(req.session && req.session.user);
+  res.locals.openFeedback = res.locals.canFeedbackStaff
+    ? db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='open'").get().n : 0;
   // Staff-policy agreement state for the first-login / policy-changed gate.
   const u = req.session && req.session.user;
   res.locals.policyVersion = policyVersion();
@@ -296,7 +310,7 @@ function audit(actor, action, target, details) {
   try { auditStmt.run(actor || 'system', action, target || '', details || ''); } catch (e) { /* never break a request */ }
 }
 
-function recordView(req, page) {
+function recordViewRow(req, { slug, area }) {
   try {
     const ua = (req.headers['user-agent'] || '').slice(0, 300);
     const ip = req.ip || '';
@@ -304,21 +318,38 @@ function recordView(req, page) {
     const day = new Date().toISOString().slice(0, 10);
     const u = req.session && req.session.user;
     db.prepare(
-      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username, area)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       req.path,
-      page ? page.slug : null,
+      slug || null,
       day,
       visitor,
       (req.headers.referer || '').slice(0, 300),
       ua,
       u ? 1 : 0,
-      u ? u.username : null
+      u ? u.username : null,
+      area || 'docs'
     );
   } catch (e) {
     // analytics must never break a page render
   }
+}
+function recordView(req, page) {
+  recordViewRow(req, { slug: page ? page.slug : null, area: 'docs' });
+}
+// Records admin/dashboard page visits (staff-activity trail). Synthesized slugs
+// use an "area:path" form that can never collide with real page slugs.
+function viewRecorder(area) {
+  return (req, res, next) => {
+    res.on('finish', () => {
+      if (req.method !== 'GET' || res.statusCode >= 400) return;
+      if (!String(res.get('Content-Type') || '').includes('text/html')) return;
+      const slug = area + ':' + (String(req.baseUrl + req.path).replace(/^\/+|\/+$/g, '') || area);
+      recordViewRow(req, { slug, area });
+    });
+    next();
+  };
 }
 
 // --- auth routes -----------------------------------------------------------
@@ -332,6 +363,9 @@ const loginLimiter = rateLimit({
 });
 
 app.get('/login', auth.csrfToken, (req, res) => {
+  // no-store: a cached/bfcached login form carries a stale CSRF token, which
+  // locks users out after logout until they clear the cache.
+  res.set('Cache-Control', 'no-store');
   if (req.session.user) return res.redirect('/admin');
   res.render('login', {
     title: 'Staff Login',
@@ -342,10 +376,11 @@ app.get('/login', auth.csrfToken, (req, res) => {
 });
 
 app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const { username, password } = req.body;
   // Only allow same-site relative paths (reject protocol-relative //evil.com).
   const reqNext = typeof req.body.next === 'string' && /^\/(?!\/)/.test(req.body.next) ? req.body.next : '';
-  const user = auth.findUserByUsername((username || '').trim());
+  let user = auth.findUserByUsername((username || '').trim());
   if (!user || !auth.verifyPassword(password || '', user.password)) {
     audit((username || '').trim() || 'unknown', 'user.login_fail', (username || '').trim(), 'invalid credentials · ' + (req.ip || ''));
     return res.status(401).render('login', {
@@ -355,12 +390,20 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
       layout: false,
     });
   }
+  // A timed suspension that has run out lifts itself at the door.
+  if (user.suspended && !user.terminated && clearExpiredSuspension.run(user.id).changes) {
+    audit(user.username, 'user.suspension_expired', user.username, 'timed suspension lifted at login');
+    user = Object.assign({}, user, { suspended: 0, suspended_until: null });
+  }
   if (auth.isSuspended(user)) {
-    audit(user.username, 'user.login_blocked', user.username, 'suspended account attempted login');
+    audit(user.username, 'user.login_blocked', user.username, (user.terminated ? 'terminated' : 'suspended') + ' account attempted login');
+    const until = user.suspended_until ? new Date(user.suspended_until.replace(' ', 'T') + 'Z') : null;
     return res.status(403).render('login', {
       title: 'Account suspended',
       next: reqNext || '/admin',
-      error: 'This account is suspended. Contact an administrator to be reinstated.',
+      error: user.terminated
+        ? 'This account has been terminated and can no longer sign in.'
+        : 'This account is suspended' + (until && !isNaN(until) ? ' until ' + until.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' (UTC)' : '') + '. Contact an administrator to be reinstated.',
       layout: false,
     });
   }
@@ -405,6 +448,16 @@ app.get('/api/access', (req, res) => {
   if (!page) return res.json({ ok: true });
   const ok = auth.canViewPage(user, page);
   res.json({ ok: ok, suspended: false, reason: ok ? '' : 'no-access' });
+});
+
+// Browser-reported IANA timezone (shown on the staff overview page).
+app.post('/api/tz', auth.requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const tz = String((req.body && req.body.tz) || '').slice(0, 64);
+  if (/^[A-Za-z_]+(\/[A-Za-z0-9_+\-]+){0,2}$/.test(tz)) {
+    db.prepare('UPDATE users SET timezone = ? WHERE id = ?').run(tz, req.session.user.id);
+  }
+  res.json({ ok: true });
 });
 
 // Screenshot / capture attempt reported by protect.js — logged & traced.
@@ -503,19 +556,20 @@ app.post('/account/decline', auth.requireAuth, (req, res) => {
 const adminRouter = express.Router();
 adminRouter.use(auth.requireEditor);
 adminRouter.use(auth.csrfToken);
+adminRouter.use(viewRecorder('admin'));
 
 adminRouter.get('/', (req, res) => {
   const pageCount = db.prepare('SELECT COUNT(*) AS n FROM pages').get().n;
   // Views are counted per user (unique visitor × page × day), not per raw hit.
   const UNIQV = "COUNT(DISTINCT visitor || '¦' || COALESCE(slug, path))";
   const views7 = db.prepare(
-    `SELECT ${UNIQV} AS n FROM page_views WHERE day >= date('now','-6 days')`
+    `SELECT ${UNIQV} AS n FROM page_views WHERE area='docs' AND day >= date('now','-6 days')`
   ).get().n;
   const views30 = db.prepare(
-    `SELECT ${UNIQV} AS n FROM page_views WHERE day >= date('now','-29 days')`
+    `SELECT ${UNIQV} AS n FROM page_views WHERE area='docs' AND day >= date('now','-29 days')`
   ).get().n;
   const visitors30 = db.prepare(
-    "SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE day >= date('now','-29 days')"
+    "SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE area='docs' AND day >= date('now','-29 days')"
   ).get().n;
   const recentEdits = db
     .prepare('SELECT slug, title, editor, created_at FROM page_revisions ORDER BY created_at DESC LIMIT 8')
@@ -558,6 +612,7 @@ adminRouter.get('/new', (req, res) => {
     },
     groups: nav.GROUP_ORDER,
     revisions: [],
+    iconNames: Object.keys(icons.ICONS),
   });
 });
 
@@ -585,6 +640,7 @@ adminRouter.get('/edit', (req, res) => {
     groups: nav.GROUP_ORDER,
     revisions,
     undeletable: UNDELETABLE_SLUGS.includes(page.slug),
+    iconNames: Object.keys(icons.ICONS),
   });
 });
 
@@ -641,7 +697,27 @@ adminRouter.post('/save', auth.verifyCsrf, (req, res) => {
     payload.sort = existing.sort;
   }
 
-  if (existing) {
+  // No-op saves are acknowledged but never logged — saving without changes
+  // must not create a revision or an activity-log entry.
+  if (existing
+    && existing.title === payload.title && existing.description === payload.description
+    && existing.group_name === payload.group_name && existing.icon === payload.icon
+    && existing.content === payload.content && Number(existing.internal) === payload.internal
+    && Number(existing.sort) === payload.sort && (existing.division || '') === payload.division) {
+    return res.json({ ok: true, slug, url: '/' + slug, unchanged: true });
+  }
+
+  // If a live co-editing session holds this page, merge the content into the
+  // shared doc (instead of clobbering concurrent edits) and only write meta.
+  const liveHandled = existing && collab.applyExternalSave(slug, payload.content);
+
+  if (existing && liveHandled) {
+    db.prepare(
+      `UPDATE pages SET title=@title, description=@description, group_name=@group_name,
+        icon=@icon, internal=@internal, sort=@sort, division=@division,
+        updated_at=datetime('now'), updated_by=@editor WHERE slug=@slug`
+    ).run({ ...payload, editor });
+  } else if (existing) {
     db.prepare(
       `UPDATE pages SET title=@title, description=@description, group_name=@group_name,
         icon=@icon, content=@content, internal=@internal, sort=@sort, division=@division,
@@ -745,7 +821,7 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
 
   const rows = db.prepare(
     `SELECT day, ${UNIQV} AS views, COUNT(DISTINCT visitor) AS visitors
-     FROM page_views WHERE day >= date('now', ?) GROUP BY day ORDER BY day`
+     FROM page_views WHERE area='docs' AND day >= date('now', ?) GROUP BY day ORDER BY day`
   ).all(since);
   const byDay = new Map(rows.map((r) => [r.day, r]));
   const series = [];
@@ -759,11 +835,11 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   const one = (sql, ...a) => db.prepare(sql).get(...a).n;
   const totals = {
     days,
-    viewsToday: one(`SELECT ${UNIQV} AS n FROM page_views WHERE day = date('now')`),
-    viewsRange: one(`SELECT ${UNIQV} AS n FROM page_views WHERE day >= date('now', ?)`, since),
-    visitorsRange: one('SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE day >= date(\'now\', ?)', since),
-    views: one(`SELECT ${UNIQV} AS n FROM page_views`),
-    visitors: one('SELECT COUNT(DISTINCT visitor) AS n FROM page_views'),
+    viewsToday: one(`SELECT ${UNIQV} AS n FROM page_views WHERE area='docs' AND day = date('now')`),
+    viewsRange: one(`SELECT ${UNIQV} AS n FROM page_views WHERE area='docs' AND day >= date('now', ?)`, since),
+    visitorsRange: one("SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE area='docs' AND day >= date('now', ?)", since),
+    views: one(`SELECT ${UNIQV} AS n FROM page_views WHERE area='docs'`),
+    visitors: one("SELECT COUNT(DISTINCT visitor) AS n FROM page_views WHERE area='docs'"),
   };
   totals.avgPerDay = Math.round(totals.viewsRange / days);
   const busiest = rows.slice().sort((a, b) => b.views - a.views)[0];
@@ -772,7 +848,7 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
 
   const topPages = db.prepare(
     `SELECT slug, COUNT(DISTINCT visitor) AS views, COUNT(DISTINCT visitor) AS visitors FROM page_views
-     WHERE slug IS NOT NULL AND day >= date('now', ?) GROUP BY slug ORDER BY views DESC LIMIT 12`
+     WHERE area='docs' AND slug IS NOT NULL AND day >= date('now', ?) GROUP BY slug ORDER BY views DESC LIMIT 12`
   ).all(since).map((r) => {
     const p = getPageAny.get(r.slug);
     return { slug: r.slug, title: p ? p.title : r.slug, internal: p ? !!p.internal : false, views: r.views, visitors: r.visitors };
@@ -780,36 +856,36 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
 
   const referrers = db.prepare(
     `SELECT referrer, COUNT(*) AS n FROM page_views
-     WHERE referrer IS NOT NULL AND referrer != '' AND day >= date('now', ?)
+     WHERE area='docs' AND referrer IS NOT NULL AND referrer != '' AND day >= date('now', ?)
      GROUP BY referrer ORDER BY n DESC LIMIT 8`
   ).all(since);
 
   // authenticated vs anonymous
-  const authedRow = db.prepare(`SELECT SUM(authed) AS a, COUNT(*) AS t FROM page_views WHERE day >= date('now', ?)`).get(since);
+  const authedRow = db.prepare(`SELECT SUM(authed) AS a, COUNT(*) AS t FROM page_views WHERE area='docs' AND day >= date('now', ?)`).get(since);
   const authed = { staff: authedRow.a || 0, anon: (authedRow.t || 0) - (authedRow.a || 0) };
 
   // internal vs public
   const intRow = db.prepare(
     `SELECT SUM(CASE WHEN p.internal=1 THEN 1 ELSE 0 END) AS i, COUNT(*) AS t
-     FROM page_views v LEFT JOIN pages p ON p.slug = v.slug WHERE v.day >= date('now', ?)`
+     FROM page_views v LEFT JOIN pages p ON p.slug = v.slug WHERE v.area='docs' AND v.day >= date('now', ?)`
   ).get(since);
   const scope = { internal: intRow.i || 0, public: (intRow.t || 0) - (intRow.i || 0) };
 
   // views by hour of day
   const hourRows = db.prepare(
-    `SELECT CAST(strftime('%H', ts) AS INTEGER) AS h, COUNT(*) AS n FROM page_views WHERE day >= date('now', ?) GROUP BY h`
+    `SELECT CAST(strftime('%H', ts) AS INTEGER) AS h, COUNT(*) AS n FROM page_views WHERE area='docs' AND day >= date('now', ?) GROUP BY h`
   ).all(since);
   const hourMap = new Map(hourRows.map((r) => [r.h, r.n]));
   const byHour = []; for (let h = 0; h < 24; h++) byHour.push({ h, n: hourMap.get(h) || 0 });
 
   // browser / OS breakdown
-  const uaRows = db.prepare(`SELECT ua, COUNT(*) AS n FROM page_views WHERE day >= date('now', ?) GROUP BY ua`).all(since);
+  const uaRows = db.prepare(`SELECT ua, COUNT(*) AS n FROM page_views WHERE area='docs' AND day >= date('now', ?) GROUP BY ua`).all(since);
   const brow = {}, os = {};
   uaRows.forEach((r) => { brow[uaBrowser(r.ua)] = (brow[uaBrowser(r.ua)] || 0) + r.n; os[uaOS(r.ua)] = (os[uaOS(r.ua)] || 0) + r.n; });
   const toArr = (o) => Object.keys(o).map((k) => ({ label: k, n: o[k] })).sort((a, b) => b.n - a.n);
 
   const recent = db.prepare(
-    `SELECT slug, ts, authed, username FROM page_views ORDER BY id DESC LIMIT 12`
+    `SELECT slug, ts, authed, username FROM page_views WHERE area='docs' ORDER BY id DESC LIMIT 12`
   ).all().map((r) => { const p = getPageAny.get(r.slug); return { title: p ? p.title : r.slug, slug: r.slug, ts: r.ts, authed: r.authed, username: r.username }; });
 
   res.render('admin/analytics', {
@@ -839,25 +915,26 @@ function scopedDivisions(actor, body) {
   return parseDivisions(body).split(',').filter(Boolean).filter((d) => auth.canAssignDivision(actor, d)).join(',');
 }
 function scopedRanks(actor, body, divisions) {
+  // A rank exists only while its division is held — removing a division
+  // removes that division's rank (management/osc included).
   const map = {};
   const divList = divisions.split(',');
   ['moderation', 'sid', 'management', 'osc'].forEach((d) => {
     const key = body['rank_' + d];
-    // management/osc ranks don't require the division checkbox (role-based tiers).
-    const divHeld = (d === 'management' || d === 'osc') ? divList.includes(d) || auth.RANKS[key] : divList.includes(d);
-    if (auth.RANKS[key] && auth.RANKS[key].division === d && divHeld && auth.canAssignRank(actor, key)) map[d] = key;
+    if (auth.RANKS[key] && auth.RANKS[key].division === d && divList.includes(d) && auth.canAssignRank(actor, key)) map[d] = key;
   });
   return Object.keys(map).length ? JSON.stringify(map) : '';
 }
 
 adminRouter.get('/staff', requireStaffMgr, (req, res) => {
   const actor = req.session.user;
-  const users = db.prepare('SELECT id, username, role, divisions, suspended, terminated, created_at, last_login, last_seen, rank, ranks FROM users ORDER BY id').all();
+  const tab = req.query.tab === 'past' ? 'past' : 'active';
+  const all = db.prepare('SELECT id, username, role, divisions, suspended, suspended_until, terminated, deleted, created_at, last_login, last_seen, rank, ranks FROM users ORDER BY id').all();
   const viewCounts = new Map(
     db.prepare('SELECT username, COUNT(*) AS n FROM page_views WHERE username IS NOT NULL GROUP BY username').all()
       .map((r) => [r.username, r.n])
   );
-  users.forEach((u) => {
+  all.forEach((u) => {
     u.doc_views = viewCounts.get(u.username) || 0;
     u.rankMod = auth.rankForDivision(u, 'moderation');
     u.rankSID = auth.rankForDivision(u, 'sid');
@@ -867,10 +944,13 @@ adminRouter.get('/staff', requireStaffMgr, (req, res) => {
     if (u.rankMgmt) u.rankLabels.push(auth.rankLabel(u.rankMgmt));
     if (u.rankOSC) u.rankLabels.push(auth.rankLabel(u.rankOSC));
   });
+  const isPast = (u) => u.deleted || u.terminated;
+  const users = all.filter((u) => (tab === 'past' ? isPast(u) : !isPast(u)));
+  const pastCount = all.filter(isPast).length;
   const ranksByDiv = { moderation: [], sid: [], management: [], osc: [] };
   Object.keys(auth.RANKS).forEach((k) => { const r = auth.RANKS[k]; if (ranksByDiv[r.division]) ranksByDiv[r.division].push({ key: k, label: r.label }); });
   res.render('admin/staff', {
-    title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS, ranksByDiv,
+    title: 'Admin · Staff', section: 'staff', users, tab, pastCount, divisions: auth.DIVISIONS, ranksByDiv,
     governed: auth.governedDivisions(actor), canGrantEditor: auth.canGrantEditor(actor),
     canAdminActions: auth.canAdminStaffActions(actor), isAdmin: actor.role === 'admin',
     filter: { division: String(req.query.division || ''), rank: String(req.query.rank || ''), q: String(req.query.q || '') },
@@ -925,8 +1005,9 @@ adminRouter.post('/staff/access', requireStaffMgr, auth.verifyCsrf, (req, res) =
   Object.keys(existingRanks).forEach((d) => { if (!auth.governedDivisions(actor).includes(d)) keepRanks[d] = existingRanks[d]; });
   let scoped = {}; try { scoped = JSON.parse(scopedRanks(actor, req.body, divisions) || '{}'); } catch (e) {}
   const finalRanks = Object.assign({}, keepRanks, scoped);
-  // drop ranks for divisions no longer held
-  Object.keys(finalRanks).forEach((d) => { if (d !== 'management' && d !== 'osc' && !divisions.split(',').includes(d)) delete finalRanks[d]; });
+  // Removing a division removes that division's rank — no exceptions. Ranks in
+  // ungoverned divisions survive only while the target still holds the division.
+  Object.keys(finalRanks).forEach((d) => { if (!divisions.split(',').includes(d)) delete finalRanks[d]; });
   const ranksJson = Object.keys(finalRanks).length ? JSON.stringify(finalRanks) : '';
   db.prepare("UPDATE users SET role = ?, divisions = ?, ranks = ?, rank = '' WHERE id = ?").run(role, divisions, ranksJson, id);
   const rankSummary = Object.values(finalRanks).map(auth.rankLabel).join(', ');
@@ -943,7 +1024,7 @@ adminRouter.post('/staff/suspend', auth.requireAdmin, auth.verifyCsrf, (req, res
   }
   const target = db.prepare('SELECT username, role FROM users WHERE id = ?').get(id);
   if (suspend && target && target.role === 'admin') {
-    const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND suspended=0").get().n;
+    const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND suspended=0 AND deleted=0 AND terminated=0").get().n;
     if (admins <= 1) return res.status(400).render('error', { title: 'Invalid', heading: 'Cannot suspend last admin', message: 'There must be at least one active administrator.' });
   }
   db.prepare('UPDATE users SET suspended = ? WHERE id = ?').run(suspend ? 1 : 0, id);
@@ -965,23 +1046,66 @@ adminRouter.post('/staff/password', auth.requireAdmin, auth.verifyCsrf, (req, re
   res.redirect('/admin/staff');
 });
 
+// Archive (soft delete): the account is locked out and moved to "Past staff",
+// but every log, punishment, and infraction it appears in is retained.
 adminRouter.post('/staff/delete', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
   const id = Number(req.body.id);
   if (id === req.session.user.id) {
     return res.status(400).render('error', {
-      title: 'Invalid', heading: 'Cannot delete yourself', message: 'You cannot delete the account you are logged in as.',
+      title: 'Invalid', heading: 'Cannot archive yourself', message: 'You cannot archive the account you are logged in as.',
     });
   }
-  const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
+  const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND deleted = 0 AND terminated = 0").get().n;
   const target = db.prepare('SELECT role FROM users WHERE id = ?').get(id);
   if (target && target.role === 'admin' && admins <= 1) {
     return res.status(400).render('error', {
-      title: 'Invalid', heading: 'Cannot delete last admin', message: 'There must be at least one administrator.',
+      title: 'Invalid', heading: 'Cannot archive last admin', message: 'There must be at least one active administrator.',
     });
   }
   const delTarget = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(id);
-  audit(req.session.user.username, 'user.delete', delTarget ? delTarget.username : '#' + id, 'account deleted');
+  db.prepare('UPDATE users SET deleted = 1, suspended = 1 WHERE id = ?').run(id);
+  audit(req.session.user.username, 'user.archive', delTarget ? delTarget.username : '#' + id, 'account archived (logs retained)');
+  res.redirect('/admin/staff?tab=past');
+});
+
+// Reinstate a terminated/archived account back to active staff.
+adminRouter.post('/staff/reinstate', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+  const id = Number(req.body.id);
+  const target = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
+  db.prepare('UPDATE users SET terminated = 0, suspended = 0, deleted = 0, suspended_until = NULL WHERE id = ?').run(id);
+  audit(req.session.user.username, 'user.reinstate', target ? target.username : '#' + id, 'restored from past staff');
+  res.redirect('/admin/staff');
+});
+
+// Rename a staff account. Usernames are soft foreign keys across the logs, so
+// every referencing column is rewritten in one transaction. The audit log is
+// deliberately left as-is (history records what actually happened) — a
+// user.rename entry ties the two names together.
+adminRouter.post('/staff/rename', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+  const id = Number(req.body.id);
+  const next_ = String(req.body.username || '').trim();
+  const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id);
+  if (!target) return res.redirect('/admin/staff');
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(next_)) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Invalid username', message: 'Usernames are 3–20 characters: letters, numbers, and underscores (matching Roblox).' });
+  }
+  const clash = db.prepare('SELECT id FROM users WHERE lower(username) = lower(?) AND id != ?').get(next_, id);
+  if (clash) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Username taken', message: 'Another account already uses that username.' });
+  }
+  const old = target.username;
+  const rename = db.transaction(() => {
+    db.prepare('UPDATE users SET username = ? WHERE id = ?').run(next_, id);
+    [
+      ['pages', 'updated_by'], ['page_revisions', 'editor'], ['page_views', 'username'],
+      ['shifts', 'created_by'], ['shifts', 'host'],
+      ['punishments', 'moderator'], ['punishments', 'approved_by'], ['punishments', 'voided_by'],
+      ['infractions', 'staff_user'], ['infractions', 'issued_by'], ['infractions', 'approved_by'], ['infractions', 'voided_by'],
+      ['feedback', 'submitted_by'], ['feedback', 'status_by'], ['feedback_messages', 'sender_name'],
+    ].forEach(([t, c]) => db.prepare(`UPDATE ${t} SET ${c} = ? WHERE ${c} = ? COLLATE NOCASE`).run(next_, old));
+  });
+  rename();
+  audit(req.session.user.username, 'user.rename', next_, 'was ' + old);
   res.redirect('/admin/staff');
 });
 
@@ -1025,8 +1149,9 @@ adminRouter.post('/policy', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
 // --- event scheduler -------------------------------------------------------
 // Managed by admins + Management/Oversight staff; shown on the public schedule.
 const SHIFT_TYPES = ['Roleplay Shift', 'Gamenight', 'Training Event', 'Recruitment Event'];
-const upcomingShiftsStmt = db.prepare("SELECT * FROM shifts WHERE date >= date('now','-1 day') ORDER BY date, time");
-const allShiftsStmt = db.prepare('SELECT * FROM shifts ORDER BY date DESC, time');
+const MAX_EVENTS = 3; // hard cap on scheduled events (total rows)
+const upcomingShiftsStmt = db.prepare("SELECT * FROM shifts WHERE date >= date('now','-1 day') ORDER BY COALESCE(starts_at, date || 'T00:00'), time");
+const allShiftsStmt = db.prepare("SELECT * FROM shifts ORDER BY COALESCE(starts_at, date || 'T00:00') DESC, time");
 
 function requireShiftManager(req, res, next) {
   const u = req.session && req.session.user;
@@ -1040,28 +1165,50 @@ function requireShiftManager(req, res, next) {
   return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl || '/admin/shifts'));
 }
 
-app.get('/admin/shifts', requireShiftManager, auth.csrfToken, (req, res) => {
+const activeHostsStmt = db.prepare('SELECT username FROM users WHERE suspended = 0 AND terminated = 0 AND deleted = 0 ORDER BY username COLLATE NOCASE');
+app.get('/admin/shifts', requireShiftManager, auth.csrfToken, viewRecorder('admin'), (req, res) => {
+  const shifts = allShiftsStmt.all();
   res.render('admin/shifts', {
     title: 'Admin · Event Scheduler',
     section: 'shifts',
-    shifts: allShiftsStmt.all(),
+    shifts,
     shiftTypes: SHIFT_TYPES,
+    hosts: activeHostsStmt.all().map((r) => r.username),
+    maxEvents: MAX_EVENTS,
+    atCap: shifts.length >= MAX_EVENTS,
     saved: req.query.saved === '1',
   });
 });
 
 app.post('/admin/shifts/add', requireShiftManager, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  const date = String(req.body.date || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return res.status(400).render('error', { title: 'Invalid', heading: 'Invalid date', message: 'Pick a valid shift date.' });
+  // Times arrive as exact UTC instants composed client-side from the scheduler's
+  // local timezone; every viewer sees them converted to their own timezone.
+  const startsAt = String(req.body.starts_at || '').trim();
+  const endsAt = String(req.body.ends_at || '').trim();
+  const isIso = (s) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/.test(s);
+  if (!isIso(startsAt)) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Invalid date/time', message: 'Pick a valid event date and start time.' });
+  }
+  if (endsAt && (!isIso(endsAt) || endsAt <= startsAt)) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Invalid end time', message: 'The end time must be after the start time.' });
   }
   const type = SHIFT_TYPES.includes(req.body.type) ? req.body.type : SHIFT_TYPES[0];
-  const time = String(req.body.time || '').trim().slice(0, 80);
   const host = String(req.body.host || '').trim().slice(0, 80);
+  if (host && !activeHostsStmt.all().some((r) => r.username.toLowerCase() === host.toLowerCase())) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Unknown host', message: 'The host must be an active staff member.' });
+  }
   const notes = String(req.body.notes || '').trim().slice(0, 200);
-  db.prepare('INSERT INTO shifts (date, time, type, host, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(date, time, type, host, notes, req.session.user.username);
-  audit(req.session.user.username, 'shift.create', date, type + (time ? ' · ' + time : ''));
+  const date = startsAt.slice(0, 10); // UTC date keeps legacy queries working
+  const add = db.transaction(() => {
+    if (db.prepare('SELECT COUNT(*) AS n FROM shifts').get().n >= MAX_EVENTS) return false;
+    db.prepare('INSERT INTO shifts (date, time, type, host, notes, created_by, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(date, '', type, host, notes, req.session.user.username, startsAt, endsAt || null);
+    return true;
+  });
+  if (!add()) {
+    return res.status(400).render('error', { title: 'Limit reached', heading: 'Event limit reached', message: `Only ${MAX_EVENTS} events can be scheduled at a time (${MAX_EVENTS} of ${MAX_EVENTS} used). Remove an event to schedule another.` });
+  }
+  audit(req.session.user.username, 'shift.create', date, type + ' · ' + startsAt);
   res.redirect('/admin/shifts?saved=1');
 });
 
@@ -1073,29 +1220,157 @@ app.post('/admin/shifts/delete', requireShiftManager, auth.csrfToken, auth.verif
   res.redirect('/admin/shifts');
 });
 
-// Build the markdown table injected into the public Shift Schedule page.
+// --- community feedback -----------------------------------------------------
+// Anyone (logged in or anonymous) may submit feedback. Anonymous submitters
+// hold a device secret (localStorage); the server stores only its sha256, so
+// a DB leak can't impersonate a submitter. Management/Oversight staff triage.
+const tokenHash = (t) => (t ? crypto.createHash('sha256').update(String(t)).digest('hex') : null);
+const feedbackLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
+const feedbackChatLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+
+function feedbackAccess(req, row) {
+  if (!row) return false;
+  const u = req.session && req.session.user;
+  if (u && auth.canFeedbackStaff(u)) return true;
+  if (u && row.submitted_by && row.submitted_by.toLowerCase() === u.username.toLowerCase()) return true;
+  const t = tokenHash(req.query.token || (req.body && req.body.token));
+  return !!(t && row.device_token && row.device_token === t);
+}
+
+app.get('/feedback', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.render('feedback', { title: 'Share Feedback' });
+});
+
+app.post('/api/feedback', feedbackLimiter, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const title = String((req.body && req.body.title) || '').trim().slice(0, 120);
+  const body = String((req.body && req.body.body) || '').trim().slice(0, 4000);
+  const roblox = String((req.body && req.body.roblox_user) || '').trim().slice(0, 60);
+  const token = tokenHash(req.body && req.body.token);
+  if (!title || !body) return res.status(400).json({ ok: false, error: 'A title and description are required.' });
+  const bad = profanity.findProfanity(title) || profanity.findProfanity(body) || profanity.findProfanity(roblox);
+  if (bad) {
+    audit((req.session.user && req.session.user.username) || 'anonymous', 'feedback.blocked', title.slice(0, 60), 'profanity: ' + bad);
+    return res.status(400).json({ ok: false, error: 'Please remove inappropriate language and try again.' });
+  }
+  const u = req.session && req.session.user;
+  const info = db.prepare('INSERT INTO feedback (title, body, roblox_user, submitted_by, device_token) VALUES (?, ?, ?, ?, ?)')
+    .run(title, body, roblox, u ? u.username : null, token);
+  audit(u ? u.username : 'anonymous', 'feedback.create', title.slice(0, 60), roblox ? 'roblox: ' + roblox : '');
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+
+app.get('/api/feedback/mine', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const u = req.session && req.session.user;
+  const t = tokenHash(req.query.token);
+  if (!u && !t) return res.json({ ok: true, items: [] });
+  const items = db.prepare(
+    `SELECT f.id, f.title, f.status, f.created_at, f.last_msg_at,
+            (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS msgs,
+            (SELECT sender FROM feedback_messages m WHERE m.feedback_id = f.id ORDER BY m.id DESC LIMIT 1) AS last_sender
+     FROM feedback f
+     WHERE (f.device_token IS NOT NULL AND f.device_token = ?) OR (? IS NOT NULL AND f.submitted_by = ? COLLATE NOCASE)
+     ORDER BY f.created_at DESC LIMIT 50`
+  ).all(t, u ? u.username : null, u ? u.username : null);
+  res.json({ ok: true, items });
+});
+
+app.get('/api/feedback/:id/messages', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const row = db.prepare('SELECT * FROM feedback WHERE id = ?').get(Number(req.params.id));
+  if (!feedbackAccess(req, row)) return res.status(403).json({ ok: false });
+  const messages = db.prepare('SELECT sender, sender_name, body, created_at FROM feedback_messages WHERE feedback_id = ? ORDER BY id LIMIT 200').all(row.id);
+  res.json({ ok: true, feedback: { id: row.id, title: row.title, body: row.body, roblox_user: row.roblox_user, status: row.status, created_at: row.created_at }, messages });
+});
+
+app.post('/api/feedback/:id/message', feedbackChatLimiter, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const row = db.prepare('SELECT * FROM feedback WHERE id = ?').get(Number(req.params.id));
+  if (!feedbackAccess(req, row)) return res.status(403).json({ ok: false });
+  const body = String((req.body && req.body.body) || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ ok: false, error: 'Write a message first.' });
+  const bad = profanity.findProfanity(body);
+  const u = req.session && req.session.user;
+  const asStaff = !!(u && auth.canFeedbackStaff(u));
+  if (bad) {
+    audit(asStaff ? u.username : 'submitter', 'feedback.blocked', '#' + row.id, 'profanity in chat: ' + bad);
+    return res.status(400).json({ ok: false, error: 'Please remove inappropriate language and try again.' });
+  }
+  db.prepare('INSERT INTO feedback_messages (feedback_id, sender, sender_name, body) VALUES (?, ?, ?, ?)')
+    .run(row.id, asStaff ? 'staff' : 'submitter', asStaff ? u.username : null, body);
+  db.prepare("UPDATE feedback SET last_msg_at = datetime('now') WHERE id = ?").run(row.id);
+  res.json({ ok: true });
+});
+
+// Staff triage (Management/Oversight any rank + admins). Registered on app —
+// the adminRouter would wrongly gate these behind the editor role.
+function requireFeedbackStaff(req, res, next) {
+  const u = req.session && req.session.user;
+  if (u && auth.canFeedbackStaff(u)) return next();
+  if (u) return res.status(403).render('error', { title: 'Forbidden', heading: '403 — Feedback triage', message: 'Only Management and Oversight staff can review community feedback.' });
+  return res.redirect('/login?next=' + encodeURIComponent('/admin/feedback'));
+}
+app.get('/admin/feedback', requireFeedbackStaff, auth.csrfToken, viewRecorder('admin'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const status = ['open', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+  const items = db.prepare(
+    `SELECT f.*, (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS msgs
+     FROM feedback f ${status ? 'WHERE f.status = ?' : ''} ORDER BY f.created_at DESC LIMIT 200`
+  ).all(...(status ? [status] : []));
+  const counts = {
+    open: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='open'").get().n,
+    approved: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='approved'").get().n,
+    rejected: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='rejected'").get().n,
+  };
+  res.render('admin/feedback', { title: 'Admin · Feedback', section: 'feedback', items, counts, status });
+});
+app.post('/admin/feedback/status', requireFeedbackStaff, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const id = Number(req.body.id);
+  const status = ['open', 'approved', 'rejected'].includes(req.body.status) ? req.body.status : 'open';
+  const row = db.prepare('SELECT title FROM feedback WHERE id = ?').get(id);
+  if (row) {
+    db.prepare("UPDATE feedback SET status = ?, status_by = ?, status_at = datetime('now') WHERE id = ?").run(status, req.session.user.username, id);
+    audit(req.session.user.username, 'feedback.status', '#' + id, status + ' · ' + row.title.slice(0, 60));
+  }
+  res.redirect('/admin/feedback');
+});
+
+// Build the markdown table injected into the public Event Schedule page.
+// Timed rows emit <time data-time> cells that the client converts to the
+// viewer's local timezone (UTC text is the no-JS fallback).
 function shiftScheduleMarkdown() {
   const rows = upcomingShiftsStmt.all();
   if (!rows.length) {
-    return '_No shifts are currently scheduled. Check the Discord **#events** channel for the latest announcements._';
+    return '_No events are currently scheduled. Check the Discord **#events** channel for the latest announcements._';
   }
-  const esc = (s) => String(s || '').replace(/\|/g, '\\|');
-  const fmt = (d) => {
+  const esc = (s) => String(s || '').replace(/\|/g, '\\|').replace(/</g, '&lt;');
+  const fmtDate = (d) => {
     const dt = new Date(d + 'T00:00:00');
     return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
+  const utcTime = (iso) => new Date(iso).toISOString().slice(11, 16) + ' UTC';
   let out = '| Date | Time | Type | Host | Notes |\n| :--- | :--- | :--- | :--- | :--- |\n';
   for (const r of rows) {
-    out += `| ${fmt(r.date)} | ${esc(r.time) || 'TBA'} | ${esc(r.type)} | ${esc(r.host) || '—'} | ${esc(r.notes) || '—'} |\n`;
+    let dateCell, timeCell;
+    if (r.starts_at) {
+      dateCell = `<time data-time="${r.starts_at}" data-time-format="date">${fmtDate(r.starts_at.slice(0, 10))}</time>`;
+      timeCell = `<time data-time="${r.starts_at}"${r.ends_at ? ` data-time-end="${r.ends_at}"` : ''} data-time-format="range">${utcTime(r.starts_at)}${r.ends_at ? ' – ' + utcTime(r.ends_at) : ''}</time>`;
+    } else {
+      dateCell = fmtDate(r.date);
+      timeCell = esc(r.time) || 'TBA';
+    }
+    out += `| ${dateCell} | ${timeCell} | ${esc(r.type)} | ${esc(r.host) || '—'} | ${esc(r.notes) || '—'} |\n`;
   }
-  return out;
+  return '_All times are shown in your local timezone._\n\n' + out;
 }
 
 // Staff Overview: Roblox details, disciplinary records (issued + received), and
 // document activity. Record sections are hidden from viewers outside the division.
 function staffOverview(req, res) {
   const viewer = req.session.user;
-  const target = db.prepare('SELECT id, username, role, divisions, ranks, rank, last_login, last_seen, created_at, suspended, terminated FROM users WHERE id = ?').get(Number(req.query.id));
+  const target = db.prepare('SELECT id, username, role, divisions, ranks, rank, last_login, last_seen, created_at, suspended, suspended_until, terminated, deleted, timezone FROM users WHERE id = ?').get(Number(req.query.id));
   if (!target) {
     return res.status(404).render('error', { title: 'Not found', heading: 'Staff member not found', message: 'That account does not exist.' });
   }
@@ -1154,8 +1429,8 @@ function applyPointOutcome(staffUser, mandatory) {
   else if (pts >= 1) outcome = 'Verbal Warning';
   const target = db.prepare('SELECT id, role, username FROM users WHERE lower(username) = lower(?)').get(staffUser);
   if (target && target.role !== 'admin') {
-    if (outcome === 'Termination') { db.prepare("UPDATE users SET terminated=1, suspended=1, rank='', ranks='' WHERE id=?").run(target.id); audit('system', 'user.terminated', target.username, 'auto — ' + (mandatory ? 'mandatory offense' : pts + ' pts')); }
-    else if (outcome === '7-day Suspension') { db.prepare('UPDATE users SET suspended=1 WHERE id=?').run(target.id); audit('system', 'user.suspend', target.username, 'auto — ' + pts + ' pts (7-day suspension)'); }
+    if (outcome === 'Termination') { db.prepare("UPDATE users SET terminated=1, suspended=1, suspended_until=NULL, rank='', ranks='' WHERE id=?").run(target.id); audit('system', 'user.terminated', target.username, 'auto — ' + (mandatory ? 'mandatory offense' : pts + ' pts')); }
+    else if (outcome === '7-day Suspension') { db.prepare("UPDATE users SET suspended=1, suspended_until=datetime('now','+7 days') WHERE id=?").run(target.id); audit('system', 'user.suspend', target.username, 'auto — ' + pts + ' pts (7-day suspension)'); }
   }
   return { points: pts, outcome };
 }
@@ -1173,7 +1448,7 @@ function requireDashboard(req, res, next) {
 function sidTargets(user) {
   const isAdmin = user.role === 'admin';
   const isLeadOver = auth.userRanks(user).osc === 'lead_over';
-  return db.prepare('SELECT id, username, role, divisions, ranks, rank FROM users WHERE suspended=0 AND terminated=0').all()
+  return db.prepare('SELECT id, username, role, divisions, ranks, rank FROM users WHERE suspended=0 AND terminated=0 AND deleted=0').all()
     .filter((s) => {
       if (s.username.toLowerCase() === user.username.toLowerCase()) return false;
       if (isAdmin) return s.role !== 'admin';
@@ -1186,7 +1461,7 @@ function sidTargets(user) {
     .map((s) => s.username).sort();
 }
 
-app.get('/dashboard', requireDashboard, auth.csrfToken, (req, res) => {
+app.get('/dashboard', requireDashboard, auth.csrfToken, viewRecorder('dashboard'), (req, res) => {
   const u = req.session.user;
   const q = String(req.query.q || '').trim();
   const like = '%' + q + '%';
@@ -1221,6 +1496,7 @@ app.get('/dashboard', requireDashboard, auth.csrfToken, (req, res) => {
     myRanks,
     needsApprovalMod: auth.needsApproval(u, 'moderation'), needsApprovalSID: auth.needsApproval(u, 'sid'),
     canApproveMod: auth.canApprove(u, 'moderation'), canApproveSID: auth.canApprove(u, 'sid'),
+    canVoidPun: auth.canVoidPunishment(u), canVoidInf: auth.canVoidInfraction(u),
     staffList: isSID ? sidTargets(u) : [],
   });
 });
@@ -1252,15 +1528,27 @@ app.get('/api/roblox/:username', auth.requireAuth, async (req, res) => {
   }
 });
 
-// Roblox username autocomplete (matching users dropdown).
-app.get('/api/roblox-search', auth.requireAuth, async (req, res) => {
+// Roblox username autocomplete (matching users dropdown, with headshots).
+// Public (rate-limited): also used by the anonymous feedback form.
+const robloxSearchLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+app.get('/api/roblox-search', robloxSearchLimiter, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json({ ok: true, data: [] });
   try {
     const r = await fetch('https://users.roblox.com/v1/users/search?keyword=' + encodeURIComponent(q) + '&limit=10');
     const j = await r.json();
-    res.json({ ok: true, data: (j && j.data ? j.data : []).map((usr) => ({ id: usr.id, name: usr.name, displayName: usr.displayName })) });
+    const data = (j && j.data ? j.data : []).map((usr) => ({ id: usr.id, name: usr.name, displayName: usr.displayName, avatar: null }));
+    // One batch thumbnails call fills in the suggestion avatars.
+    if (data.length) {
+      try {
+        const t = await fetch('https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=' + data.map((d) => d.id).join(',') + '&size=48x48&format=Png&isCircular=true');
+        const tj = await t.json();
+        const byId = new Map(((tj && tj.data) || []).map((d) => [d.targetId, d.imageUrl]));
+        data.forEach((d) => { d.avatar = byId.get(d.id) || null; });
+      } catch (e) { /* avatars optional */ }
+    }
+    res.json({ ok: true, data });
   } catch (e) { res.json({ ok: false, data: [] }); }
 });
 
@@ -1294,11 +1582,13 @@ app.get('/api/user-file', requireDashboard, (req, res) => {
   const u = req.session.user;
   const name = String(req.query.user || '').trim();
   if (!name) return res.json({ ok: false });
+  // Sections the viewer has no authority over are omitted (null), not sent
+  // empty — the client hides them entirely so nothing leaks across divisions.
   const punishments = auth.canModerate(u)
-    ? db.prepare("SELECT id, type, reason, duration, moderator, created_at, voided FROM punishments WHERE roblox_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : [];
+    ? db.prepare("SELECT id, type, reason, duration, moderator, created_at, voided, void_reason, voided_by FROM punishments WHERE roblox_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : null;
   const infractions = auth.canSID(u)
-    ? db.prepare("SELECT id, type, points, reason, outcome, issued_by, created_at, voided, status FROM infractions WHERE staff_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : [];
-  res.json({ ok: true, user: name, punishments, infractions, points: staffPoints(name) });
+    ? db.prepare("SELECT id, type, points, reason, outcome, issued_by, created_at, voided, void_reason, voided_by, status FROM infractions WHERE staff_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : null;
+  res.json({ ok: true, user: name, punishments, infractions, points: auth.canSID(u) ? staffPoints(name) : null });
 });
 
 // Realtime dashboard feed — polled by the page to update lists live.
@@ -1307,8 +1597,8 @@ app.get('/api/dashboard/live', requireDashboard, (req, res) => {
   const u = req.session.user;
   const isMod = auth.canModerate(u), isSID = auth.canSID(u);
   const out = { ok: true };
-  if (isMod) out.punishments = db.prepare("SELECT id, roblox_user, roblox_id, type, reason, duration, evidence, moderator, created_at, voided FROM punishments WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
-  if (isSID) out.infractions = db.prepare("SELECT id, staff_user, type, points, reason, outcome, evidence, issued_by, created_at, voided FROM infractions WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
+  if (isMod) out.punishments = db.prepare("SELECT id, roblox_user, roblox_id, type, reason, duration, evidence, moderator, created_at, voided, void_reason, voided_by FROM punishments WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
+  if (isSID) out.infractions = db.prepare("SELECT id, staff_user, type, points, reason, outcome, evidence, issued_by, created_at, voided, void_reason, voided_by FROM infractions WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
   if (isMod && auth.canApprove(u, 'moderation')) out.pendingPun = db.prepare("SELECT id, roblox_user, type, reason, evidence, moderator, created_at FROM punishments WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
   if (isSID && auth.canApprove(u, 'sid')) out.pendingInf = db.prepare("SELECT id, staff_user, type, points, reason, evidence, issued_by, created_at FROM infractions WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
   const cnt = (sql) => db.prepare(sql).get().n;
@@ -1352,14 +1642,21 @@ app.post('/dashboard/punishment', requireDashboard, auth.csrfToken, auth.verifyC
       String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500),
       String(req.body.duration || '').trim().slice(0, 40), u.username, status);
   audit(u.username, 'punish.create', rblx, type + (status === 'pending' ? ' (pending approval)' : ''));
-  res.redirect('/dashboard?saved=' + (status === 'pending' ? 'pending' : 'punish'));
+  // Land on the punished user's file so the moderator sees the updated record.
+  res.redirect('/dashboard?tab=file&open=' + encodeURIComponent(rblx));
 });
 
 app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  if (!auth.canModerate(req.session.user)) return res.status(403).json({ ok: false });
+  const u = req.session.user;
+  if (!auth.canVoidPunishment(u)) {
+    return res.status(403).render('error', { title: 'Forbidden', heading: 'Insufficient rank', message: 'Punishments may only be voided by a Senior Moderator, Internal Operations Manager, Assistant Internal Operations Manager, Assistant Community Manager, Community Manager, or Lead Overseer.' });
+  }
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to void a punishment.' });
   const p = db.prepare('SELECT roblox_user FROM punishments WHERE id = ?').get(Number(req.body.id));
-  db.prepare('UPDATE punishments SET voided = 1 WHERE id = ?').run(Number(req.body.id));
-  if (p) audit(req.session.user.username, 'punish.void', p.roblox_user, '');
+  // Voids are kept, never deleted — marked with who voided and why.
+  db.prepare('UPDATE punishments SET voided = 1, void_reason = ?, voided_by = ? WHERE id = ?').run(reason, u.username, Number(req.body.id));
+  if (p) audit(u.username, 'punish.void', p.roblox_user, reason);
   res.redirect('/dashboard');
 });
 
@@ -1396,14 +1693,20 @@ app.post('/dashboard/infraction', requireDashboard, auth.csrfToken, auth.verifyC
     db.prepare('UPDATE infractions SET outcome = ? WHERE id = ?').run(outcome, info.lastInsertRowid);
   }
   audit(u.username, 'infraction.create', staffUser, type + ' · ' + points + 'pt' + (status === 'pending' ? ' (pending)' : ' → ' + outcome));
-  res.redirect('/dashboard?saved=' + (status === 'pending' ? 'pending' : 'infraction'));
+  // Land on the staff member's file so the investigator sees the updated record.
+  res.redirect('/dashboard?tab=file&open=' + encodeURIComponent(staffUser));
 });
 
 app.post('/dashboard/infraction/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  if (!auth.canSID(req.session.user)) return res.status(403).json({ ok: false });
+  const u = req.session.user;
+  if (!auth.canVoidInfraction(u)) {
+    return res.status(403).render('error', { title: 'Forbidden', heading: 'Insufficient rank', message: 'Infractions may only be voided by the Lead Investigator, Community Manager, or Lead Overseer.' });
+  }
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to void an infraction.' });
   const inf = db.prepare('SELECT staff_user FROM infractions WHERE id = ?').get(Number(req.body.id));
-  db.prepare('UPDATE infractions SET voided = 1 WHERE id = ?').run(Number(req.body.id));
-  if (inf) audit(req.session.user.username, 'infraction.void', inf.staff_user, '');
+  db.prepare('UPDATE infractions SET voided = 1, void_reason = ?, voided_by = ? WHERE id = ?').run(reason, u.username, Number(req.body.id));
+  if (inf) audit(u.username, 'infraction.void', inf.staff_user, reason);
   res.redirect('/dashboard');
 });
 
@@ -1504,6 +1807,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Valley Correctional Facility docs running on http://localhost:${PORT}`);
 });
+// Realtime co-editing (WebSocket on the same port, session-authenticated).
+collab.attach(server, sessionMw);
+collab.onPersist = () => invalidateRenderCache();

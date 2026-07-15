@@ -1,0 +1,97 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <% if (canEdit) { %><%- include('../partials/admin-side') %><% } %>
+  <main class="content admin-content <%= canEdit ? '' : 'admin-content-wide' %>">
+    <div class="admin-titlerow">
+      <div>
+        <h1 class="admin-h1">Community Feedback</h1>
+        <p class="admin-sub">Ideas and reports submitted by the community. Approve what ships, reject what won't, and chat with submitters — they see your replies on their feedback page.</p>
+      </div>
+    </div>
+
+    <div class="dash-tabs staff-tabs">
+      <a class="dash-tab <%= !status ? 'active' : '' %>" href="/admin/feedback">All</a>
+      <a class="dash-tab <%= status==='open' ? 'active' : '' %>" href="/admin/feedback?status=open">Open <% if (counts.open) { %><span class="tab-count"><%= counts.open %></span><% } %></a>
+      <a class="dash-tab <%= status==='approved' ? 'active' : '' %>" href="/admin/feedback?status=approved">Approved <span class="tab-count"><%= counts.approved %></span></a>
+      <a class="dash-tab <%= status==='rejected' ? 'active' : '' %>" href="/admin/feedback?status=rejected">Rejected <span class="tab-count"><%= counts.rejected %></span></a>
+    </div>
+
+    <% if (!items.length) { %><p class="muted" style="padding:12px 0">No feedback<%= status ? ' with status "'+status+'"' : '' %> yet.</p><% } %>
+    <% items.forEach(function (f) { %>
+      <section class="panel fb-card" data-id="<%= f.id %>">
+        <div class="fb-card-head">
+          <div>
+            <strong class="fb-card-title"><%= f.title %></strong>
+            <span class="pill pill-<%= f.status==='open'?'amber':(f.status==='rejected'?'red':'grey') %>"><%= f.status %></span>
+            <div class="muted small">
+              by <%= f.submitted_by || 'anonymous' %><% if (f.roblox_user) { %> · Roblox: <strong><%= f.roblox_user %></strong><% } %>
+              · <time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time>
+              · <%= f.msgs %> message<%= f.msgs===1?'':'s' %>
+              <% if (f.status !== 'open' && f.status_by) { %> · <%= f.status %> by <%= f.status_by %><% } %>
+            </div>
+          </div>
+          <div class="fb-card-actions">
+            <% ['approved','rejected','open'].forEach(function (s) { if (f.status !== s) { %>
+              <form method="post" action="/admin/feedback/status" class="inline">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= f.id %>" /><input type="hidden" name="status" value="<%= s %>" />
+                <button class="btn btn-ghost btn-sm <%= s==='rejected'?'danger':'' %>" type="submit"><%= s==='open' ? 'Reopen' : (s==='approved' ? 'Approve' : 'Reject') %></button>
+              </form>
+            <% } }); %>
+            <button class="btn btn-ghost btn-sm" type="button" data-thread="<%= f.id %>"><%- icon('message') %> Chat</button>
+          </div>
+        </div>
+        <p class="fb-card-body"><%= f.body %></p>
+        <div class="fb-thread-inline" id="thread-<%= f.id %>" hidden>
+          <div class="fb-msgs" data-msgs></div>
+          <form class="fb-reply" data-reply="<%= f.id %>">
+            <textarea class="reason-ta" rows="2" maxlength="2000" placeholder="Reply to the submitter…"></textarea>
+            <button class="btn btn-solid btn-sm" type="submit">Send</button>
+          </form>
+          <div class="auth-error" data-err hidden><%- icon('danger') %> <span></span></div>
+        </div>
+      </section>
+    <% }); %>
+  </main>
+</div>
+<script>
+(function () {
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function loadThread(id) {
+    var wrap = document.getElementById('thread-' + id); if (!wrap) return;
+    fetch('/api/feedback/' + id + '/messages').then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) return;
+      var box = wrap.querySelector('[data-msgs]');
+      box.innerHTML = d.messages.length ? d.messages.map(function (m) {
+        return '<div class="fb-msg ' + (m.sender === 'staff' ? 'is-staff' : 'is-submitter') + '"><div class="fb-msg-body">' + esc(m.body) + '</div><div class="fb-msg-meta muted small">' + (m.sender === 'staff' ? esc(m.sender_name || 'staff') + ' (staff)' : 'submitter') + ' · <time data-time="' + esc(m.created_at) + '">' + esc(m.created_at.slice(0, 16)) + '</time></div></div>';
+      }).join('') : '<p class="muted small">No messages yet — say hello.</p>';
+      if (window.fillTimes) window.fillTimes();
+      box.scrollTop = box.scrollHeight;
+    }).catch(function () {});
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-thread]'); if (!b) return;
+    var id = b.getAttribute('data-thread');
+    var wrap = document.getElementById('thread-' + id);
+    wrap.hidden = !wrap.hidden;
+    if (!wrap.hidden) loadThread(id);
+  });
+  document.addEventListener('submit', function (e) {
+    var form = e.target.closest('[data-reply]'); if (!form) return;
+    e.preventDefault();
+    var id = form.getAttribute('data-reply');
+    var ta = form.querySelector('textarea');
+    var err = form.parentNode.querySelector('[data-err]');
+    err.hidden = true;
+    if (!ta.value.trim()) return;
+    fetch('/api/feedback/' + id + '/message', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: ta.value })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; return; }
+      ta.value = ''; loadThread(id);
+    }).catch(function () {});
+  });
+})();
+</script>
+<%- include('../partials/foot') %>

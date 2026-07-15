@@ -11,18 +11,23 @@
         <div class="profile-name"><strong><%= user.username %></strong></div>
         <div class="profile-sub muted small">Roblox <span class="rbx-status">— loading…</span></div>
         <div class="profile-badges">
-          <span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span>
+          <span class="badge cap <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span>
           <% ranks.forEach(function(rl){ %><span class="badge badge-internal"><%= rl %></span><% }); %>
         </div>
       </div>
       <% if (typeof myPoints !== 'undefined') { %>
         <div class="profile-points">
           <span class="pill pill-<%= myPoints>=6?'red':(myPoints>=3?'amber':'grey') %>"><%= myPoints %></span>
-          <span class="muted small">disc. points · 6mo</span>
+          <span class="muted small">Disciplinary Points · 6mo</span>
         </div>
       <% } %>
     </header>
 
+    <% if (user.terminated) { %>
+      <div class="auth-error"><%- icon('danger') %> <span>This account has been <strong>terminated</strong>.</span></div>
+    <% } else if (user.suspended) { %>
+      <div class="auth-error"><%- icon('danger') %> <span>Your account is <strong>suspended</strong><% if (user.suspended_until) { %> — access returns <strong><time data-time="<%= user.suspended_until %>" data-time-format="datetime"><%= user.suspended_until.slice(0,10) %></time></strong><% } else { %> indefinitely — contact an administrator<% } %>.</span></div>
+    <% } %>
     <% if (typeof done !== 'undefined' && done) { %>
       <div class="account-ok"><%- icon('check') %> <span>Your password has been updated.</span></div>
     <% } %>

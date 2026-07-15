@@ -26,7 +26,7 @@ VCF operates across four surfaces: the **Discord** server, live **in-game shifts
 Internal documents, investigations, staff discussions, and any information marked or understood to be classified are **strictly confidential**. You may not share, leak, screenshot, copy, paraphrase, or discuss them with anyone outside the authorized staff team.
 
 :::danger Leaking is a terminable offense
-Leaking or facilitating access to any internal or classified document — during or after your time on staff — is a **Tier 3 offense** resulting in **immediate termination and a permanent employment blacklist**, and may be escalated to platform moderation. Every staff member accepts this in the Staff Policy Agreement at first sign-in.
+Leaking or facilitating access to any internal or classified document — during or after your time on staff — is a **Tier 3 offense** resulting in **immediate termination and a permanent employment blacklist**, with a **permanent community ban** possible on a case-by-case basis, and may be escalated to platform moderation. Every staff member accepts this in the Staff Policy Agreement at first sign-in.
 :::
 
 ## Integrity Rules (loopholes closed)
@@ -42,7 +42,7 @@ Leaking or facilitating access to any internal or classified document — during
 Misconduct is handled by the [Specialized Investigations Division](/internal-documents/specialized-investigations-division-handbook) under the disciplinary **point system** (a rolling six-month window; see the SID Handbook for thresholds). Certain offenses warrant **immediate termination without appeal**, including:
 
 - At-will removal by the Lead Overseer or Community Manager.
-- Leaking or disclosing confidential information.
+- Leaking or disclosing confidential information (termination + permanent employment blacklist; permanent community ban possible case-by-case).
 - Retaliation against a reporter (a Tier 3 offense).
 - Organizing strikes, walkouts, or coordinated departure threats.
 - Association with banned individuals or documented drama-instigators without disclosure.
@@ -59,7 +59,3 @@ A reporter's identity is never shared with the subject of an investigation. Reta
 ## Leaving the Team
 
 When you leave or are removed, your access is revoked within 24 hours and SID may audit your final 30 days of activity. Your confidentiality obligations remain in force indefinitely.
-
-:::details Internal Information
-**Authorized Division(s):** All Divisions · **Last Updated:** 7/9/2026
-:::

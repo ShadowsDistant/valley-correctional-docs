@@ -19,13 +19,13 @@ No division operates in isolation. Managers work closely with one another to kee
 | :--- | :--- |
 | **Moderation Division** | Rule enforcement, moderator recruitment, and training |
 | **Specialized Investigations Division** | Investigative standards and confidentiality protocols |
-| **Prison Administration Division** | Department of Corrections operations and shift management |
+| **Facility Administration Division** | Department of Corrections operations and shift management |
 | **Development Division** | Development lifecycle and technical project delivery |
 
 ## Leadership
 
 - **Community Manager** — holds final authority on community-wide direction.
-- **Division Managers** — lead Prison Administration, Internal Operations, and Development respectively.
+- **Division Managers** — lead Facility Administration, Internal Operations, and Development respectively.
 
 Major policy changes, handbook amendments, and significant hiring decisions are subject to review by the **Oversight Committee** before taking effect.
 

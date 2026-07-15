@@ -13,8 +13,14 @@
         <h1 class="admin-h1">Staff accounts</h1>
         <p class="admin-sub">The staff directory — every team member's role, divisional ranks, and account status in one place.<% if (!isAdmin) { %> Scoped to your divisions: <strong><%= governed.map(function(d){return divLabel[d]||d;}).join(', ') || 'your division' %></strong>.<% } %></p>
       </div>
-      <button class="btn btn-solid" type="button" id="addToggle"><%- icon('plus') %> Add account</button>
+      <% if (tab !== 'past') { %><button class="btn btn-solid" type="button" id="addToggle"><%- icon('plus') %> Add account</button><% } %>
     </div>
+
+    <div class="dash-tabs staff-tabs">
+      <a class="dash-tab <%= tab !== 'past' ? 'active' : '' %>" href="/admin/staff"><%- icon('users') %> Active staff</a>
+      <a class="dash-tab <%= tab === 'past' ? 'active' : '' %>" href="/admin/staff?tab=past"><%- icon('cabinet') %> Past staff <% if (pastCount) { %><span class="tab-count"><%= pastCount %></span><% } %></a>
+    </div>
+    <% if (tab === 'past') { %><p class="muted small" style="margin:-6px 0 14px">Terminated and archived accounts. All their logs, punishments, and infractions are retained.</p><% } %>
 
     <section class="add-panel" id="addPanel" hidden>
       <div class="panel">
@@ -74,12 +80,13 @@
             <div class="staff-id">
               <div class="staff-name"><%= u.username %>
                 <% if (u.id === user.id) { %><span class="badge">you</span><% } %>
-                <% if (u.terminated) { %><span class="badge badge-danger"><%- icon('ban') %> Terminated</span><% } else if (u.suspended) { %><span class="badge badge-danger"><%- icon('lock') %> Suspended</span><% } %>
+                <% if (u.terminated) { %><span class="badge badge-danger"><%- icon('ban') %> Terminated</span><% } else if (u.suspended) { %><span class="badge badge-danger"><%- icon('lock') %> Suspended<% if (u.suspended_until) { %> until <time data-time="<%= u.suspended_until %>" data-time-format="datetime"><%= u.suspended_until.slice(0,10) %></time><% } %></span><% } %>
+                <% if (u.deleted) { %><span class="badge badge-danger"><%- icon('trash') %> Archived</span><% } %>
               </div>
               <div class="staff-since">Joined <%= (u.created_at || '').slice(0,10) %></div>
             </div>
             <div class="staff-facts">
-              <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>
+              <div class="staff-fact"><span class="fact-label">Role</span><span class="badge cap <%= u.role==='admin'?'badge-internal':'' %>"><%= u.role %></span></div>
               <div class="staff-fact"><span class="fact-label">Divisions</span><span class="fact-val"><%= u.role==='admin' ? 'All' : (have.length ? have.map(function(d){return divLabel[d]||d;}).join(', ') : '—') %></span></div>
               <div class="staff-fact"><span class="fact-label">Last seen</span><span class="fact-val"><% if (u.last_seen) { %><time data-time="<%= u.last_seen %>"><%= u.last_seen.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
               <% if (u.rankLabels && u.rankLabels.length) { %><div class="staff-fact"><span class="fact-label">Ranks</span><span class="fact-val"><% u.rankLabels.forEach(function(rl){ %><span class="badge badge-internal"><%= rl %></span> <% }); %></span></div><% } %>
@@ -88,6 +95,14 @@
 
           <div class="staff-actions">
             <a class="btn btn-ghost btn-sm" href="/admin/staff/overview?id=<%= u.id %>"><%- icon('users') %> Overview</a>
+            <% if (tab === 'past') { %>
+              <% if (canAdminActions && u.id !== user.id) { %>
+                <form method="post" action="/admin/staff/reinstate" class="inline" data-confirm="Reinstate <%= u.username %> as active staff? Their suspension/termination is cleared." data-confirm-title="Reinstate account" data-confirm-ok="Reinstate" data-confirm-variant="safe">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
+                  <button class="btn btn-ghost btn-sm" type="submit">Reinstate</button>
+                </form>
+              <% } %>
+            <% } else { %>
             <button class="btn btn-ghost btn-sm" type="button" data-panel="access-<%= u.id %>"><%- icon('edit') %> Edit access</button>
             <% if (canAdminActions) { %>
               <button class="btn btn-ghost btn-sm" type="button" data-panel="pw-<%= u.id %>">Reset password</button>
@@ -96,11 +111,12 @@
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" /><input type="hidden" name="suspend" value="<%= u.suspended ? '0' : '1' %>" />
                   <button class="btn btn-ghost btn-sm <%= u.suspended ? '' : 'danger' %>" type="submit"><%= u.suspended ? 'Reinstate' : 'Suspend' %></button>
                 </form>
-                <form method="post" action="/admin/staff/delete" class="inline" data-confirm="Delete <%= u.username %>? This permanently removes the account and cannot be undone." data-confirm-title="Delete account" data-confirm-ok="Delete account">
+                <form method="post" action="/admin/staff/delete" class="inline" data-confirm="Archive <%= u.username %>? The account is locked and moved to Past staff — all logs are retained." data-confirm-title="Archive account" data-confirm-ok="Archive">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
-                  <button class="btn btn-ghost btn-sm danger" type="submit">Delete</button>
+                  <button class="btn btn-ghost btn-sm danger" type="submit">Archive</button>
                 </form>
               <% } %>
+            <% } %>
             <% } %>
           </div>
 
@@ -134,6 +150,13 @@
               </div>
               <button class="btn btn-solid btn-sm" type="submit">Save changes</button>
             </form>
+            <% if (canAdminActions) { %>
+            <form method="post" action="/admin/staff/rename" class="rename-form" data-confirm="Rename <%= u.username %>? Every log, punishment, and infraction referencing this name is updated to match." data-confirm-title="Rename account" data-confirm-ok="Rename">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
+              <label class="field field-sm">Rename account<input type="text" name="username" value="<%= u.username %>" pattern="[A-Za-z0-9_]{3,20}" title="3–20 letters, numbers, underscores" required /></label>
+              <button class="btn btn-ghost btn-sm" type="submit"><%- icon('edit') %> Rename</button>
+            </form>
+            <% } %>
           </div>
 
           <% if (canAdminActions) { %>
@@ -154,7 +177,7 @@
 <script>
 (function () {
   var addBtn = document.getElementById('addToggle'), addPanel = document.getElementById('addPanel');
-  addBtn.addEventListener('click', function () { addPanel.hidden = !addPanel.hidden; });
+  if (addBtn && addPanel) addBtn.addEventListener('click', function () { addPanel.hidden = !addPanel.hidden; });
   var role = document.getElementById('roleSelect'), picker = document.getElementById('divisionPicker'), newRanks = document.getElementById('newRanks');
   function sync() { var show = role.value === 'staff' || role.value === 'editor'; picker.style.display = show ? '' : 'none'; if (newRanks) newRanks.style.display = show ? '' : 'none'; }
   if (role) { role.addEventListener('change', sync); sync(); }
@@ -165,6 +188,16 @@
       card.querySelectorAll('.staff-panel').forEach(function (p) { if (p !== el) p.hidden = true; });
       el.hidden = !el.hidden;
     });
+  });
+  // Selecting a rank implies the division — auto-check its checkbox so the
+  // rank isn't silently dropped on save (ranks require the division).
+  document.addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel.name || sel.name.indexOf('rank_') !== 0 || !sel.value) return;
+    var div = sel.name.slice(5);
+    var form = sel.closest('form'); if (!form) return;
+    var chk = form.querySelector('input[name=divisions][value="' + div + '"]');
+    if (chk && !chk.checked && !chk.disabled) chk.checked = true;
   });
   // filters
   var fd = document.getElementById('f-division'), fr = document.getElementById('f-rank'), fq = document.getElementById('f-q');
@@ -179,7 +212,8 @@
     document.getElementById('staffCount').textContent = shown + ' shown';
     document.getElementById('staffEmpty').hidden = shown > 0;
   }
-  [fd, fr, fq].forEach(function (el) { if (el) el.addEventListener('input', applyFilters); });
+  // custom-enhanced selects dispatch `change`, the text box dispatches `input` — listen to both
+  [fd, fr, fq].forEach(function (el) { if (el) { el.addEventListener('input', applyFilters); el.addEventListener('change', applyFilters); } });
   applyFilters();
   // roblox username autocomplete on the create form
   var uName = document.getElementById('new-username');
@@ -190,7 +224,7 @@
       t = setTimeout(function () {
         fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
           if (!d.data || !d.data.length) { box.hidden = true; return; }
-          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + u.name + '"><strong>' + u.name + '</strong> <span class="muted">' + u.displayName + '</span></div>'; }).join('');
+          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + u.name + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + u.avatar + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + u.name + '</strong> <span class="muted">' + u.displayName + '</span></span></div>'; }).join('');
           box.hidden = false;
         }).catch(function () {});
       }, 250);

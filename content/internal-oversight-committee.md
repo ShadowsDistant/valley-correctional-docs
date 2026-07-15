@@ -104,7 +104,3 @@ Maximum **two (2) Overseers** per division at any time. Vacancy management is th
 - **Position Cap:** maximum **two (2) Lead Investigators**.
 - **Eligibility:** clean record required — no prior infractions or moderation history.
 - **Management Exclusion:** no Management Division member may hold this role.
-
-:::details Internal Information
-**Authorized Division(s):** Oversight Committee · **Authorization Personnel:** `shadowsdistant` (Lead Overseer) · **Last Updated:** 4/22/2026
-:::

@@ -15,6 +15,9 @@
         <% if (user && (user.role === 'admin' || (typeof canManageStaffNav !== 'undefined' && canManageStaffNav))) { %>
           <li><a class="nav-link <%= section === 'staff' ? 'active' : '' %>" href="/admin/staff"><span class="nav-ico"><%- icon('users') %></span><span class="nav-label">Staff</span></a></li>
         <% } %>
+        <% if (user && typeof canFeedbackStaff !== 'undefined' && canFeedbackStaff) { %>
+          <li><a class="nav-link <%= section === 'feedback' ? 'active' : '' %>" href="/admin/feedback"><span class="nav-ico"><%- icon('message') %></span><span class="nav-label">Feedback<% if (typeof openFeedback !== 'undefined' && openFeedback) { %> <span class="tab-count"><%= openFeedback %></span><% } %></span></a></li>
+        <% } %>
       </ul>
     </div>
     <div class="nav-group">

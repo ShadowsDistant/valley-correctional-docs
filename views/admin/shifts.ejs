@@ -17,21 +17,33 @@
 
     <div class="admin-cols admin-cols-policy">
       <section class="panel">
-        <div class="panel-head"><h2>Add an event</h2></div>
-        <form method="post" action="/admin/shifts/add" class="stack-form">
+        <div class="panel-head"><h2>Add an event</h2><span class="badge <%= atCap ? 'badge-danger' : '' %>"><%= shifts.length %> of <%= maxEvents %></span></div>
+        <% if (atCap) { %>
+          <div class="dash-notice"><%- icon('warning') %> <span>Event limit reached (<%= maxEvents %> of <%= maxEvents %>). Remove an event to schedule another.</span></div>
+        <% } %>
+        <form method="post" action="/admin/shifts/add" class="stack-form" id="eventForm" <%= atCap ? 'hidden' : '' %>>
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <input type="hidden" name="starts_at" id="starts-at" />
+          <input type="hidden" name="ends_at" id="ends-at" />
           <div class="field-grid">
-            <label class="field">Date<input type="date" name="date" required /></label>
-            <label class="field">Time <input type="text" name="time" placeholder="2:00 PM – 5:00 PM EST" /></label>
+            <label class="field">Date<input type="date" name="date" id="ev-date" required /></label>
             <label class="field">Type
               <select name="type">
                 <% shiftTypes.forEach(function (t) { %><option value="<%= t %>"><%= t %></option><% }); %>
               </select>
             </label>
-            <label class="field">Host <input type="text" name="host" placeholder="Hosting staff member" /></label>
+            <label class="field">Start time<input type="text" id="ev-start" data-timepicker required placeholder="Pick a time" autocomplete="off" /></label>
+            <label class="field">End time <small>(optional)</small><input type="text" id="ev-end" data-timepicker placeholder="Pick a time" autocomplete="off" /></label>
           </div>
+          <label class="field">Host
+            <select name="host">
+              <option value="">— No host —</option>
+              <% (hosts || []).forEach(function (h) { %><option value="<%= h %>"><%= h %></option><% }); %>
+            </select>
+          </label>
           <label class="field">Notes <input type="text" name="notes" placeholder="e.g. Booster early access 10–15 min prior" /></label>
-          <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> Add shift</button></div>
+          <p class="muted small" style="margin:0">Times are entered in <strong>your</strong> timezone (<span id="tz-name"></span>) — every viewer sees them converted to their own.</p>
+          <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> Add event</button></div>
         </form>
       </section>
 
@@ -47,8 +59,8 @@
                 <% var today = new Date().toISOString().slice(0,10); %>
                 <% shifts.forEach(function (s) { %>
                   <tr class="<%= s.date < today ? 'row-past' : '' %>">
-                    <td class="nowrap mono small"><%= s.date %></td>
-                    <td class="small"><%= s.time || 'TBA' %></td>
+                    <td class="nowrap small"><% if (s.starts_at) { %><time data-time="<%= s.starts_at %>" data-time-format="date"><%= s.date %></time><% } else { %><span class="mono"><%= s.date %></span><% } %></td>
+                    <td class="small nowrap"><% if (s.starts_at) { %><time data-time="<%= s.starts_at %>" <%= s.ends_at ? 'data-time-end="'+s.ends_at+'"' : '' %> data-time-format="range"><%= s.starts_at.slice(11,16) %> UTC</time><% } else { %><%= s.time || 'TBA' %><% } %></td>
                     <td class="small"><%= s.type %></td>
                     <td class="small"><%= s.host || '—' %></td>
                     <td>
@@ -67,4 +79,26 @@
     </div>
   </main>
 </div>
+<script>
+(function () {
+  var tzEl = document.getElementById('tz-name');
+  if (tzEl) { try { tzEl.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { tzEl.textContent = 'local time'; } }
+  var form = document.getElementById('eventForm');
+  if (!form) return;
+  // Compose exact UTC instants from the scheduler's local date + times.
+  form.addEventListener('submit', function (e) {
+    var date = document.getElementById('ev-date').value;
+    var start = document.getElementById('ev-start').value; // "HH:MM" 24h from the picker
+    var end = document.getElementById('ev-end').value;
+    if (!date || !/^\d{2}:\d{2}$/.test(start)) { e.preventDefault(); alert('Pick a date and start time.'); return; }
+    var s = new Date(date + 'T' + start); // local
+    document.getElementById('starts-at').value = s.toISOString();
+    if (/^\d{2}:\d{2}$/.test(end)) {
+      var en = new Date(date + 'T' + end);
+      if (en <= s) en = new Date(en.getTime() + 24 * 3600 * 1000); // crosses midnight
+      document.getElementById('ends-at').value = en.toISOString();
+    } else document.getElementById('ends-at').value = '';
+  });
+})();
+</script>
 <%- include('../partials/foot') %>

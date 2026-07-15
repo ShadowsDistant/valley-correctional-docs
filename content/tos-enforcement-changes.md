@@ -2,6 +2,10 @@
 
 To protect our community, we have deployed **TASE**, a Discord moderation bot that identifies and removes users linked to Roblox "condo" communities. This activity violates Roblox's Terms of Service and frequently involves underage users. TASE is now active and enforces bans according to the criteria below.
 
+:::danger Zero tolerance for ToS violations
+Any confirmed violation of Discord's or Roblox's Terms of Service results in a **permanent ban from VCF, regardless of severity**. TASE enforcement is one part of this policy — it applies to every ToS violation, not just condo activity.
+:::
+
 ***
 
 ## What TASE Does

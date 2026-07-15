@@ -16,7 +16,8 @@
       <div>
         <a class="back-link" href="/admin/staff">← Back to staff</a>
         <h1 class="admin-h1"><span class="staff-avatar sm" data-rbx-avatar="<%= target.username %>"><%= (target.username||'?').slice(0,1).toUpperCase() %></span> <%= target.username %></h1>
-        <p class="admin-sub">Staff overview. <span class="badge <%= target.role==='admin'?'badge-internal':'' %>"><%= target.role %></span><% (rankLabels||[]).forEach(function(rl){ %> <span class="badge badge-internal"><%= rl %></span><% }); %><% if (target.terminated) { %> <span class="badge badge-danger">Terminated</span><% } else if (target.suspended) { %> <span class="badge badge-danger">Suspended</span><% } %></p>
+        <p class="admin-sub"><span class="badge cap <%= target.role==='admin'?'badge-internal':'' %>"><%= target.role %></span><% (rankLabels||[]).forEach(function(rl){ %> <span class="badge badge-internal"><%= rl %></span><% }); %><% if (target.terminated) { %> <span class="badge badge-danger">Terminated</span><% } else if (target.suspended) { %> <span class="badge badge-danger">Suspended<% if (target.suspended_until) { %> until <time data-time="<%= target.suspended_until %>" data-time-format="datetime"><%= target.suspended_until.slice(0,10) %></time><% } %></span><% } %><% if (target.deleted) { %> <span class="badge badge-danger">Archived</span><% } %>
+          <% if (target.timezone) { %><span class="badge" title="<%= target.timezone %>"><%- icon('clock') %> <span class="ov-localtime" data-tz="<%= target.timezone %>">—</span></span><% } %></p>
       </div>
     </div>
 
@@ -72,10 +73,10 @@
             <% if (!items.length) { %>
               <tr><td colspan="3" class="muted" style="padding:18px">No document activity recorded for this account yet.</td></tr>
             <% } %>
-            <% items.forEach(function (it) { %>
-              <tr>
+            <% items.forEach(function (it, idx) { %>
+              <tr class="act-row" <%= idx >= 15 ? 'hidden' : '' %>>
                 <td>
-                  <% if (it.slug) { %><a href="/<%= it.slug %>" target="_blank"><% if (it.internal) { %><span class="ic ic-lock"></span> <% } %><%= it.title %></a><% } else { %><span class="mono small"><%= it.path %></span><% } %>
+                  <% if (it.slug && !/^(admin|dashboard):/.test(it.slug)) { %><a href="/<%= it.slug %>" target="_blank"><% if (it.internal) { %><span class="ic ic-lock"></span> <% } %><%= it.title %></a><% } else if (it.slug) { %><span class="mono small"><%= it.slug %></span><% } else { %><span class="mono small"><%= it.path %></span><% } %>
                 </td>
                 <td class="muted small"><time data-time="<%= it.ts %>"><%= it.ts %></time></td>
                 <td class="num mono small"><%- fmtDur(it.duration) %></td>
@@ -84,11 +85,35 @@
           </tbody>
         </table>
       </div>
+      <% if (items.length > 15) { %>
+        <div class="act-more-row"><button class="btn btn-ghost btn-sm" type="button" id="actMore">View more (<span id="actHiddenCount"><%= items.length - 15 %></span> hidden)</button></div>
+      <% } %>
     </section>
     <p class="muted small">Time on page is estimated from the gap between consecutive views (capped at 15 minutes); the most recent view has no measured duration.</p>
   </main>
 </div>
 <script>
+(function () {
+  // "View more" reveals the doc-activity table 25 rows at a time.
+  var more = document.getElementById('actMore');
+  if (more) more.addEventListener('click', function () {
+    var hidden = document.querySelectorAll('.act-row[hidden]');
+    for (var i = 0; i < Math.min(25, hidden.length); i++) hidden[i].hidden = false;
+    var left = document.querySelectorAll('.act-row[hidden]').length;
+    if (!left) more.parentNode.remove();
+    else document.getElementById('actHiddenCount').textContent = left;
+  });
+  // The staff member's current local time, ticking each minute.
+  var lt = document.querySelector('.ov-localtime');
+  if (lt) {
+    var tz = lt.getAttribute('data-tz');
+    function tick() {
+      try { lt.textContent = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: tz }) + ' — ' + tz.split('/').pop().replace(/_/g, ' '); }
+      catch (e) { lt.textContent = tz; }
+    }
+    tick(); setInterval(tick, 30000);
+  }
+})();
 (function () {
   var box = document.getElementById('ovRoblox'); if (!box) return;
   var name = box.getAttribute('data-user');

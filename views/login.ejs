@@ -26,4 +26,8 @@
   </div>
   <p class="auth-foot">Access is monitored. Unauthorized use is prohibited.</p>
 </div>
+<script>
+// A bfcache-restored login form carries a stale CSRF token — reload for a fresh one.
+window.addEventListener('pageshow', function (e) { if (e.persisted) window.location.reload(); });
+</script>
 <%- include('partials/foot') %>

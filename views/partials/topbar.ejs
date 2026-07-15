@@ -21,15 +21,16 @@
 
     <div class="account-menu" id="accountMenu">
       <button class="account-btn" id="accountBtn" aria-haspopup="true" aria-expanded="false">
-        <% if (user) { %><span class="acct-avatar"><%= (user.username||'?').slice(0,1).toUpperCase() %></span><span class="acct-name"><%= user.username %></span><% } else { %><%- icon('users') %> <span class="acct-name">Account</span><% } %>
+        <% if (user) { %><span class="acct-avatar" data-rbx-avatar="<%= user.username %>"><%= (user.username||'?').slice(0,1).toUpperCase() %></span><span class="acct-name"><%= user.username %></span><% } else { %><%- icon('users') %> <span class="acct-name">Account</span><% } %>
         <svg class="acct-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="account-dropdown" id="accountDropdown" hidden>
         <% if (user) { %>
-          <div class="acct-dd-head"><strong><%= user.username %></strong><span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
+          <div class="acct-dd-head"><strong><%= user.username %></strong><span class="badge cap <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
           <% if (canEdit) { %><a href="/admin"><%- icon('chart') %> Dashboard</a><% } %>
           <% if (typeof canStaffDashboard !== 'undefined' && canStaffDashboard) { %><a href="/dashboard"><%- icon('shield') %> Staff Dashboard <span class="beta-tag sm">Beta</span></a><% } %>
           <% if (canManageShifts && !canEdit) { %><a href="/admin/shifts"><%- icon('calendar') %> Event scheduler</a><% } %>
+          <% if (typeof canFeedbackStaff !== 'undefined' && canFeedbackStaff && !canEdit) { %><a href="/admin/feedback"><%- icon('message') %> Feedback<% if (typeof openFeedback !== 'undefined' && openFeedback) { %> <span class="tab-count"><%= openFeedback %></span><% } %></a><% } %>
           <a href="/account"><%- icon('users') %> Profile</a>
           <form action="/logout" method="post"><button type="submit"><%- icon('logout') %> Log out</button></form>
         <% } else { %>

@@ -23,11 +23,11 @@ This document is restricted to logged-in VCF staff. All personnel must respect a
    - *Note:* major policy changes, handbook modifications, and major hiring decisions must be approved by the Oversight Committee before taking effect.
 2. **Lead Overseer — Oversight Committee** — Heads the OSC and serves as the primary regulatory authority.
    - *Go here for:* OSC matters, SID Lead Investigator appointments, audit requests, reports against managers.
-3. **Division Managers** — Prison Administration, Internal Operations, and Development managers.
+3. **Division Managers** — Facility Administration, Internal Operations, and Development managers.
    - *Go here for:* division-wide policy concerns, unresolved issues from Assistant Managers.
 4. **Overseer — Oversight Committee** — Committee members assigned to specific divisions; report directly to the Lead Overseer.
 5. **Assistant Division Managers** — Support their Division Manager and assume authority in their absence.
-6. **Divisional Leadership** — Chief of Security (Prison Admin), Lead Investigator (SID), Senior Moderator (Moderation).
+6. **Divisional Leadership** — Chief of Security (Facility Admin), Lead Investigator (SID), Senior Moderator (Moderation).
 7. **Mid-Level Leadership** — Deputy Chief of Security & Directors (CERT/RIOT/CO/HSU), Senior Investigator (SID), Moderator (Moderation), Developer (Development).
 8. **General Staff** — Investigator & Specialized Advisor (SID), Junior Moderator (Moderation), Junior Developer (Development).
 
@@ -46,18 +46,18 @@ This document is restricted to logged-in VCF staff. All personnel must respect a
 | Rank | Role |
 | :--- | :--- |
 | **Community Manager** | Highest authority |
-| **Prison Administration Manager** | DoC Division Head |
+| **Facility Administration Manager** | DoC Division Head |
 | **Internal Operations Manager** | MOD + SID Division Head |
 | **Development Manager** | DEV Division Head |
 
 *Community Manager:* `August_crblx` · *Internal Operations Manager:* `froogydy`
 :::
 
-:::details Prison Administration
+:::details Facility Administration
 | Rank | Role |
 | :--- | :--- |
-| **Prison Administration Manager** | Division Head |
-| **Assistant Prison Administration Manager** | Deputy Head |
+| **Facility Administration Manager** | Division Head |
+| **Assistant Facility Administration Manager** | Deputy Head |
 | **Chief of Security** | Senior Operational Lead |
 | **Deputy Chief of Security** | Assistant Operational Lead |
 | **Director of CERT** | CERT Lead |
@@ -120,8 +120,4 @@ The Community Manager may only be dismissed by majority vote of the full Oversig
 Personnel must direct concerns, requests, and reports through their immediate chain of command. Bypassing the chain without valid justification may result in disciplinary action. *Exceptions:* reporting to the Oversight Committee or SID.
 
 **Major policy changes, handbook modifications, and significant hiring decisions require formal Oversight Committee review and approval before enactment** — this applies to every division and rank, including the Community Manager.
-:::
-
-:::details Internal Information
-**Authorized Division(s):** All Divisions · **Last Updated:** 4/22/2026
 :::

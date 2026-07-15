@@ -26,7 +26,7 @@ You must be old enough to use Discord and Roblox (**13+**) to participate in VCF
 Zero tolerance. Discrimination, slurs, or derogatory content targeting any protected characteristic — including race, ethnicity, nationality, religion, sex, gender, sexual orientation, disability, or age — is a **Tier 3** offense. This includes "jokes," coded language, and refusing to interact with members on a discriminatory basis.
 
 ### Terms of Service violations
-You must follow the Terms of Service of every platform we use (Discord, Roblox, and Valley Prison). Content involving **minors in a sexual context, credible real-world threats of violence, or similar severe violations results in an immediate, permanent, unappealable ban** regardless of history, and is reported to the relevant platform.
+You must follow the Terms of Service of every platform we use (Discord, Roblox, and Valley Prison). **Any confirmed violation of Discord's or Roblox's Terms of Service results in a permanent ban, regardless of severity.** Severe violations — content involving minors in a sexual context, credible real-world threats of violence, or similar — are additionally **unappealable** and reported to the relevant platform.
 
 ### Respect & harassment
 Treat every member with basic courtesy. Harassment, bullying, targeted mockery, brigading, or following a member across channels to provoke them is prohibited. Severity determines the tier.
