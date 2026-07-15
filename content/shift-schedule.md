@@ -1,16 +1,16 @@
-# Shift Schedule
+# Event Schedule
 
-Upcoming session dates and times for Valley Correctional Facility.
+Upcoming event dates and times for Valley Correctional Facility.
 
 :::info Live schedule
 The most current schedule always lives in the Discord **#events** channel. Staff can post and update upcoming dates here at any time.
 :::
 
-## Upcoming Shifts
+## Upcoming Events
 
 [[SHIFTS_TABLE]]
 
-_Shifts are scheduled by Management and Oversight staff and update automatically._
+_Events are scheduled by Management and Oversight staff and update automatically._
 
 ## Where to find announcements
 

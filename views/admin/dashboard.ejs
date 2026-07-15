@@ -38,7 +38,7 @@
         <div class="panel-head"><h2>Quick actions</h2></div>
         <div class="action-list">
           <% if (user.role === 'admin') { %><a class="action" href="/admin/new"><span class="action-ico"><%- icon('plus') %></span> Create a new page</a><% } %>
-          <% if (user.role === 'admin') { %><a class="action" href="/admin/shifts"><span class="action-ico"><%- icon('calendar') %></span> Manage shift schedule</a><% } %>
+          <% if (user.role === 'admin') { %><a class="action" href="/admin/shifts"><span class="action-ico"><%- icon('calendar') %></span> Manage event schedule</a><% } %>
           <% if (user.role === 'admin') { %><a class="action" href="/admin/analytics"><span class="action-ico"><%- icon('chart') %></span> View traffic analytics</a><% } %>
           <% if (user.role === 'admin') { %><a class="action" href="/admin/staff"><span class="action-ico"><%- icon('users') %></span> Manage staff accounts</a><% } %>
           <% if (user.role === 'admin') { %><a class="action" href="/admin/policy"><span class="action-ico"><%- icon('shield') %></span> Edit the staff policy</a><% } %>

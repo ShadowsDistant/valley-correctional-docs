@@ -11,7 +11,7 @@
     <div class="admin-titlerow">
       <div>
         <h1 class="admin-h1">Staff accounts</h1>
-        <p class="admin-sub">Manage staff access, ranks, and divisions. <strong>Roles:</strong> Admin (full control) · Editor (edits assigned handbooks) · Staff (reads assigned handbooks). Ranks set dashboard authority and the SID/Moderation approval chain.<% if (!isAdmin) { %> You can manage: <strong><%= governed.map(function(d){return divLabel[d]||d;}).join(', ') || 'your division' %></strong>.<% } %></p>
+        <p class="admin-sub">The staff directory — every team member's role, divisional ranks, and account status in one place.<% if (!isAdmin) { %> Scoped to your divisions: <strong><%= governed.map(function(d){return divLabel[d]||d;}).join(', ') || 'your division' %></strong>.<% } %></p>
       </div>
       <button class="btn btn-solid" type="button" id="addToggle"><%- icon('plus') %> Add account</button>
     </div>

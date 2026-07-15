@@ -1,39 +1,27 @@
 <%- include('partials/head') %>
 <%- include('partials/topbar') %>
+<% var infr = (typeof myInfractions !== 'undefined') ? myInfractions : []; var ranks = (typeof rankLabels !== 'undefined') ? rankLabels : []; %>
 <div class="account-wrap">
   <div class="account-card">
-    <h1 class="admin-h1">Your account</h1>
-    <div class="account-meta">
-      <div class="staff-fact"><span class="fact-label">Username</span><span class="fact-val"><strong><%= user.username %></strong></span></div>
-      <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
-    </div>
 
-    <div class="roblox-account" id="robloxAccount" data-user="<%= user.username %>">
-      <div class="roblox-avatar-slot"></div>
-      <div><div class="roblox-label">Roblox account</div><div class="roblox-name"><strong>@<%= user.username %></strong> <span class="muted small">— loading…</span></div></div>
-    </div>
-
-    <section class="panel account-panel account-record">
-      <div class="panel-head"><h2>Your disciplinary record</h2><% if (typeof myPoints !== 'undefined') { %><span class="badge <%= myPoints>=3?'badge-danger':'' %>"><%= myPoints %> pts · 6mo</span><% } %></div>
-      <% var infr = (typeof myInfractions !== 'undefined') ? myInfractions : []; %>
-      <% if (!infr.length) { %>
-        <p class="muted small" style="margin:4px 0 0">No active infractions on record. Keep it up.</p>
-      <% } else { %>
-        <p class="muted small" style="margin:-4px 0 12px">Your active infractions. Evidence and case details are confidential.</p>
-        <div class="table-scroll"><table class="table">
-          <thead><tr><th>Type</th><th class="num">Points</th><th>Reason</th><th>Outcome</th><th>When</th></tr></thead>
-          <tbody>
-            <% infr.forEach(function(f){ %><tr>
-              <td class="small"><%= f.type %></td>
-              <td class="num mono"><%= f.points %></td>
-              <td class="small"><%= f.reason %></td>
-              <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
-              <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,10) %></time></td>
-            </tr><% }); %>
-          </tbody>
-        </table></div>
+    <!-- Profile hero -->
+    <header class="profile-hero" id="robloxAccount" data-user="<%= user.username %>">
+      <div class="profile-avatar" data-rbx-avatar="<%= user.username %>"><%= user.username.slice(0,1).toUpperCase() %></div>
+      <div class="profile-id">
+        <div class="profile-name"><strong><%= user.username %></strong></div>
+        <div class="profile-sub muted small">Roblox <span class="rbx-status">— loading…</span></div>
+        <div class="profile-badges">
+          <span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span>
+          <% ranks.forEach(function(rl){ %><span class="badge badge-internal"><%= rl %></span><% }); %>
+        </div>
+      </div>
+      <% if (typeof myPoints !== 'undefined') { %>
+        <div class="profile-points">
+          <span class="pill pill-<%= myPoints>=6?'red':(myPoints>=3?'amber':'grey') %>"><%= myPoints %></span>
+          <span class="muted small">disc. points · 6mo</span>
+        </div>
       <% } %>
-    </section>
+    </header>
 
     <% if (typeof done !== 'undefined' && done) { %>
       <div class="account-ok"><%- icon('check') %> <span>Your password has been updated.</span></div>
@@ -42,22 +30,47 @@
       <div class="auth-error"><%- icon('danger') %> <span><%= error %></span></div>
     <% } %>
 
-    <section class="panel account-panel">
-      <div class="panel-head"><h2>Change password</h2></div>
-      <form method="post" action="/account/password" class="stack-form">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-        <label class="field">Current password
-          <input type="password" name="current" required autocomplete="current-password" />
-        </label>
-        <label class="field">New password
-          <input type="password" name="new" minlength="6" required autocomplete="new-password" placeholder="At least 6 characters" />
-        </label>
-        <label class="field">Confirm new password
-          <input type="password" name="confirm" minlength="6" required autocomplete="new-password" />
-        </label>
-        <div><button class="btn btn-solid" type="submit"><%- icon('lock') %> Update password</button></div>
-      </form>
-    </section>
+    <div class="profile-grid">
+      <!-- Disciplinary record -->
+      <section class="panel account-panel account-record">
+        <div class="panel-head"><h2>Disciplinary record</h2><span class="badge <%= (typeof myPoints!=='undefined'&&myPoints>=3)?'badge-danger':'' %>"><%= infr.length %> active</span></div>
+        <% if (!infr.length) { %>
+          <div class="record-empty"><%- icon('check') %><p>No active infractions on record. Keep it up.</p></div>
+        <% } else { %>
+          <p class="muted small" style="margin:-4px 0 12px">Evidence and case details are confidential to the issuing division.</p>
+          <div class="table-scroll"><table class="table">
+            <thead><tr><th>Type</th><th class="num">Pts</th><th>Reason</th><th>Outcome</th><th>When</th></tr></thead>
+            <tbody>
+              <% infr.forEach(function(f){ %><tr>
+                <td class="small"><%= f.type %></td>
+                <td class="num mono"><%= f.points %></td>
+                <td class="small"><%= f.reason %></td>
+                <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
+                <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,10) %></time></td>
+              </tr><% }); %>
+            </tbody>
+          </table></div>
+        <% } %>
+      </section>
+
+      <!-- Change password -->
+      <section class="panel account-panel">
+        <div class="panel-head"><h2>Change password</h2></div>
+        <form method="post" action="/account/password" class="stack-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <label class="field">Current password
+            <input type="password" name="current" required autocomplete="current-password" />
+          </label>
+          <label class="field">New password
+            <input type="password" name="new" minlength="6" required autocomplete="new-password" placeholder="At least 6 characters" />
+          </label>
+          <label class="field">Confirm new password
+            <input type="password" name="confirm" minlength="6" required autocomplete="new-password" />
+          </label>
+          <div><button class="btn btn-solid" type="submit"><%- icon('lock') %> Update password</button></div>
+        </form>
+      </section>
+    </div>
   </div>
 </div>
 <script>
@@ -65,10 +78,9 @@
   var box = document.getElementById('robloxAccount'); if (!box) return;
   var name = box.getAttribute('data-user');
   fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
-    var nameEl = box.querySelector('.roblox-name');
-    if (!d.ok) { nameEl.innerHTML = '<strong>@' + name + '</strong> <span class="muted small">— not linked to a Roblox account</span>'; return; }
-    if (d.avatar) box.querySelector('.roblox-avatar-slot').innerHTML = '<img src="' + d.avatar + '" alt="" width="52" height="52" />';
-    nameEl.innerHTML = '<strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span> <span class="muted small">· ID ' + d.id + '</span>';
+    var st = box.querySelector('.rbx-status');
+    if (!d.ok) { st.textContent = '— not linked to a Roblox account'; return; }
+    st.innerHTML = '<strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span> · <a href="https://www.roblox.com/users/' + d.id + '/profile" target="_blank" rel="noopener">profile ↗</a>';
   }).catch(function () {});
 })();
 </script>

@@ -57,8 +57,14 @@
     function position() {
       var r = btn.getBoundingClientRect();
       panel.style.position = 'fixed';
-      panel.style.left = r.left + 'px';
-      panel.style.width = r.width + 'px';
+      // Grow to fit long option labels (up to the viewport), but never narrower
+      // than the trigger. Then nudge left so it never runs off the right edge.
+      panel.style.width = '';
+      panel.style.minWidth = r.width + 'px';
+      panel.style.maxWidth = Math.max(r.width, window.innerWidth - 20) + 'px';
+      var pw = Math.min(panel.offsetWidth, window.innerWidth - 20);
+      var left = Math.min(r.left, window.innerWidth - pw - 10);
+      panel.style.left = Math.max(10, left) + 'px';
       var below = window.innerHeight - r.bottom - 10;
       var above = r.top - 10;
       var full = Math.min(panel.scrollHeight, 264);

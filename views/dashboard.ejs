@@ -39,7 +39,7 @@
       <form method="post" action="/dashboard/punishment" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <label class="field">Offense preset <small>(auto-escalates on repeat · right-click a preset for the handbook)</small>
-          <select class="preset-sel" id="pun-preset" data-no-enhance><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= (p.escalate&&p.escalate[0]&&p.escalate[0].type)||p.type||'' %>" data-reason="<%= p.reason %>" data-hb="<%= p.hb || '' %>" data-escalate='<%= JSON.stringify(p.escalate||[]) %>'><%= p.label %></option><% }); %></select>
+          <select class="preset-sel" id="pun-preset"><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= (p.escalate&&p.escalate[0]&&p.escalate[0].type)||p.type||'' %>" data-reason="<%= p.reason %>" data-hb="<%= p.hb || '' %>" data-escalate='<%= JSON.stringify(p.escalate||[]) %>'><%= p.label %></option><% }); %></select>
           <a href="#" class="hb-link" id="pun-hb" hidden><%- icon('book') %> Open handbook section</a>
         </label>
         <div class="field-grid">
@@ -98,7 +98,7 @@
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="mandatory" id="inf-mandatory" value="0" />
         <label class="field">Violation preset <small>(right-click for the handbook)</small>
-          <select class="preset-sel" id="inf-preset" data-no-enhance><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.label %>" data-reason="<%= p.reason %>" data-points="<%= p.points %>" data-mandatory="<%= p.mandatory?1:0 %>" data-hb="<%= p.hb || '' %>"><%= p.label %> (<%= p.mandatory ? 'mandatory term.' : p.points+'pt' %>)</option><% }); %></select>
+          <select class="preset-sel" id="inf-preset"><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.label %>" data-reason="<%= p.reason %>" data-points="<%= p.points %>" data-mandatory="<%= p.mandatory?1:0 %>" data-hb="<%= p.hb || '' %>"><%= p.label %> (<%= p.mandatory ? 'mandatory term.' : p.points+'pt' %>)</option><% }); %></select>
           <a href="#" class="hb-link" id="inf-hb" hidden><%- icon('book') %> Open handbook section</a>
         </label>
         <div class="field-grid">
@@ -220,6 +220,8 @@
 
   // moderation preset (escalation ladder of {type,duration})
   var priorCount = 0;
+  // Set a value and notify any custom-dropdown enhancement bound to it.
+  function setField(id, val) { var el = document.getElementById(id); if (!el) return; el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }
   var punPreset = document.getElementById('pun-preset');
   function ladderOf() { try { return JSON.parse(punPreset.options[punPreset.selectedIndex].getAttribute('data-escalate') || '[]'); } catch (e) { return []; } }
   function applyPunPreset() {
@@ -230,11 +232,11 @@
     var durEl = document.querySelector('#pun-preset').closest('form').querySelector('[name=duration]');
     if (ladder.length) {
       var idx = Math.min(priorCount, ladder.length - 1), step = ladder[idx];
-      document.getElementById('pun-type').value = step.type;
+      setField('pun-type', step.type);
       if (durEl) durEl.value = step.duration || '';
       note.hidden = false;
       note.innerHTML = 'Auto-escalated to <strong>' + esc(step.type) + (step.duration ? ' (' + esc(step.duration) + ')' : '') + '</strong> — ' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '. Ladder: ' + ladder.map(function (s) { return esc(s.type) + (s.duration ? ' ' + esc(s.duration) : ''); }).join(' → ');
-    } else if (opt.value) { document.getElementById('pun-type').value = opt.value; note.hidden = true; }
+    } else if (opt.value) { setField('pun-type', opt.value); note.hidden = true; }
     else note.hidden = true;
   }
   if (punPreset) punPreset.addEventListener('change', applyPunPreset);
@@ -244,9 +246,9 @@
   if (infPreset) infPreset.addEventListener('change', function () {
     if (!infPreset.value) return;
     var opt = infPreset.options[infPreset.selectedIndex];
-    document.getElementById('inf-type').value = opt.value;
+    setField('inf-type', opt.value);
     document.getElementById('inf-reason').value = opt.getAttribute('data-reason') || '';
-    document.getElementById('inf-points').value = opt.getAttribute('data-points') || '1';
+    setField('inf-points', opt.getAttribute('data-points') || '1');
     document.getElementById('inf-mandatory').value = opt.getAttribute('data-mandatory') || '0';
   });
 

@@ -244,15 +244,25 @@
   (function () {
     var els = Array.prototype.slice.call(document.querySelectorAll('[data-rbx-avatar]'));
     if (!els.length) return;
-    var names = {}; els.forEach(function (el) { var n = (el.getAttribute('data-rbx-avatar') || '').trim(); if (n) names[n.toLowerCase()] = n; });
-    var list = Object.values(names); if (!list.length) return;
-    fetch('/api/roblox-thumbs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: list }) })
+    // Session cache: headshot URLs rarely change, so we avoid refetching them on
+    // every page navigation within the same tab.
+    var CK = 'rbxAv', cache = {};
+    try { cache = JSON.parse(sessionStorage.getItem(CK) || '{}') || {}; } catch (e) { cache = {}; }
+    function paint(el, url) { if (url) { el.style.backgroundImage = 'url("' + url + '")'; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center'; el.classList.add('has-rbx'); } }
+    var names = {}, need = [];
+    els.forEach(function (el) {
+      var n = (el.getAttribute('data-rbx-avatar') || '').trim().toLowerCase(); if (!n) return;
+      names[n] = 1;
+      if (n in cache) paint(el, cache[n]);
+    });
+    Object.keys(names).forEach(function (n) { if (!(n in cache)) need.push(n); });
+    if (!need.length) return;
+    fetch('/api/roblox-thumbs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: need }) })
       .then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok || !d.avatars) return;
-        els.forEach(function (el) {
-          var url = d.avatars[(el.getAttribute('data-rbx-avatar') || '').toLowerCase()];
-          if (url) { el.style.backgroundImage = 'url("' + url + '")'; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center'; el.classList.add('has-rbx'); }
-        });
+        need.forEach(function (n) { cache[n] = d.avatars[n] || ''; });
+        try { sessionStorage.setItem(CK, JSON.stringify(cache)); } catch (e) {}
+        els.forEach(function (el) { paint(el, d.avatars[(el.getAttribute('data-rbx-avatar') || '').toLowerCase()]); });
       }).catch(function () {});
   })();
 

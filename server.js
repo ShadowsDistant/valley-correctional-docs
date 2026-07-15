@@ -108,6 +108,19 @@ const UPLOAD_DIR = path.join(__dirname, 'data', 'uploads');
 try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: isProd ? '30d' : 0 }));
 
+// Total evidence storage is capped so uploads can never fill the 25 GB VM.
+// Override with UPLOAD_TOTAL_CAP_MB. The running total is cached in memory and
+// seeded once by scanning the directory, so uploads stay O(1).
+const UPLOAD_CAP = (Number(process.env.UPLOAD_TOTAL_CAP_MB) || 4096) * 1024 * 1024; // 4 GB default
+let uploadBytes = -1;
+function uploadsTotal() {
+  if (uploadBytes < 0) {
+    uploadBytes = 0;
+    try { for (const f of fs.readdirSync(UPLOAD_DIR)) { try { uploadBytes += fs.statSync(path.join(UPLOAD_DIR, f)).size; } catch (e) {} } } catch (e) {}
+  }
+  return uploadBytes;
+}
+
 // Generated icon stylesheet (custom SVG icons as CSS masks).
 const ICONS_CSS = icons.css();
 // One token that changes on any asset change; appended as ?v= to every asset URL.
@@ -429,17 +442,21 @@ app.get('/api/analytics/live', auth.requireAuth, (req, res) => {
 });
 
 // --- self-service account: any logged-in user can change their own password --
-app.get('/account', auth.requireAuth, auth.csrfToken, (req, res) => {
+function accountData(req) {
   const uname = req.session.user.username;
   // A staff member may see their OWN infractions (record transparency). Evidence
   // and the issuing investigator are withheld — confidentiality per the handbook.
   const myInfractions = db.prepare(
     "SELECT type, points, reason, outcome, created_at FROM infractions WHERE staff_user = ? COLLATE NOCASE AND status='active' AND voided=0 ORDER BY created_at DESC LIMIT 50"
   ).all(uname);
-  res.render('account', {
+  const row = db.prepare('SELECT ranks, rank FROM users WHERE id = ?').get(req.session.user.id) || {};
+  const rankLabels = Object.values(auth.userRanks(row)).map(auth.rankLabel).filter(Boolean);
+  return { myInfractions, myPoints: staffPoints(uname), rankLabels };
+}
+app.get('/account', auth.requireAuth, auth.csrfToken, (req, res) => {
+  res.render('account', Object.assign({
     title: 'Your account', done: req.query.updated === '1', error: null,
-    myInfractions, myPoints: staffPoints(uname),
-  });
+  }, accountData(req)));
 });
 
 app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -449,7 +466,7 @@ app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf,
   if (!u || !auth.verifyPassword(current, u.password)) error = 'Your current password is incorrect.';
   else if (next_.length < 6) error = 'New password must be at least 6 characters.';
   else if (next_ !== confirm) error = 'New passwords do not match.';
-  if (error) return res.status(400).render('account', { title: 'Your account', done: false, error });
+  if (error) return res.status(400).render('account', Object.assign({ title: 'Your account', done: false, error }, accountData(req)));
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(auth.hashPassword(next_), u.id);
   audit(u.username, 'user.password', u.username, 'changed own password');
   res.redirect('/account?updated=1');
@@ -652,7 +669,7 @@ adminRouter.post('/delete', auth.verifyCsrf, (req, res) => {
   if (req.session.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Only administrators can delete pages.' });
   const slug = normalizeSlug(req.body.slug);
   if (UNDELETABLE_SLUGS.includes(slug)) {
-    return res.status(400).json({ ok: false, error: 'This page is protected and cannot be deleted. The Shift Schedule is managed from the Shift Scheduler.' });
+    return res.status(400).json({ ok: false, error: 'This page is protected and cannot be deleted. The Event Schedule is managed from the Event Scheduler.' });
   }
   const page = getPageAny.get(slug);
   db.prepare('DELETE FROM pages WHERE slug = ?').run(slug);
@@ -1315,8 +1332,10 @@ app.post('/api/upload', requireDashboard, (req, res) => {
   const buf = Buffer.from(String((req.body && req.body.data) || '').replace(/^data:[^,]+,/, ''), 'base64');
   if (!buf.length) return res.status(400).json({ ok: false, error: 'Empty file.' });
   if (buf.length > MAX_UPLOAD) return res.status(400).json({ ok: false, error: 'File too large (max 4 MB).' });
+  if (uploadsTotal() + buf.length > UPLOAD_CAP) return res.status(507).json({ ok: false, error: 'Evidence storage is full. Ask an admin to archive or remove old uploads before adding more.' });
   const name = crypto.randomBytes(10).toString('hex') + '.' + UPLOAD_TYPES[type];
   try { fs.writeFileSync(path.join(UPLOAD_DIR, name), buf); } catch (e) { return res.status(500).json({ ok: false, error: 'Save failed.' }); }
+  uploadBytes = uploadsTotal() + buf.length;
   audit(req.session.user.username, 'file.upload', name, type + ' · ' + Math.round(buf.length / 1024) + ' KB');
   res.json({ ok: true, url: '/uploads/' + name });
 });
