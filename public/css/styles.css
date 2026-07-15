@@ -1148,6 +1148,28 @@ time[data-time] { border-bottom: 1px dotted var(--border-2); cursor: help; white
 .pending-actions { display: flex; gap: 8px; flex: none; }
 @media (max-width: 900px) { .dash-cols:has(.dash-panel + .dash-panel) { grid-template-columns: 1fr; } .evidence-row { grid-template-columns: 1fr; } .pending-card { flex-direction: column; align-items: stretch; } }
 
+/* dashboard v3: roblox autocomplete, escalation, point notes, ranks, file */
+.info-note { border-color: color-mix(in srgb, #3b82f6 30%, var(--border)); background: color-mix(in srgb, #3b82f6 8%, transparent); }
+.info-note .ic { color: #3b82f6; }
+.rbx-search { position: relative; }
+.rbx-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40; background: var(--elevated); border: 1px solid var(--border-2); border-radius: var(--r-sm); box-shadow: var(--shadow-lg); max-height: 240px; overflow-y: auto; padding: 4px; }
+.rbx-opt { padding: 8px 10px; border-radius: var(--r-xs); font-size: 13.5px; cursor: pointer; }
+.rbx-opt:hover { background: var(--surface-2); }
+.escalate-note { font-size: 12.5px; color: var(--accent-strong); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: var(--r-sm); padding: 8px 12px; }
+.rbx-card .view-file { color: var(--accent-strong); font-weight: 600; }
+.file-head { display: flex; align-items: center; gap: 10px; font-size: 15px; margin-bottom: 6px; }
+.file-h { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 18px 0 8px; }
+.file-h:first-of-type { margin-top: 8px; }
+/* per-division rank selectors (admin staff) */
+.rank-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 6px; }
+.rank-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+/* profile: roblox account card + record */
+.roblox-account { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 4px 0 20px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); text-align: left; }
+.roblox-avatar-slot img { border-radius: 10px; background: var(--surface); display: block; }
+.roblox-avatar-slot:empty { width: 52px; height: 52px; border-radius: 10px; background: var(--surface); flex: none; }
+.roblox-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 700; }
+.account-record { text-align: left; margin-top: 8px; }
+
 /* ---------- live analytics ---------- */
 .live-panel { border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }
 .live-panel .panel-head h2 { display: flex; align-items: center; gap: 9px; }

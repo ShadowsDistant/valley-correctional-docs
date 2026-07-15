@@ -172,13 +172,13 @@ const touchLastSeen = db.prepare(
 );
 app.use((req, res, next) => {
   if (req.session && req.session.user) {
-    const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy, rank FROM users WHERE id = ?').get(req.session.user.id);
+    const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy, rank, ranks, terminated FROM users WHERE id = ?').get(req.session.user.id);
     if (!fresh) return req.session.destroy(() => res.redirect('/'));
     try { touchLastSeen.run(fresh.id); } catch (e) { /* non-critical */ }
     req.session.user = {
       id: fresh.id, username: fresh.username,
       role: fresh.role, divisions: fresh.divisions || '', suspended: fresh.suspended,
-      agreed_policy: fresh.agreed_policy, rank: fresh.rank || '',
+      agreed_policy: fresh.agreed_policy, rank: fresh.rank || '', ranks: fresh.ranks || '', terminated: fresh.terminated || 0,
     };
   }
   next();
@@ -357,7 +357,7 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
   const nextUrl = reqNext && !(reqNext.startsWith('/admin') && !auth.canEdit(user)) ? reqNext : landing;
   req.session.regenerate((err) => {
     if (err) return res.status(500).send('Session error');
-    req.session.user = { id: user.id, username: user.username, role: user.role, divisions: user.divisions || '', rank: user.rank || '' };
+    req.session.user = { id: user.id, username: user.username, role: user.role, divisions: user.divisions || '', rank: user.rank || '', ranks: user.ranks || '', terminated: user.terminated || 0 };
     req.session.save(() => res.redirect(nextUrl));
   });
 });
@@ -429,7 +429,16 @@ app.get('/api/analytics/live', auth.requireAuth, (req, res) => {
 
 // --- self-service account: any logged-in user can change their own password --
 app.get('/account', auth.requireAuth, auth.csrfToken, (req, res) => {
-  res.render('account', { title: 'Your account', done: req.query.updated === '1', error: null });
+  const uname = req.session.user.username;
+  // A staff member may see their OWN infractions (record transparency). Evidence
+  // and the issuing investigator are withheld — confidentiality per the handbook.
+  const myInfractions = db.prepare(
+    "SELECT type, points, reason, outcome, created_at FROM infractions WHERE staff_user = ? COLLATE NOCASE AND status='active' AND voided=0 ORDER BY created_at DESC LIMIT 50"
+  ).all(uname);
+  res.render('account', {
+    title: 'Your account', done: req.query.updated === '1', error: null,
+    myInfractions, myPoints: staffPoints(uname),
+  });
 });
 
 app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -805,13 +814,20 @@ const usesDivisions = (role) => role === 'staff' || role === 'editor';
 
 // Staff management (admins only)
 adminRouter.get('/staff', auth.requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, role, divisions, suspended, created_at, last_login, last_seen, rank FROM users ORDER BY id').all();
+  const users = db.prepare('SELECT id, username, role, divisions, suspended, terminated, created_at, last_login, last_seen, rank, ranks FROM users ORDER BY id').all();
   const viewCounts = new Map(
     db.prepare('SELECT username, COUNT(*) AS n FROM page_views WHERE username IS NOT NULL GROUP BY username').all()
       .map((r) => [r.username, r.n])
   );
-  users.forEach((u) => { u.doc_views = viewCounts.get(u.username) || 0; u.rankLabel = auth.rankLabel(u.rank); });
-  res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS, ranks: auth.RANKS });
+  users.forEach((u) => {
+    u.doc_views = viewCounts.get(u.username) || 0;
+    u.rankMod = auth.rankForDivision(u, 'moderation');
+    u.rankSID = auth.rankForDivision(u, 'sid');
+    u.rankLabels = [u.rankMod, u.rankSID].filter(Boolean).map(auth.rankLabel);
+  });
+  const ranksByDiv = { moderation: [], sid: [] };
+  Object.keys(auth.RANKS).forEach((k) => { const r = auth.RANKS[k]; if (ranksByDiv[r.division]) ranksByDiv[r.division].push({ key: k, label: r.label }); });
+  res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS, ranksByDiv });
 });
 
 adminRouter.post('/staff/create', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
@@ -849,10 +865,17 @@ adminRouter.post('/staff/access', auth.requireAdmin, auth.verifyCsrf, (req, res)
       message: 'You cannot change your own account out of the admin role.',
     });
   }
-  const rank = auth.RANKS[req.body.rank] ? req.body.rank : '';
+  // Per-division ranks (only kept for divisions the member actually holds).
+  const rankMap = {};
+  ['moderation', 'sid'].forEach((d) => {
+    const key = req.body['rank_' + d];
+    if (auth.RANKS[key] && auth.RANKS[key].division === d && divisions.split(',').includes(d)) rankMap[d] = key;
+  });
+  const ranksJson = Object.keys(rankMap).length ? JSON.stringify(rankMap) : '';
   const target = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
-  db.prepare('UPDATE users SET role = ?, divisions = ?, rank = ? WHERE id = ?').run(role, divisions, rank, id);
-  audit(req.session.user.username, 'user.role', target ? target.username : '#' + id, role + (divisions ? ' [' + divisions + ']' : '') + (rank ? ' · ' + auth.rankLabel(rank) : ''));
+  db.prepare("UPDATE users SET role = ?, divisions = ?, ranks = ?, rank = '' WHERE id = ?").run(role, divisions, ranksJson, id);
+  const rankSummary = Object.values(rankMap).map(auth.rankLabel).join(', ');
+  audit(req.session.user.username, 'user.role', target ? target.username : '#' + id, role + (divisions ? ' [' + divisions + ']' : '') + (rankSummary ? ' · ' + rankSummary : ''));
   res.redirect('/admin/staff');
 });
 
@@ -1047,29 +1070,51 @@ adminRouter.get('/staff/activity', auth.requireAdmin, (req, res) => {
 });
 
 // --- staff dashboard (BETA) — Moderation punishments + SID infractions ------
-const PUNISH_TYPES = ['Warning', 'Kick', 'Server Ban', 'Game Ban', 'Permanent Ban', 'Mute', 'Note'];
-const INFRACTION_TYPES = ['Verbal Warning', 'Written Warning', 'Strike', 'Suspension', 'Demotion', 'Termination'];
-// Handbook-based quick presets (staff can still pick "Custom" and type their own).
+const PUNISH_TYPES = ['Timeout', 'Discord Kick', 'Discord Ban', 'Discord Warning', 'Game Warning', 'Game Kick', 'Game Ban', 'Note'];
+// Auto-escalating presets: `escalate` is a ladder climbed by the number of the
+// same user's prior active punishments (0 -> [0], 1 -> [1], 2+ -> last).
 const PUNISH_PRESETS = [
-  { label: 'Exploiting / cheating', type: 'Game Ban', reason: 'Use of exploits or cheats during a shift.' },
-  { label: 'Repeated exploiting', type: 'Permanent Ban', reason: 'Repeated or severe exploiting after prior action.' },
-  { label: 'RDM / random killing', type: 'Kick', reason: 'Random deathmatch / killing without valid roleplay reason.' },
-  { label: 'FRP / fail roleplay', type: 'Warning', reason: 'Failure to follow roleplay standards (FRP).' },
-  { label: 'Chat spam / abuse', type: 'Mute', reason: 'Spamming or abusive language in chat.' },
-  { label: 'Toxicity / harassment', type: 'Server Ban', reason: 'Toxic behavior or harassment toward members.' },
-  { label: 'Ban evasion', type: 'Permanent Ban', reason: 'Evading a prior ban on an alternate account.' },
+  { label: 'Exploiting / cheating', escalate: ['Game Warning', 'Game Kick', 'Game Ban'], reason: 'Use of exploits or cheats.' },
+  { label: 'RDM / random killing', escalate: ['Game Warning', 'Game Kick', 'Game Ban'], reason: 'Random deathmatch without valid roleplay reason.' },
+  { label: 'Fail roleplay (FRP)', escalate: ['Game Warning', 'Game Kick'], reason: 'Failure to follow roleplay standards (FRP).' },
+  { label: 'Chat spam', escalate: ['Discord Warning', 'Timeout', 'Discord Kick'], reason: 'Spamming in chat.' },
+  { label: 'Toxicity / harassment', escalate: ['Discord Warning', 'Timeout', 'Discord Ban'], reason: 'Toxic behavior or harassment toward members.' },
+  { label: 'Ban evasion', escalate: ['Discord Ban', 'Game Ban'], reason: 'Evading a prior ban on an alternate account.' },
   { label: 'Behavioral note', type: 'Note', reason: 'Logged for awareness — no action taken.' },
 ];
+// SID infractions use the handbook POINT SYSTEM: each carries points; the
+// resulting action is derived from the rolling 6-month total.
 const INFRACTION_PRESETS = [
-  { label: 'Minor procedural mistake', type: 'Verbal Warning', reason: 'Minor procedural mistake during duties.' },
-  { label: 'Failure to follow protocol', type: 'Written Warning', reason: 'Failure to follow shift or division protocol.' },
-  { label: 'Repeated violations', type: 'Strike', reason: 'Repeated policy violations after prior warnings.' },
-  { label: 'Inactivity', type: 'Written Warning', reason: 'Failure to meet activity requirements.' },
-  { label: 'Abuse of permissions', type: 'Suspension', reason: 'Misuse or abuse of granted permissions.' },
-  { label: 'Loss of confidence', type: 'Demotion', reason: 'Conduct resulting in loss of confidence in rank.' },
-  { label: 'Document leak', type: 'Termination', reason: 'Leaking or disclosing internal/classified documents.' },
-  { label: 'Gross misconduct', type: 'Termination', reason: 'Gross misconduct incompatible with continued service.' },
+  { label: 'Inactivity', points: 1, reason: 'Failure to meet activity requirements.' },
+  { label: 'Minor procedural lapse', points: 1, reason: 'Minor procedural mistake during duties.' },
+  { label: 'Repeated minor issues', points: 2, reason: 'Repeated minor issues after prior warnings.' },
+  { label: 'Moderate conduct violation', points: 3, reason: 'Moderate conduct or policy violation.' },
+  { label: 'Serious conduct failure', points: 4, reason: 'Serious conduct or enforcement failure.' },
+  { label: 'Severe enforcement failure', points: 5, reason: 'Severe enforcement failure.' },
+  { label: 'Disclosure of classified info', points: 6, mandatory: true, reason: 'Disclosure of classified information (mandatory termination).' },
+  { label: 'Retaliation (whistleblower)', points: 6, mandatory: true, reason: 'Retaliation against a whistleblower — Tier 3 (mandatory termination).' },
 ];
+
+// Roblox usernames == staff usernames. Rolling 6-month active point total.
+function staffPoints(staffUser) {
+  return db.prepare(
+    "SELECT COALESCE(SUM(points),0) AS n FROM infractions WHERE staff_user = ? COLLATE NOCASE AND status='active' AND voided=0 AND created_at >= datetime('now','-6 months')"
+  ).get(staffUser).n;
+}
+// Apply the point-system outcome to the staff account (auto verbal/suspend/terminate).
+function applyPointOutcome(staffUser, mandatory) {
+  const pts = staffPoints(staffUser);
+  let outcome = 'No action';
+  if (mandatory || pts >= 6) outcome = 'Termination';
+  else if (pts >= 3) outcome = '7-day Suspension';
+  else if (pts >= 1) outcome = 'Verbal Warning';
+  const target = db.prepare('SELECT id, role, username FROM users WHERE lower(username) = lower(?)').get(staffUser);
+  if (target && target.role !== 'admin') {
+    if (outcome === 'Termination') { db.prepare("UPDATE users SET terminated=1, suspended=1, rank='', ranks='' WHERE id=?").run(target.id); audit('system', 'user.terminated', target.username, 'auto — ' + (mandatory ? 'mandatory offense' : pts + ' pts')); }
+    else if (outcome === '7-day Suspension') { db.prepare('UPDATE users SET suspended=1 WHERE id=?').run(target.id); audit('system', 'user.suspend', target.username, 'auto — ' + pts + ' pts (7-day suspension)'); }
+  }
+  return { points: pts, outcome };
+}
 
 function requireDashboard(req, res, next) {
   const u = req.session && req.session.user;
@@ -1078,25 +1123,34 @@ function requireDashboard(req, res, next) {
   return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl || '/dashboard'));
 }
 
+// SID may only infract staff below their authority: not admins, not
+// Management / Oversight members, and not themselves (per handbook scope).
+function sidTargets(user) {
+  return db.prepare("SELECT username, role, divisions FROM users WHERE suspended=0 AND terminated=0").all()
+    .filter((s) => s.username.toLowerCase() !== user.username.toLowerCase()
+      && s.role !== 'admin'
+      && !(s.divisions || '').split(',').some((d) => d === 'management' || d === 'osc'))
+    .map((s) => s.username).sort();
+}
+
 app.get('/dashboard', requireDashboard, auth.csrfToken, (req, res) => {
   const u = req.session.user;
   const q = String(req.query.q || '').trim();
   const like = '%' + q + '%';
+  const isMod = auth.canModerate(u), isSID = auth.canSID(u);
   let punishments = [], infractions = [], pendingPun = [], pendingInf = [];
-  if (auth.canModerate(u)) {
+  if (isMod) {
     punishments = q
       ? db.prepare("SELECT * FROM punishments WHERE status='active' AND roblox_user LIKE ? ORDER BY created_at DESC LIMIT 100").all(like)
       : db.prepare("SELECT * FROM punishments WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
   }
-  if (auth.canSID(u)) {
+  if (isSID) {
     infractions = q
       ? db.prepare("SELECT * FROM infractions WHERE status='active' AND staff_user LIKE ? ORDER BY created_at DESC LIMIT 100").all(like)
       : db.prepare("SELECT * FROM infractions WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
   }
-  if (auth.canApprove(u)) {
-    if (auth.canModerate(u)) pendingPun = db.prepare("SELECT * FROM punishments WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
-    if (auth.canSID(u)) pendingInf = db.prepare("SELECT * FROM infractions WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
-  }
+  if (isMod && auth.canApprove(u, 'moderation')) pendingPun = db.prepare("SELECT * FROM punishments WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
+  if (isSID && auth.canApprove(u, 'sid')) pendingInf = db.prepare("SELECT * FROM infractions WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
   const cnt = (sql) => db.prepare(sql).get().n;
   const stats = {
     punTotal: cnt("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND status='active'"),
@@ -1105,18 +1159,22 @@ app.get('/dashboard', requireDashboard, auth.csrfToken, (req, res) => {
     inf7: cnt("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND status='active' AND created_at >= datetime('now','-7 days')"),
     pending: pendingPun.length + pendingInf.length,
   };
+  const myRanks = [auth.rankForDivision(u, 'moderation'), auth.rankForDivision(u, 'sid')].filter(Boolean).map(auth.rankLabel);
   res.render('dashboard', {
     title: 'Staff Dashboard', bodyClass: 'has-dashboard',
     punishments, infractions, pendingPun, pendingInf, stats, q,
-    punishTypes: PUNISH_TYPES, infractionTypes: INFRACTION_TYPES,
+    punishTypes: PUNISH_TYPES,
     punishPresets: PUNISH_PRESETS, infractionPresets: INFRACTION_PRESETS,
-    rankLabel: auth.rankLabel(u.rank), needsApproval: auth.needsApproval(u), canApprove: auth.canApprove(u),
-    staffList: db.prepare("SELECT username FROM users WHERE suspended=0 ORDER BY username").all().map((r) => r.username),
+    myRanks,
+    needsApprovalMod: auth.needsApproval(u, 'moderation'), needsApprovalSID: auth.needsApproval(u, 'sid'),
+    canApproveMod: auth.canApprove(u, 'moderation'), canApproveSID: auth.canApprove(u, 'sid'),
+    staffList: isSID ? sidTargets(u) : [],
   });
 });
 
-// Server-side Roblox username lookup (avoids CSP/client CORS issues).
-app.get('/api/roblox/:username', requireDashboard, async (req, res) => {
+// Roblox username lookup (any logged-in staff — public Roblox data). Includes
+// the user's prior active punishment count for escalation.
+app.get('/api/roblox/:username', auth.requireAuth, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const name = String(req.params.username || '').trim().slice(0, 60);
   if (!name) return res.json({ ok: false });
@@ -1134,10 +1192,36 @@ app.get('/api/roblox/:username', requireDashboard, async (req, res) => {
       const tj = await t.json();
       avatar = tj && tj.data && tj.data[0] && tj.data[0].imageUrl;
     } catch (e) { /* avatar optional */ }
-    res.json({ ok: true, id: usr.id, name: usr.name, displayName: usr.displayName, avatar });
+    const prior = db.prepare("SELECT COUNT(*) AS n FROM punishments WHERE roblox_user = ? COLLATE NOCASE AND status='active' AND voided=0").get(usr.name).n;
+    res.json({ ok: true, id: usr.id, name: usr.name, displayName: usr.displayName, avatar, priorPunishments: prior });
   } catch (e) {
     res.json({ ok: false, error: 'Roblox lookup failed' });
   }
+});
+
+// Roblox username autocomplete (matching users dropdown).
+app.get('/api/roblox-search', auth.requireAuth, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json({ ok: true, data: [] });
+  try {
+    const r = await fetch('https://users.roblox.com/v1/users/search?keyword=' + encodeURIComponent(q) + '&limit=10');
+    const j = await r.json();
+    res.json({ ok: true, data: (j && j.data ? j.data : []).map((usr) => ({ id: usr.id, name: usr.name, displayName: usr.displayName })) });
+  } catch (e) { res.json({ ok: false, data: [] }); }
+});
+
+// Unified user file: a Roblox/staff name's punishments + infractions + points.
+app.get('/api/user-file', requireDashboard, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const u = req.session.user;
+  const name = String(req.query.user || '').trim();
+  if (!name) return res.json({ ok: false });
+  const punishments = auth.canModerate(u)
+    ? db.prepare("SELECT id, type, reason, duration, moderator, created_at, voided FROM punishments WHERE roblox_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : [];
+  const infractions = auth.canSID(u)
+    ? db.prepare("SELECT id, type, points, reason, outcome, issued_by, created_at, voided, status FROM infractions WHERE staff_user = ? COLLATE NOCASE ORDER BY created_at DESC LIMIT 200").all(name) : [];
+  res.json({ ok: true, user: name, punishments, infractions, points: staffPoints(name) });
 });
 
 // Evidence file upload (base64 JSON). Restricted type + size.
@@ -1161,8 +1245,8 @@ app.post('/dashboard/punishment', requireDashboard, auth.csrfToken, auth.verifyC
   if (!auth.canModerate(u)) return res.status(403).render('error', { title: 'Forbidden', heading: 'Moderation only', message: 'Only Moderation staff can log punishments.' });
   const rblx = String(req.body.roblox_user || '').trim().slice(0, 60);
   if (!rblx) return res.status(400).render('error', { title: 'Invalid', heading: 'Roblox user required', message: 'Enter the Roblox username being punished.' });
-  const type = PUNISH_TYPES.includes(req.body.type) ? req.body.type : 'Warning';
-  const status = auth.needsApproval(u) ? 'pending' : 'active';
+  const type = PUNISH_TYPES.includes(req.body.type) ? req.body.type : 'Game Warning';
+  const status = auth.needsApproval(u, 'moderation') ? 'pending' : 'active';
   db.prepare('INSERT INTO punishments (roblox_user, roblox_id, type, reason, evidence, duration, moderator, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .run(rblx, String(req.body.roblox_id || '').trim().slice(0, 40), type,
       String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500),
@@ -1180,7 +1264,7 @@ app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.ve
 });
 
 app.post('/dashboard/punishment/review', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  if (!auth.canApprove(req.session.user)) return res.status(403).json({ ok: false });
+  if (!auth.canApprove(req.session.user, 'moderation')) return res.status(403).json({ ok: false });
   const id = Number(req.body.id), approve = req.body.decision === 'approve';
   const p = db.prepare("SELECT roblox_user FROM punishments WHERE id = ? AND status='pending'").get(id);
   if (p) {
@@ -1196,11 +1280,22 @@ app.post('/dashboard/infraction', requireDashboard, auth.csrfToken, auth.verifyC
   if (!auth.canSID(u)) return res.status(403).render('error', { title: 'Forbidden', heading: 'SID only', message: 'Only Specialized Investigations staff can issue infractions.' });
   const staffUser = String(req.body.staff_user || '').trim().slice(0, 60);
   if (!staffUser) return res.status(400).render('error', { title: 'Invalid', heading: 'Staff member required', message: 'Select the staff member being issued an infraction.' });
-  const type = INFRACTION_TYPES.includes(req.body.type) ? req.body.type : 'Verbal Warning';
-  const status = auth.needsApproval(u) ? 'pending' : 'active';
-  db.prepare('INSERT INTO infractions (staff_user, type, reason, evidence, issued_by, status) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(staffUser, type, String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500), u.username, status);
-  audit(u.username, 'infraction.create', staffUser, type + (status === 'pending' ? ' (pending approval)' : ''));
+  // Scope guard: SID can't infract admins / Management / Oversight / themselves.
+  if (!sidTargets(u).some((s) => s.toLowerCase() === staffUser.toLowerCase())) {
+    return res.status(403).render('error', { title: 'Forbidden', heading: 'Out of scope', message: 'You do not have authority to issue an infraction to that member.' });
+  }
+  let points = parseInt(req.body.points, 10); if (!(points >= 0 && points <= 6)) points = 1;
+  const mandatory = req.body.mandatory === '1';
+  const type = String(req.body.type || 'Infraction').trim().slice(0, 60);
+  const status = auth.needsApproval(u, 'sid') ? 'pending' : 'active';
+  let outcome = 'Pending approval';
+  const info = db.prepare('INSERT INTO infractions (staff_user, type, points, reason, evidence, issued_by, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(staffUser, type, points, String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500), u.username, status);
+  if (status === 'active') {
+    outcome = applyPointOutcome(staffUser, mandatory).outcome;
+    db.prepare('UPDATE infractions SET outcome = ? WHERE id = ?').run(outcome, info.lastInsertRowid);
+  }
+  audit(u.username, 'infraction.create', staffUser, type + ' · ' + points + 'pt' + (status === 'pending' ? ' (pending)' : ' → ' + outcome));
   res.redirect('/dashboard?saved=' + (status === 'pending' ? 'pending' : 'infraction'));
 });
 
@@ -1213,12 +1308,15 @@ app.post('/dashboard/infraction/void', requireDashboard, auth.csrfToken, auth.ve
 });
 
 app.post('/dashboard/infraction/review', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  if (!auth.canApprove(req.session.user)) return res.status(403).json({ ok: false });
+  if (!auth.canApprove(req.session.user, 'sid')) return res.status(403).json({ ok: false });
   const id = Number(req.body.id), approve = req.body.decision === 'approve';
-  const inf = db.prepare("SELECT staff_user FROM infractions WHERE id = ? AND status='pending'").get(id);
+  const inf = db.prepare("SELECT staff_user, points FROM infractions WHERE id = ? AND status='pending'").get(id);
   if (inf) {
-    if (approve) db.prepare("UPDATE infractions SET status='active', approved_by=? WHERE id=?").run(req.session.user.username, id);
-    else db.prepare('DELETE FROM infractions WHERE id=?').run(id);
+    if (approve) {
+      db.prepare("UPDATE infractions SET status='active', approved_by=? WHERE id=?").run(req.session.user.username, id);
+      const outcome = applyPointOutcome(inf.staff_user, false).outcome;
+      db.prepare('UPDATE infractions SET outcome=? WHERE id=?').run(outcome, id);
+    } else db.prepare('DELETE FROM infractions WHERE id=?').run(id);
     audit(req.session.user.username, approve ? 'infraction.approve' : 'infraction.reject', inf.staff_user, '');
   }
   res.redirect('/dashboard');

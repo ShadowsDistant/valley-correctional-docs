@@ -8,6 +8,33 @@
       <div class="staff-fact"><span class="fact-label">Role</span><span class="badge <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span></div>
     </div>
 
+    <div class="roblox-account" id="robloxAccount" data-user="<%= user.username %>">
+      <div class="roblox-avatar-slot"></div>
+      <div><div class="roblox-label">Roblox account</div><div class="roblox-name"><strong>@<%= user.username %></strong> <span class="muted small">— loading…</span></div></div>
+    </div>
+
+    <section class="panel account-panel account-record">
+      <div class="panel-head"><h2>Your disciplinary record</h2><% if (typeof myPoints !== 'undefined') { %><span class="badge <%= myPoints>=3?'badge-danger':'' %>"><%= myPoints %> pts · 6mo</span><% } %></div>
+      <% var infr = (typeof myInfractions !== 'undefined') ? myInfractions : []; %>
+      <% if (!infr.length) { %>
+        <p class="muted small" style="margin:4px 0 0">No active infractions on record. Keep it up.</p>
+      <% } else { %>
+        <p class="muted small" style="margin:-4px 0 12px">Your active infractions. Evidence and case details are confidential.</p>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>Type</th><th class="num">Points</th><th>Reason</th><th>Outcome</th><th>When</th></tr></thead>
+          <tbody>
+            <% infr.forEach(function(f){ %><tr>
+              <td class="small"><%= f.type %></td>
+              <td class="num mono"><%= f.points %></td>
+              <td class="small"><%= f.reason %></td>
+              <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
+              <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,10) %></time></td>
+            </tr><% }); %>
+          </tbody>
+        </table></div>
+      <% } %>
+    </section>
+
     <% if (typeof done !== 'undefined' && done) { %>
       <div class="account-ok"><%- icon('check') %> <span>Your password has been updated.</span></div>
     <% } %>
@@ -33,4 +60,16 @@
     </section>
   </div>
 </div>
+<script>
+(function () {
+  var box = document.getElementById('robloxAccount'); if (!box) return;
+  var name = box.getAttribute('data-user');
+  fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
+    var nameEl = box.querySelector('.roblox-name');
+    if (!d.ok) { nameEl.innerHTML = '<strong>@' + name + '</strong> <span class="muted small">— not linked to a Roblox account</span>'; return; }
+    if (d.avatar) box.querySelector('.roblox-avatar-slot').innerHTML = '<img src="' + d.avatar + '" alt="" width="52" height="52" />';
+    nameEl.innerHTML = '<strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span> <span class="muted small">· ID ' + d.id + '</span>';
+  }).catch(function () {});
+})();
+</script>
 <%- include('partials/foot') %>

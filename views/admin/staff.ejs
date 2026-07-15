@@ -44,7 +44,7 @@
             <div class="staff-id">
               <div class="staff-name"><%= u.username %>
                 <% if (u.id === user.id) { %><span class="badge">you</span><% } %>
-                <% if (u.suspended) { %><span class="badge badge-danger"><%- icon('lock') %> Suspended</span><% } %>
+                <% if (u.terminated) { %><span class="badge badge-danger"><%- icon('ban') %> Terminated</span><% } else if (u.suspended) { %><span class="badge badge-danger"><%- icon('lock') %> Suspended</span><% } %>
               </div>
               <div class="staff-since">Joined <%= (u.created_at || '').slice(0,10) %></div>
             </div>
@@ -54,7 +54,7 @@
               <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val"><% if (u.last_login) { %><time data-time="<%= u.last_login %>"><%= u.last_login.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
               <div class="staff-fact"><span class="fact-label">Last seen</span><span class="fact-val"><% if (u.last_seen) { %><time data-time="<%= u.last_seen %>"><%= u.last_seen.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
               <div class="staff-fact"><span class="fact-label">Doc views</span><span class="fact-val mono"><%= u.doc_views %></span></div>
-              <% if (u.rankLabel) { %><div class="staff-fact"><span class="fact-label">Rank</span><span class="badge badge-internal"><%= u.rankLabel %></span></div><% } %>
+              <% if (u.rankLabels && u.rankLabels.length) { %><div class="staff-fact"><span class="fact-label">Ranks</span><span class="fact-val"><% u.rankLabels.forEach(function(rl){ %><span class="badge badge-internal"><%= rl %></span> <% }); %></span></div><% } %>
             </div>
           </div>
 
@@ -87,12 +87,24 @@
                     <option value="admin" <%= u.role==='admin'?'selected':'' %>>Admin</option>
                   </select>
                 </label>
-                <label class="field field-sm">Dashboard rank
-                  <select name="rank">
-                    <option value="">— None —</option>
-                    <% Object.keys(ranks).forEach(function (k) { %><option value="<%= k %>" <%= u.rank===k?'selected':'' %>><%= ranks[k].label %></option><% }); %>
-                  </select>
-                </label>
+                <div class="field div-picker">
+                  <span class="field-label">Dashboard ranks</span>
+                  <div class="rank-row">
+                    <label class="rank-field">Moderation
+                      <select name="rank_moderation">
+                        <option value="">— None —</option>
+                        <% ranksByDiv.moderation.forEach(function (r) { %><option value="<%= r.key %>" <%= u.rankMod===r.key?'selected':'' %>><%= r.label %></option><% }); %>
+                      </select>
+                    </label>
+                    <label class="rank-field">SID
+                      <select name="rank_sid">
+                        <option value="">— None —</option>
+                        <% ranksByDiv.sid.forEach(function (r) { %><option value="<%= r.key %>" <%= u.rankSID===r.key?'selected':'' %>><%= r.label %></option><% }); %>
+                      </select>
+                    </label>
+                  </div>
+                  <span class="muted small">Ranks apply only if the matching division is enabled below. Junior ranks require senior approval for their logs.</span>
+                </div>
                 <div class="field div-picker">
                   <span class="field-label">Divisions</span>
                   <div class="chk-row">

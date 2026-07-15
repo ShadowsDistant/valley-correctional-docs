@@ -4,17 +4,10 @@
   <div class="dash-head">
     <div>
       <h1 class="admin-h1">Staff Dashboard <span class="beta-tag">Beta</span></h1>
-      <p class="admin-sub">
-        Logged in as <strong><%= user.username %></strong><% if (rankLabel) { %> · <span class="badge badge-internal"><%= rankLabel %></span><% } %>
-      </p>
+      <p class="admin-sub">Logged in as <strong><%= user.username %></strong><% myRanks.forEach(function(r){ %> · <span class="badge badge-internal"><%= r %></span><% }); %></p>
     </div>
     <a class="btn btn-ghost btn-sm" href="/home"><%- icon('external') %> Docs</a>
   </div>
-
-  <% if (needsApproval) { %>
-    <div class="dash-notice"><%- icon('info') %> <span>Your rank is <strong>junior</strong> — logs you submit are held as <strong>pending</strong> until a senior approves them. They do not take effect until then.</span></div>
-  <% } %>
-  <% if (typeof saved === 'undefined') { var saved = null; } %>
 
   <div class="stat-grid dash-stats">
     <% if (canModerate) { %>
@@ -25,7 +18,7 @@
       <div class="stat-card"><span class="stat-num"><%= stats.infTotal %></span><span class="stat-label">Active infractions</span></div>
       <div class="stat-card"><span class="stat-num"><%= stats.inf7 %></span><span class="stat-label">Infractions · 7d</span></div>
     <% } %>
-    <% if (canApprove) { %>
+    <% if (canApproveMod || canApproveSID) { %>
       <div class="stat-card <%= stats.pending ? 'stat-alert' : '' %>"><span class="stat-num"><%= stats.pending %></span><span class="stat-label">Pending approvals</span></div>
     <% } %>
   </div>
@@ -33,43 +26,39 @@
   <div class="dash-tabs" id="dashTabs">
     <% if (canModerate) { %><button type="button" class="dash-tab active" data-tab="mod"><%- icon('shield') %> Moderation</button><% } %>
     <% if (canSID) { %><button type="button" class="dash-tab <%= canModerate ? '' : 'active' %>" data-tab="sid"><%- icon('eye') %> SID</button><% } %>
-    <% if (canApprove) { %><button type="button" class="dash-tab" data-tab="pending">Pending <% if (stats.pending) { %><span class="tab-count"><%= stats.pending %></span><% } %></button><% } %>
+    <button type="button" class="dash-tab" data-tab="file"><%- icon('search') %> User File</button>
+    <% if (canApproveMod || canApproveSID) { %><button type="button" class="dash-tab" data-tab="pending">Pending <% if (stats.pending) { %><span class="tab-count"><%= stats.pending %></span><% } %></button><% } %>
   </div>
-
-  <form method="get" action="/dashboard" class="dash-search">
-    <%- icon('search') %>
-    <input type="text" name="q" value="<%= q %>" placeholder="Search logs…" autocomplete="off" />
-    <button class="btn btn-solid btn-sm" type="submit">Search</button>
-    <% if (q) { %><a class="btn btn-ghost btn-sm" href="/dashboard">Clear</a><% } %>
-  </form>
 
   <!-- MODERATION -->
   <% if (canModerate) { %>
   <section class="dash-tabpane" data-pane="mod">
+    <% if (needsApprovalMod) { %><div class="dash-notice"><%- icon('info') %> <span>You are a <strong>Junior Moderator</strong> — your punishments are held as <strong>pending</strong> until a senior approves them.</span></div><% } %>
     <div class="panel dash-panel">
       <div class="panel-head"><h2><%- icon('shield') %> Log a punishment</h2></div>
-      <form method="post" action="/dashboard/punishment" class="dash-form" data-roblox="1">
+      <form method="post" action="/dashboard/punishment" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-        <label class="field">Quick preset
-          <select class="preset-sel" data-target="pun"><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= p.type %>" data-reason="<%= p.reason %>"><%= p.label %> → <%= p.type %></option><% }); %></select>
+        <label class="field">Offense preset <small>(auto-escalates on repeat)</small>
+          <select class="preset-sel" id="pun-preset"><option value="">— Custom —</option><% punishPresets.forEach(function(p){ %><option value="<%= p.type || '' %>" data-reason="<%= p.reason %>" data-escalate='<%= JSON.stringify(p.escalate||[]) %>'><%= p.label %></option><% }); %></select>
         </label>
         <div class="field-grid">
-          <label class="field">Roblox username
-            <span class="roblox-input"><input type="text" name="roblox_user" required autocomplete="off" placeholder="Builderman" /><button type="button" class="btn btn-ghost btn-sm rbx-lookup">Look up</button></span>
-          </label>
-          <label class="field">Roblox ID <input type="text" name="roblox_id" autocomplete="off" placeholder="auto-filled" /></label>
+          <div class="field">Roblox username
+            <div class="rbx-search"><input type="text" name="roblox_user" id="rbx-name" required autocomplete="off" placeholder="Start typing…" /><div class="rbx-suggest" hidden></div></div>
+          </div>
+          <label class="field">Roblox ID <input type="text" name="roblox_id" id="rbx-id" autocomplete="off" placeholder="auto-filled" /></label>
           <label class="field">Type
             <select name="type" id="pun-type"><% punishTypes.forEach(function(t){ %><option value="<%= t %>"><%= t %></option><% }); %></select>
           </label>
           <label class="field">Duration <small>(if temp)</small><input type="text" name="duration" placeholder="7 days" autocomplete="off" /></label>
         </div>
-        <div class="rbx-card" hidden></div>
+        <div class="rbx-card" id="rbx-card" hidden></div>
+        <div class="escalate-note" id="escalate-note" hidden></div>
         <label class="field">Reason<input type="text" name="reason" id="pun-reason" required placeholder="What happened" autocomplete="off" /></label>
         <div class="evidence-row">
-          <label class="field">Evidence <small>(link or file)</small><input type="text" name="evidence" class="ev-input" placeholder="https://… or attach a file" autocomplete="off" /></label>
+          <label class="field">Evidence <small>(link or file)</small><input type="text" name="evidence" class="ev-input" placeholder="https://… or attach" autocomplete="off" /></label>
           <div class="ev-upload"><input type="file" class="ev-file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" hidden /><button type="button" class="btn btn-ghost btn-sm ev-attach"><%- icon('files') %> Attach</button><span class="ev-status muted small"></span></div>
         </div>
-        <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> <%= needsApproval ? 'Submit for approval' : 'Log punishment' %></button></div>
+        <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> <%= needsApprovalMod ? 'Submit for approval' : 'Log punishment' %></button></div>
       </form>
     </div>
 
@@ -100,42 +89,48 @@
   <!-- SID -->
   <% if (canSID) { %>
   <section class="dash-tabpane" data-pane="sid" <%= canModerate ? 'hidden' : '' %>>
+    <% if (needsApprovalSID) { %><div class="dash-notice"><%- icon('info') %> <span>You are a <strong>Junior Investigator</strong> — your infractions are held as <strong>pending</strong> until a senior approves them.</span></div><% } %>
+    <div class="dash-notice info-note"><%- icon('scale') %> <span><strong>Point system:</strong> 1pt = verbal warning · <strong>3+ pts = 7-day auto-suspension</strong> · <strong>6+ pts (or mandatory) = auto-termination</strong>. Points expire after 6 months.</span></div>
     <div class="panel dash-panel">
       <div class="panel-head"><h2><%- icon('eye') %> Issue an infraction</h2></div>
       <form method="post" action="/dashboard/infraction" class="dash-form">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-        <label class="field">Quick preset
-          <select class="preset-sel" data-target="inf"><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.type %>" data-reason="<%= p.reason %>"><%= p.label %> → <%= p.type %></option><% }); %></select>
+        <input type="hidden" name="mandatory" id="inf-mandatory" value="0" />
+        <label class="field">Violation preset
+          <select class="preset-sel" id="inf-preset"><option value="">— Custom —</option><% infractionPresets.forEach(function(p){ %><option value="<%= p.label %>" data-reason="<%= p.reason %>" data-points="<%= p.points %>" data-mandatory="<%= p.mandatory?1:0 %>"><%= p.label %> (<%= p.mandatory ? 'mandatory term.' : p.points+'pt' %>)</option><% }); %></select>
         </label>
         <div class="field-grid">
           <label class="field">Staff member
             <select name="staff_user" required><option value="">— Select staff —</option><% staffList.forEach(function(s){ %><option value="<%= s %>"><%= s %></option><% }); %></select>
           </label>
-          <label class="field">Type
-            <select name="type" id="inf-type"><% infractionTypes.forEach(function(t){ %><option value="<%= t %>"><%= t %></option><% }); %></select>
+          <label class="field">Violation type<input type="text" name="type" id="inf-type" required placeholder="e.g. Inactivity" autocomplete="off" /></label>
+          <label class="field">Points
+            <select name="points" id="inf-points"><% for (var i=1;i<=6;i++){ %><option value="<%= i %>"><%= i %> pt<%= i>1?'s':'' %></option><% } %></select>
           </label>
         </div>
         <label class="field">Reason<input type="text" name="reason" id="inf-reason" required placeholder="What happened" autocomplete="off" /></label>
         <div class="evidence-row">
-          <label class="field">Evidence <small>(link or file)</small><input type="text" name="evidence" class="ev-input" placeholder="https://… or attach a file" autocomplete="off" /></label>
+          <label class="field">Evidence <small>(link or file)</small><input type="text" name="evidence" class="ev-input" placeholder="https://… or attach" autocomplete="off" /></label>
           <div class="ev-upload"><input type="file" class="ev-file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" hidden /><button type="button" class="btn btn-ghost btn-sm ev-attach"><%- icon('files') %> Attach</button><span class="ev-status muted small"></span></div>
         </div>
-        <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> <%= needsApproval ? 'Submit for approval' : 'Issue infraction' %></button></div>
+        <div><button class="btn btn-solid" type="submit"><%- icon('plus') %> <%= needsApprovalSID ? 'Submit for approval' : 'Issue infraction' %></button></div>
       </form>
+      <p class="muted small" style="margin:10px 0 0">You can only issue infractions to staff within your authority (excludes admins, Management, and Oversight).</p>
     </div>
 
     <div class="panel dash-panel">
       <div class="panel-head"><h2>Infraction history</h2><span class="muted small"><%= infractions.length %> shown</span></div>
       <div class="table-scroll dash-list">
         <table class="table">
-          <thead><tr><th>Staff</th><th>Type</th><th>Reason</th><th>By</th><th>When</th><th></th></tr></thead>
+          <thead><tr><th>Staff</th><th>Type</th><th class="num">Pts</th><th>Outcome</th><th>By</th><th>When</th><th></th></tr></thead>
           <tbody>
-            <% if (!infractions.length) { %><tr><td colspan="6" class="muted" style="padding:16px">No active infractions<%= q ? ' for “'+q+'”' : '' %>.</td></tr><% } %>
+            <% if (!infractions.length) { %><tr><td colspan="7" class="muted" style="padding:16px">No active infractions<%= q ? ' for “'+q+'”' : '' %>.</td></tr><% } %>
             <% infractions.forEach(function(f){ %>
               <tr class="<%= f.voided ? 'row-void' : '' %>">
                 <td class="small"><strong><%= f.staff_user %></strong></td>
-                <td><span class="pill pill-<%= (f.type==='Termination'||f.type==='Demotion'||f.type==='Suspension')?'red':(f.type==='Strike'?'amber':'grey') %>"><%= f.type %></span></td>
-                <td class="small"><%= f.reason %><% if (f.evidence) { %> <a href="<%= f.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
+                <td class="small"><%= f.type %></td>
+                <td class="num mono"><%= f.points %></td>
+                <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
                 <td class="small"><%= f.issued_by %></td>
                 <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></td>
                 <td><% if (!f.voided) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>?" data-confirm-title="Void infraction" data-confirm-ok="Void"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else { %><span class="badge">voided</span><% } %></td>
@@ -148,14 +143,26 @@
   </section>
   <% } %>
 
-  <!-- PENDING APPROVALS -->
-  <% if (canApprove) { %>
+  <!-- USER FILE -->
+  <section class="dash-tabpane" data-pane="file" hidden>
+    <div class="panel dash-panel">
+      <div class="panel-head"><h2><%- icon('files') %> User file lookup</h2></div>
+      <p class="muted small" style="margin:-4px 0 12px">Search a user by name (staff names are their Roblox names) to see their full punishment and infraction history.</p>
+      <div class="dash-search" style="margin-bottom:16px">
+        <%- icon('search') %>
+        <input type="text" id="file-input" placeholder="Roblox / staff username…" autocomplete="off" />
+        <button class="btn btn-solid btn-sm" id="file-go" type="button">Open file</button>
+      </div>
+      <div id="file-result"></div>
+    </div>
+  </section>
+
+  <!-- PENDING -->
+  <% if (canApproveMod || canApproveSID) { %>
   <section class="dash-tabpane" data-pane="pending" hidden>
     <div class="panel dash-panel">
       <div class="panel-head"><h2>Pending approval</h2><span class="muted small"><%= stats.pending %> awaiting review</span></div>
-      <% if (!pendingPun.length && !pendingInf.length) { %>
-        <p class="muted" style="padding:8px 0">Nothing pending. Junior staff submissions will appear here for review.</p>
-      <% } %>
+      <% if (!pendingPun.length && !pendingInf.length) { %><p class="muted" style="padding:8px 0">Nothing pending.</p><% } %>
       <% pendingPun.forEach(function(p){ %>
         <div class="pending-card">
           <div class="pending-info"><span class="pill pill-<%= p.type.toLowerCase().indexOf('ban')>=0?'red':'amber' %>"><%= p.type %></span> <strong><%= p.roblox_user %></strong> <span class="muted small">by <%= p.moderator %> · <time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,16) %></time></span><div class="small"><%= p.reason %><% if (p.evidence) { %> <a href="<%= p.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></div></div>
@@ -167,7 +174,7 @@
       <% }); %>
       <% pendingInf.forEach(function(f){ %>
         <div class="pending-card">
-          <div class="pending-info"><span class="pill pill-<%= (f.type==='Termination'||f.type==='Demotion'||f.type==='Suspension')?'red':'grey' %>"><%= f.type %></span> <strong><%= f.staff_user %></strong> <span class="muted small">by <%= f.issued_by %> · <time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></span><div class="small"><%= f.reason %><% if (f.evidence) { %> <a href="<%= f.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></div></div>
+          <div class="pending-info"><span class="pill pill-grey"><%= f.type %> · <%= f.points %>pt</span> <strong><%= f.staff_user %></strong> <span class="muted small">by <%= f.issued_by %> · <time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></span><div class="small"><%= f.reason %><% if (f.evidence) { %> <a href="<%= f.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></div></div>
           <div class="pending-actions">
             <form method="post" action="/dashboard/infraction/review" class="inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><input type="hidden" name="decision" value="approve"/><button class="btn btn-solid btn-sm" type="submit">Approve</button></form>
             <form method="post" action="/dashboard/infraction/review" class="inline" data-confirm="Reject and delete this pending infraction?" data-confirm-title="Reject" data-confirm-ok="Reject"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><input type="hidden" name="decision" value="reject"/><button class="btn btn-ghost btn-sm danger" type="submit">Reject</button></form>
@@ -183,6 +190,7 @@
 
 <script>
 (function () {
+  function esc(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
   // tabs
   var tabs = document.getElementById('dashTabs');
   if (tabs) tabs.addEventListener('click', function (e) {
@@ -190,37 +198,72 @@
     tabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t === b); });
     document.querySelectorAll('.dash-tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== b.getAttribute('data-tab'); });
   });
-  // presets → fill type + reason
-  document.querySelectorAll('.preset-sel').forEach(function (sel) {
-    sel.addEventListener('change', function () {
-      var t = sel.getAttribute('data-target');
-      var opt = sel.options[sel.selectedIndex];
-      if (!sel.value) return;
-      var typeEl = document.getElementById(t + '-type'), reasonEl = document.getElementById(t + '-reason');
-      if (typeEl) { typeEl.value = sel.value; typeEl.dispatchEvent(new Event('change', { bubbles: true })); }
-      if (reasonEl && opt.getAttribute('data-reason')) reasonEl.value = opt.getAttribute('data-reason');
-    });
+
+  // moderation preset (with escalation ladder)
+  var priorCount = 0;
+  var punPreset = document.getElementById('pun-preset');
+  function applyPunPreset() {
+    if (!punPreset || !punPreset.value && !punPreset.options[punPreset.selectedIndex].getAttribute('data-escalate')) return;
+    var opt = punPreset.options[punPreset.selectedIndex];
+    var reason = opt.getAttribute('data-reason'); if (reason) document.getElementById('pun-reason').value = reason;
+    var ladder = []; try { ladder = JSON.parse(opt.getAttribute('data-escalate') || '[]'); } catch (e) {}
+    var note = document.getElementById('escalate-note');
+    if (ladder.length) {
+      var idx = Math.min(priorCount, ladder.length - 1);
+      document.getElementById('pun-type').value = ladder[idx];
+      note.hidden = false;
+      note.innerHTML = 'Auto-escalated to <strong>' + esc(ladder[idx]) + '</strong> (' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '). Ladder: ' + ladder.map(esc).join(' → ');
+    } else if (opt.value) { document.getElementById('pun-type').value = opt.value; note.hidden = true; }
+    else note.hidden = true;
+  }
+  if (punPreset) punPreset.addEventListener('change', applyPunPreset);
+
+  // SID preset (points + mandatory)
+  var infPreset = document.getElementById('inf-preset');
+  if (infPreset) infPreset.addEventListener('change', function () {
+    if (!infPreset.value) return;
+    var opt = infPreset.options[infPreset.selectedIndex];
+    document.getElementById('inf-type').value = opt.value;
+    document.getElementById('inf-reason').value = opt.getAttribute('data-reason') || '';
+    document.getElementById('inf-points').value = opt.getAttribute('data-points') || '1';
+    document.getElementById('inf-mandatory').value = opt.getAttribute('data-mandatory') || '0';
   });
-  // Roblox lookup
-  document.querySelectorAll('.rbx-lookup').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var form = btn.closest('form');
-      var nameEl = form.querySelector('[name=roblox_user]'), idEl = form.querySelector('[name=roblox_id]');
-      var card = form.querySelector('.rbx-card');
-      var name = (nameEl.value || '').trim(); if (!name) return;
-      btn.textContent = '…';
+
+  // Roblox autocomplete + lookup
+  var rbxName = document.getElementById('rbx-name');
+  if (rbxName) {
+    var box = document.querySelector('.rbx-suggest'), t;
+    function pick(name) {
+      rbxName.value = name; box.hidden = true;
       fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
-        btn.textContent = 'Look up';
-        if (!d.ok) { card.hidden = false; card.innerHTML = '<span class="muted">No Roblox user found for “' + name + '”.</span>'; return; }
-        if (idEl) idEl.value = d.id;
-        nameEl.value = d.name;
+        var card = document.getElementById('rbx-card');
+        if (!d.ok) { card.hidden = false; card.innerHTML = '<span class="muted">No Roblox user found.</span>'; return; }
+        document.getElementById('rbx-id').value = d.id;
+        priorCount = d.priorPunishments || 0;
         card.hidden = false;
-        card.innerHTML = (d.avatar ? '<img src="' + d.avatar + '" alt="" width="40" height="40" />' : '')
-          + '<div><strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span><br><span class="muted small">ID ' + d.id + '</span></div>';
-      }).catch(function () { btn.textContent = 'Look up'; });
+        card.innerHTML = (d.avatar ? '<img src="' + d.avatar + '" alt="" width="44" height="44" />' : '')
+          + '<div><strong>' + esc(d.displayName) + '</strong> <span class="muted">@' + esc(d.name) + '</span> · <a href="#" class="view-file" data-user="' + esc(d.name) + '">view file</a><br>'
+          + '<span class="muted small">ID ' + d.id + ' · ' + priorCount + ' prior punishment' + (priorCount === 1 ? '' : 's') + '</span></div>';
+        if (punPreset && punPreset.value !== '') applyPunPreset();
+      }).catch(function () {});
+    }
+    rbxName.addEventListener('input', function () {
+      clearTimeout(t); var q = rbxName.value.trim();
+      if (q.length < 2) { box.hidden = true; return; }
+      t = setTimeout(function () {
+        fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.data || !d.data.length) { box.hidden = true; return; }
+          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></div>'; }).join('');
+          box.hidden = false;
+        }).catch(function () {});
+      }, 250);
     });
-  });
-  // evidence file upload
+    box.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); pick(o.getAttribute('data-name')); } });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search')) box.hidden = true; });
+    document.addEventListener('click', function (e) { var v = e.target.closest('.view-file'); if (v) { e.preventDefault(); openFile(v.getAttribute('data-user')); } });
+  }
+
+  // evidence upload
   document.querySelectorAll('.ev-upload').forEach(function (wrap) {
     var file = wrap.querySelector('.ev-file'), btn = wrap.querySelector('.ev-attach'), status = wrap.querySelector('.ev-status');
     var input = wrap.closest('.evidence-row').querySelector('.ev-input');
@@ -240,6 +283,28 @@
       reader.readAsDataURL(f);
     });
   });
+
+  // user file lookup
+  function openFile(name) {
+    if (tabs) { tabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === 'file'); }); document.querySelectorAll('.dash-tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== 'file'; }); }
+    var inp = document.getElementById('file-input'); if (inp) inp.value = name;
+    loadFile(name);
+  }
+  function loadFile(name) {
+    var out = document.getElementById('file-result'); out.innerHTML = '<p class="muted">Loading…</p>';
+    fetch('/api/user-file?user=' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { out.innerHTML = '<p class="muted">No file found.</p>'; return; }
+      var html = '<div class="file-head"><strong>' + esc(d.user) + '</strong> · <span class="pill pill-' + (d.points >= 3 ? 'red' : 'grey') + '">' + d.points + ' pts (6mo)</span></div>';
+      html += '<h3 class="file-h">Punishments (' + d.punishments.length + ')</h3>';
+      html += d.punishments.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span></td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      html += '<h3 class="file-h">Infractions (' + d.infractions.length + ')</h3>';
+      html += d.infractions.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+      out.innerHTML = html;
+    }).catch(function () { out.innerHTML = '<p class="muted">Lookup failed.</p>'; });
+  }
+  var fileGo = document.getElementById('file-go');
+  if (fileGo) { fileGo.addEventListener('click', function () { var v = document.getElementById('file-input').value.trim(); if (v) loadFile(v); });
+    document.getElementById('file-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); fileGo.click(); } }); }
 })();
 </script>
 <%- include('partials/foot') %>
