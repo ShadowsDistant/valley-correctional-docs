@@ -1242,11 +1242,13 @@ app.get('/feedback', (req, res) => {
   res.render('feedback', { title: 'Share Feedback' });
 });
 
+const FEEDBACK_CATEGORIES = ['idea', 'bug', 'improvement', 'other'];
 app.post('/api/feedback', feedbackLimiter, (req, res) => {
   res.set('Cache-Control', 'no-store');
   const title = String((req.body && req.body.title) || '').trim().slice(0, 120);
   const body = String((req.body && req.body.body) || '').trim().slice(0, 4000);
   const roblox = String((req.body && req.body.roblox_user) || '').trim().slice(0, 60);
+  const category = FEEDBACK_CATEGORIES.includes(req.body && req.body.category) ? req.body.category : 'idea';
   const token = tokenHash(req.body && req.body.token);
   if (!title || !body) return res.status(400).json({ ok: false, error: 'A title and description are required.' });
   const bad = profanity.findProfanity(title) || profanity.findProfanity(body) || profanity.findProfanity(roblox);
@@ -1255,9 +1257,9 @@ app.post('/api/feedback', feedbackLimiter, (req, res) => {
     return res.status(400).json({ ok: false, error: 'Please remove inappropriate language and try again.' });
   }
   const u = req.session && req.session.user;
-  const info = db.prepare('INSERT INTO feedback (title, body, roblox_user, submitted_by, device_token) VALUES (?, ?, ?, ?, ?)')
-    .run(title, body, roblox, u ? u.username : null, token);
-  audit(u ? u.username : 'anonymous', 'feedback.create', title.slice(0, 60), roblox ? 'roblox: ' + roblox : '');
+  const info = db.prepare('INSERT INTO feedback (title, body, roblox_user, category, submitted_by, device_token) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(title, body, roblox, category, u ? u.username : null, token);
+  audit(u ? u.username : 'anonymous', 'feedback.create', title.slice(0, 60), category + (roblox ? ' · roblox: ' + roblox : ''));
   res.json({ ok: true, id: info.lastInsertRowid });
 });
 
@@ -1267,12 +1269,12 @@ app.get('/api/feedback/mine', (req, res) => {
   const t = tokenHash(req.query.token);
   if (!u && !t) return res.json({ ok: true, items: [] });
   const items = db.prepare(
-    `SELECT f.id, f.title, f.status, f.created_at, f.last_msg_at,
+    `SELECT f.id, f.title, f.category, f.status, f.created_at, f.last_msg_at,
             (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS msgs,
             (SELECT sender FROM feedback_messages m WHERE m.feedback_id = f.id ORDER BY m.id DESC LIMIT 1) AS last_sender
      FROM feedback f
      WHERE (f.device_token IS NOT NULL AND f.device_token = ?) OR (? IS NOT NULL AND f.submitted_by = ? COLLATE NOCASE)
-     ORDER BY f.created_at DESC LIMIT 50`
+     ORDER BY COALESCE(f.last_msg_at, f.created_at) DESC LIMIT 50`
   ).all(t, u ? u.username : null, u ? u.username : null);
   res.json({ ok: true, items });
 });
@@ -1282,7 +1284,7 @@ app.get('/api/feedback/:id/messages', (req, res) => {
   const row = db.prepare('SELECT * FROM feedback WHERE id = ?').get(Number(req.params.id));
   if (!feedbackAccess(req, row)) return res.status(403).json({ ok: false });
   const messages = db.prepare('SELECT sender, sender_name, body, created_at FROM feedback_messages WHERE feedback_id = ? ORDER BY id LIMIT 200').all(row.id);
-  res.json({ ok: true, feedback: { id: row.id, title: row.title, body: row.body, roblox_user: row.roblox_user, status: row.status, created_at: row.created_at }, messages });
+  res.json({ ok: true, feedback: { id: row.id, title: row.title, body: row.body, roblox_user: row.roblox_user, category: row.category, status: row.status, created_at: row.created_at, submitted_by: row.submitted_by }, messages });
 });
 
 app.post('/api/feedback/:id/message', feedbackChatLimiter, (req, res) => {
@@ -1298,10 +1300,11 @@ app.post('/api/feedback/:id/message', feedbackChatLimiter, (req, res) => {
     audit(asStaff ? u.username : 'submitter', 'feedback.blocked', '#' + row.id, 'profanity in chat: ' + bad);
     return res.status(400).json({ ok: false, error: 'Please remove inappropriate language and try again.' });
   }
-  db.prepare('INSERT INTO feedback_messages (feedback_id, sender, sender_name, body) VALUES (?, ?, ?, ?)')
+  const info = db.prepare('INSERT INTO feedback_messages (feedback_id, sender, sender_name, body) VALUES (?, ?, ?, ?)')
     .run(row.id, asStaff ? 'staff' : 'submitter', asStaff ? u.username : null, body);
   db.prepare("UPDATE feedback SET last_msg_at = datetime('now') WHERE id = ?").run(row.id);
-  res.json({ ok: true });
+  const msg = db.prepare('SELECT sender, sender_name, body, created_at FROM feedback_messages WHERE id = ?').get(info.lastInsertRowid);
+  res.json({ ok: true, message: msg });
 });
 
 // Staff triage (Management/Oversight any rank + admins). Registered on app —
@@ -1315,16 +1318,27 @@ function requireFeedbackStaff(req, res, next) {
 app.get('/admin/feedback', requireFeedbackStaff, auth.csrfToken, viewRecorder('admin'), (req, res) => {
   res.set('Cache-Control', 'no-store');
   const status = ['open', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+  const category = FEEDBACK_CATEGORIES.includes(req.query.category) ? req.query.category : '';
+  const q = String(req.query.q || '').trim().slice(0, 80);
+  const where = [], params = [];
+  if (status) { where.push('f.status = ?'); params.push(status); }
+  if (category) { where.push('f.category = ?'); params.push(category); }
+  if (q) { where.push('(f.title LIKE ? OR f.body LIKE ? OR f.submitted_by LIKE ? OR f.roblox_user LIKE ?)'); const like = '%' + q + '%'; params.push(like, like, like, like); }
   const items = db.prepare(
-    `SELECT f.*, (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS msgs
-     FROM feedback f ${status ? 'WHERE f.status = ?' : ''} ORDER BY f.created_at DESC LIMIT 200`
-  ).all(...(status ? [status] : []));
+    `SELECT f.*,
+            (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS msgs,
+            (SELECT sender FROM feedback_messages m WHERE m.feedback_id = f.id ORDER BY m.id DESC LIMIT 1) AS last_sender
+     FROM feedback f ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+     ORDER BY COALESCE(f.last_msg_at, f.created_at) DESC LIMIT 200`
+  ).all(...params);
   const counts = {
     open: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='open'").get().n,
     approved: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='approved'").get().n,
     rejected: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='rejected'").get().n,
+    // Threads whose latest message is from the submitter — a staff reply is due.
+    needsReply: db.prepare("SELECT COUNT(*) AS n FROM feedback f WHERE (SELECT sender FROM feedback_messages m WHERE m.feedback_id=f.id ORDER BY m.id DESC LIMIT 1)='submitter'").get().n,
   };
-  res.render('admin/feedback', { title: 'Admin · Feedback', section: 'feedback', items, counts, status });
+  res.render('admin/feedback', { title: 'Admin · Feedback', section: 'feedback', items, counts, status, category, q, categories: FEEDBACK_CATEGORIES });
 });
 app.post('/admin/feedback/status', requireFeedbackStaff, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   const id = Number(req.body.id);

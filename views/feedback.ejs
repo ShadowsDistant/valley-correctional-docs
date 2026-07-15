@@ -3,21 +3,34 @@
 <div class="account-wrap fb-wrap">
   <div class="account-card">
     <header class="fb-head">
-      <h1 class="admin-h1">Share Feedback</h1>
-      <p class="admin-sub">Ideas, bug reports, and suggestions for Valley Correctional Facility. Management and Oversight read everything — and if your idea gets implemented and you included your Roblox username, you'll receive the <strong>Contributor</strong> role.</p>
+      <div class="fb-head-icon"><%- icon('message') %></div>
+      <div>
+        <h1 class="admin-h1">Share Feedback</h1>
+        <p class="admin-sub">Ideas, bug reports, and suggestions for Valley Correctional Facility. Management and Oversight read everything — and if your idea ships and you included your Roblox username, you'll earn the <strong>Contributor</strong> role.</p>
+      </div>
     </header>
 
     <div class="profile-grid fb-grid">
-      <section class="panel account-panel">
-        <div class="panel-head"><h2><%- icon('message') %> New feedback</h2></div>
+      <section class="panel account-panel fb-form-panel">
+        <div class="panel-head"><h2><%- icon('lightbulb') %> New feedback</h2></div>
         <form id="fbForm" class="stack-form">
+          <div class="field">What kind of feedback?
+            <div class="fb-cat-picker" id="fbCat">
+              <button type="button" class="fb-cat active" data-cat="idea"><%- icon('lightbulb') %> Idea</button>
+              <button type="button" class="fb-cat" data-cat="bug"><%- icon('bug') %> Bug</button>
+              <button type="button" class="fb-cat" data-cat="improvement"><%- icon('star') %> Improvement</button>
+              <button type="button" class="fb-cat" data-cat="other"><%- icon('message') %> Other</button>
+            </div>
+          </div>
           <label class="field">Title
             <input type="text" id="fb-title" maxlength="120" required placeholder="A short summary" />
+            <span class="fb-count" data-for="fb-title">0 / 120</span>
           </label>
           <label class="field">Description
-            <textarea id="fb-body" class="reason-ta" rows="5" maxlength="4000" required placeholder="What's your idea, or what went wrong?"></textarea>
+            <textarea id="fb-body" class="reason-ta" rows="5" maxlength="4000" required placeholder="What's your idea, or what went wrong? The more detail, the better."></textarea>
+            <span class="fb-count" data-for="fb-body">0 / 4000</span>
           </label>
-          <div class="field">Roblox username <small>(optional — for the Contributor role)</small>
+          <div class="field">Roblox username <small>(optional — required to earn the Contributor role)</small>
             <div class="rbx-search"><input type="text" id="fb-roblox" autocomplete="off" placeholder="Start typing…" /><div class="rbx-suggest" id="fb-suggest" hidden></div></div>
           </div>
           <div id="fb-error" class="auth-error" hidden><%- icon('danger') %> <span></span></div>
@@ -26,28 +39,53 @@
         </form>
       </section>
 
-      <section class="panel account-panel">
+      <section class="panel account-panel fb-list-panel">
         <div class="panel-head"><h2><%- icon('files') %> Your submissions</h2></div>
-        <p class="muted small" style="margin:-4px 0 10px">Saved to this device<%= user ? ' and your account' : '' %>. Staff replies appear here.</p>
+        <p class="muted small" style="margin:-4px 0 12px">Saved to this device<%= user ? ' and your account' : '' %>. Open one to chat with staff.</p>
         <div id="fb-mine"><p class="muted small">Loading…</p></div>
       </section>
     </div>
-
-    <!-- Thread view -->
-    <section class="panel account-panel fb-thread" id="fbThread" hidden>
-      <div class="panel-head"><h2 id="fbThreadTitle">Thread</h2><button class="btn btn-ghost btn-sm" type="button" id="fbThreadClose">Close</button></div>
-      <div class="fb-msgs" id="fbMsgs"></div>
-      <form id="fbReply" class="fb-reply">
-        <textarea class="reason-ta" id="fb-reply-body" rows="2" maxlength="2000" placeholder="Reply to staff…"></textarea>
-        <button class="btn btn-solid btn-sm" type="submit">Send</button>
-      </form>
-      <div id="fb-thread-error" class="auth-error" hidden><%- icon('danger') %> <span></span></div>
-    </section>
   </div>
 </div>
+
+<!-- Chat drawer -->
+<div class="fb-drawer-scrim" id="fbScrim" hidden></div>
+<aside class="fb-drawer" id="fbDrawer" hidden aria-label="Feedback conversation">
+  <header class="fb-drawer-head">
+    <button class="icon-btn fb-drawer-close" id="fbClose" aria-label="Close conversation"><%- icon('x') %></button>
+    <div class="fb-drawer-titlewrap">
+      <div class="fb-drawer-title" id="fbDrawerTitle">Conversation</div>
+      <div class="fb-drawer-sub" id="fbDrawerSub"></div>
+    </div>
+  </header>
+  <div class="fb-chat" id="fbChat"></div>
+  <form class="fb-composer" id="fbReply">
+    <textarea id="fb-reply-body" class="fb-composer-input" rows="1" maxlength="2000" placeholder="Write a reply…"></textarea>
+    <button class="btn btn-solid fb-send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg></button>
+  </form>
+  <div id="fb-thread-error" class="auth-error fb-composer-error" hidden><%- icon('danger') %> <span></span></div>
+</aside>
+
 <script>
 (function () {
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var CATS = {
+    idea: { label: 'Idea', ic: 'lightbulb' }, bug: { label: 'Bug', ic: 'bug' },
+    improvement: { label: 'Improvement', ic: 'star' }, other: { label: 'Other', ic: 'message' },
+  };
+  var statusPill = {
+    open: '<span class="pill pill-amber">Open</span>',
+    approved: '<span class="pill pill-green">Approved</span>',
+    rejected: '<span class="pill pill-red">Rejected</span>',
+  };
+  function catChip(c) { var m = CATS[c] || CATS.other; return '<span class="fb-cat-chip"><span class="ic ic-' + m.ic + '"></span>' + m.label + '</span>'; }
+  function initial(name) { return (name || '?').trim().charAt(0).toUpperCase() || '?'; }
+  function hueOf(name) { var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360; return h; }
+  function avatar(name, staff) {
+    var h = hueOf(name || 'anon');
+    return '<span class="fb-av' + (staff ? ' is-staff' : '') + '" style="--h:' + h + '">' + esc(initial(name)) + '</span>';
+  }
+
   // Device secret: identifies this browser's submissions even when logged out.
   var token = '';
   try {
@@ -59,38 +97,70 @@
     }
   } catch (e) {}
 
-  var statusPill = { open: '<span class="pill pill-amber">Open</span>', approved: '<span class="pill pill-grey" style="color:#22c55e">Approved</span>', rejected: '<span class="pill pill-red">Rejected</span>' };
+  // Track which threads the user has read (localStorage: id -> last message count seen)
+  var readMap = {};
+  try { readMap = JSON.parse(localStorage.getItem('vcfFbRead') || '{}') || {}; } catch (e) {}
+  function saveRead() { try { localStorage.setItem('vcfFbRead', JSON.stringify(readMap)); } catch (e) {} }
+
+  // ---- character counters ----
+  Array.prototype.forEach.call(document.querySelectorAll('.fb-count'), function (c) {
+    var el = document.getElementById(c.getAttribute('data-for'));
+    function upd() { c.textContent = el.value.length + ' / ' + el.getAttribute('maxlength'); }
+    el.addEventListener('input', upd); upd();
+  });
+
+  // ---- category picker ----
+  var chosenCat = 'idea';
+  document.getElementById('fbCat').addEventListener('click', function (e) {
+    var b = e.target.closest('.fb-cat'); if (!b) return;
+    chosenCat = b.getAttribute('data-cat');
+    this.querySelectorAll('.fb-cat').forEach(function (x) { x.classList.toggle('active', x === b); });
+  });
+
+  // ---- submissions list ----
   function loadMine() {
-    fetch('/api/feedback/mine?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
+    return fetch('/api/feedback/mine?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
       var box = document.getElementById('fb-mine');
-      if (!d.ok || !d.items.length) { box.innerHTML = '<p class="muted small">No submissions yet.</p>'; return; }
+      if (!d.ok || !d.items.length) {
+        box.innerHTML = '<div class="fb-empty"><span class="ic ic-message"></span><p>No submissions yet. Share your first idea on the left!</p></div>';
+        return;
+      }
       box.innerHTML = d.items.map(function (f) {
+        var unread = f.last_sender === 'staff' && (readMap[f.id] || 0) < f.msgs;
         return '<button type="button" class="fb-item" data-id="' + f.id + '">'
-          + '<span class="fb-item-title">' + esc(f.title) + '</span>'
-          + '<span class="fb-item-meta">' + (statusPill[f.status] || '') + ' <span class="muted small">' + f.msgs + ' message' + (f.msgs === 1 ? '' : 's') + (f.last_sender === 'staff' ? ' · <strong>staff replied</strong>' : '') + '</span></span>'
+          + '<div class="fb-item-top">' + catChip(f.category) + (statusPill[f.status] || '') + (unread ? '<span class="fb-unread-dot" title="New staff reply"></span>' : '') + '</div>'
+          + '<div class="fb-item-title">' + esc(f.title) + '</div>'
+          + '<div class="fb-item-meta muted small"><time data-time="' + esc(f.created_at) + '">' + esc(f.created_at.slice(0, 10)) + '</time>'
+          + ' · ' + f.msgs + ' message' + (f.msgs === 1 ? '' : 's')
+          + (f.last_sender === 'staff' ? ' · <span class="fb-replied">staff replied</span>' : '') + '</div>'
           + '</button>';
       }).join('');
+      if (window.fillTimes) window.fillTimes();
     }).catch(function () {});
   }
   loadMine();
 
-  // submit
+  // ---- submit ----
   document.getElementById('fbForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var err = document.getElementById('fb-error'), ok = document.getElementById('fb-ok');
-    err.hidden = true; ok.hidden = true;
+    var btn = this.querySelector('button[type=submit]');
+    err.hidden = true; ok.hidden = true; btn.disabled = true;
     fetch('/api/feedback', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: document.getElementById('fb-title').value, body: document.getElementById('fb-body').value, roblox_user: document.getElementById('fb-roblox').value, token: token })
-    }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); }).then(function (x) {
-      if (!x.d.ok) { err.querySelector('span').textContent = x.d.error || 'Submission failed.'; err.hidden = false; return; }
+      body: JSON.stringify({ title: document.getElementById('fb-title').value, body: document.getElementById('fb-body').value, roblox_user: document.getElementById('fb-roblox').value, category: chosenCat, token: token })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      btn.disabled = false;
+      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Submission failed.'; err.hidden = false; return; }
       ok.hidden = false;
       document.getElementById('fb-title').value = ''; document.getElementById('fb-body').value = ''; document.getElementById('fb-roblox').value = '';
+      Array.prototype.forEach.call(document.querySelectorAll('.fb-count'), function (c) { var el = document.getElementById(c.getAttribute('data-for')); c.textContent = '0 / ' + el.getAttribute('maxlength'); });
       loadMine();
-    }).catch(function () { err.querySelector('span').textContent = 'Submission failed — try again.'; err.hidden = false; });
+      setTimeout(function () { ok.hidden = true; }, 6000);
+    }).catch(function () { btn.disabled = false; err.querySelector('span').textContent = 'Submission failed — try again.'; err.hidden = false; });
   });
 
-  // roblox autocomplete
+  // ---- roblox autocomplete ----
   (function () {
     var input = document.getElementById('fb-roblox'), box = document.getElementById('fb-suggest'), t;
     input.addEventListener('input', function () {
@@ -109,46 +179,93 @@
     input.addEventListener('blur', function () { setTimeout(function () { box.hidden = true; }, 150); });
   })();
 
-  // thread
-  var openId = null, pollT = null;
+  // ---- chat drawer ----
+  var drawer = document.getElementById('fbDrawer'), scrim = document.getElementById('fbScrim');
+  var chat = document.getElementById('fbChat');
+  var openId = null, pollT = null, lastCount = -1;
+
+  function renderChat(d) {
+    var msgs = [{ sender: 'submitter', body: d.feedback.body, created_at: d.feedback.created_at, _first: true }].concat(d.messages);
+    var html = '', lastDay = '', prevSender = null;
+    msgs.forEach(function (m) {
+      var day = (m.created_at || '').slice(0, 10);
+      if (day && day !== lastDay) { html += '<div class="fb-day"><span>' + esc(day) + '</span></div>'; lastDay = day; prevSender = null; }
+      var mine = m.sender === 'submitter';
+      var name = mine ? 'You' : (m.sender_name || 'Staff');
+      var grouped = m.sender === prevSender && !m._first;
+      html += '<div class="fb-bubble-row ' + (mine ? 'mine' : 'theirs') + (grouped ? ' grouped' : '') + '">';
+      html += grouped ? '<span class="fb-av-spacer"></span>' : avatar(name, !mine);
+      html += '<div class="fb-bubble-col">';
+      if (!grouped) html += '<div class="fb-bubble-name">' + esc(name) + (mine ? '' : ' <span class="fb-staff-tag">Staff</span>') + '</div>';
+      html += '<div class="fb-bubble' + (m._first ? ' fb-bubble-first' : '') + '">' + esc(m.body) + '</div>';
+      html += '<div class="fb-bubble-time muted"><time data-time="' + esc(m.created_at) + '">' + esc((m.created_at || '').slice(0, 16)) + '</time></div>';
+      html += '</div></div>';
+      prevSender = m.sender;
+    });
+    chat.innerHTML = html;
+    if (window.fillTimes) window.fillTimes();
+  }
+
   function loadThread(id, scroll) {
-    fetch('/api/feedback/' + id + '/messages?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
+    return fetch('/api/feedback/' + id + '/messages?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) return;
       openId = id;
-      document.getElementById('fbThread').hidden = false;
-      document.getElementById('fbThreadTitle').innerHTML = esc(d.feedback.title) + ' ' + (statusPill[d.feedback.status] || '');
-      var msgs = document.getElementById('fbMsgs');
-      var html = '<div class="fb-msg is-submitter"><div class="fb-msg-body">' + esc(d.feedback.body) + '</div><div class="fb-msg-meta muted small">you · original submission</div></div>';
-      html += d.messages.map(function (m) {
-        return '<div class="fb-msg ' + (m.sender === 'staff' ? 'is-staff' : 'is-submitter') + '"><div class="fb-msg-body">' + esc(m.body) + '</div><div class="fb-msg-meta muted small">' + (m.sender === 'staff' ? esc(m.sender_name || 'staff') + ' (staff)' : 'you') + ' · <time data-time="' + esc(m.created_at) + '">' + esc(m.created_at.slice(0, 16)) + '</time></div></div>';
-      }).join('');
-      msgs.innerHTML = html;
-      if (window.fillTimes) window.fillTimes();
-      if (scroll) msgs.scrollTop = msgs.scrollHeight;
+      var m = CATS[d.feedback.category] || CATS.other;
+      document.getElementById('fbDrawerTitle').textContent = d.feedback.title;
+      document.getElementById('fbDrawerSub').innerHTML = catChip(d.feedback.category) + (statusPill[d.feedback.status] || '');
+      var atBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 60;
+      renderChat(d);
+      if (scroll || atBottom) chat.scrollTop = chat.scrollHeight;
+      lastCount = d.messages.length;
+      readMap[id] = d.messages.length; saveRead();
     }).catch(function () {});
   }
+
+  function openDrawer(id) {
+    scrim.hidden = false; drawer.hidden = false;
+    void drawer.offsetWidth; // force a reflow so the slide-in transition plays
+    scrim.classList.add('show'); drawer.classList.add('show');
+    document.body.classList.add('fb-drawer-open');
+    loadThread(id, true).then(function () { loadMine(); });
+    clearInterval(pollT); pollT = setInterval(function () { if (openId) loadThread(openId); }, 8000);
+  }
+  function closeDrawer() {
+    drawer.classList.remove('show'); scrim.classList.remove('show');
+    document.body.classList.remove('fb-drawer-open');
+    setTimeout(function () { drawer.hidden = true; scrim.hidden = true; }, 250);
+    openId = null; clearInterval(pollT);
+    loadMine();
+  }
   document.getElementById('fb-mine').addEventListener('click', function (e) {
-    var it = e.target.closest('.fb-item'); if (!it) return;
-    loadThread(+it.getAttribute('data-id'), true);
-    clearInterval(pollT); pollT = setInterval(function () { if (openId) loadThread(openId); }, 10000);
-    document.getElementById('fbThread').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    var it = e.target.closest('.fb-item'); if (it) openDrawer(+it.getAttribute('data-id'));
   });
-  document.getElementById('fbThreadClose').addEventListener('click', function () {
-    document.getElementById('fbThread').hidden = true; openId = null; clearInterval(pollT);
+  document.getElementById('fbClose').addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !drawer.hidden) closeDrawer(); });
+
+  // ---- composer: auto-grow + enter-to-send ----
+  var ta = document.getElementById('fb-reply-body');
+  function grow() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'; }
+  ta.addEventListener('input', grow);
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('fbReply').requestSubmit(); }
   });
   document.getElementById('fbReply').addEventListener('submit', function (e) {
     e.preventDefault();
     if (!openId) return;
-    var ta = document.getElementById('fb-reply-body'), err = document.getElementById('fb-thread-error');
+    var err = document.getElementById('fb-thread-error');
     err.hidden = true;
-    if (!ta.value.trim()) return;
+    var body = ta.value.trim(); if (!body) return;
+    ta.disabled = true;
     fetch('/api/feedback/' + openId + '/message', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: ta.value, token: token })
+      body: JSON.stringify({ body: body, token: token })
     }).then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; return; }
-      ta.value = ''; loadThread(openId, true); loadMine();
-    }).catch(function () {});
+      ta.disabled = false;
+      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; ta.focus(); return; }
+      ta.value = ''; grow(); ta.focus();
+      loadThread(openId, true);
+    }).catch(function () { ta.disabled = false; err.querySelector('span').textContent = 'Could not send — try again.'; err.hidden = false; });
   });
 })();
 </script>

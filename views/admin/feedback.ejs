@@ -1,31 +1,60 @@
 <%- include('../partials/head') %>
 <%- include('../partials/topbar') %>
+<%
+  var CATS = { idea: { label: 'Idea', ic: 'lightbulb' }, bug: { label: 'Bug', ic: 'bug' }, improvement: { label: 'Improvement', ic: 'star' }, other: { label: 'Other', ic: 'message' } };
+  function catMeta(c) { return CATS[c] || CATS.other; }
+  function qs(extra) {
+    var p = {}; if (status) p.status = status; if (category) p.category = category; if (q) p.q = q;
+    for (var k in extra) { if (extra[k] == null) delete p[k]; else p[k] = extra[k]; }
+    var s = Object.keys(p).map(function (k) { return k + '=' + encodeURIComponent(p[k]); }).join('&');
+    return '/admin/feedback' + (s ? '?' + s : '');
+  }
+%>
 <div class="layout">
   <% if (canEdit) { %><%- include('../partials/admin-side') %><% } %>
   <main class="content admin-content <%= canEdit ? '' : 'admin-content-wide' %>">
     <div class="admin-titlerow">
       <div>
         <h1 class="admin-h1">Community Feedback</h1>
-        <p class="admin-sub">Ideas and reports submitted by the community. Approve what ships, reject what won't, and chat with submitters — they see your replies on their feedback page.</p>
+        <p class="admin-sub">Ideas and reports from the community. Approve what ships, reject what won't, and chat with submitters — they see your replies on their feedback page.</p>
       </div>
+      <% if (counts.needsReply) { %><span class="badge badge-danger fb-needs-badge"><%- icon('message') %> <%= counts.needsReply %> awaiting reply</span><% } %>
     </div>
 
-    <div class="dash-tabs staff-tabs">
-      <a class="dash-tab <%= !status ? 'active' : '' %>" href="/admin/feedback">All</a>
-      <a class="dash-tab <%= status==='open' ? 'active' : '' %>" href="/admin/feedback?status=open">Open <% if (counts.open) { %><span class="tab-count"><%= counts.open %></span><% } %></a>
-      <a class="dash-tab <%= status==='approved' ? 'active' : '' %>" href="/admin/feedback?status=approved">Approved <span class="tab-count"><%= counts.approved %></span></a>
-      <a class="dash-tab <%= status==='rejected' ? 'active' : '' %>" href="/admin/feedback?status=rejected">Rejected <span class="tab-count"><%= counts.rejected %></span></a>
+    <div class="fb-admin-toolbar">
+      <div class="dash-tabs staff-tabs fb-status-tabs">
+        <a class="dash-tab <%= !status ? 'active' : '' %>" href="<%= qs({ status: null }) %>">All</a>
+        <a class="dash-tab <%= status==='open' ? 'active' : '' %>" href="<%= qs({ status: 'open' }) %>">Open <% if (counts.open) { %><span class="tab-count"><%= counts.open %></span><% } %></a>
+        <a class="dash-tab <%= status==='approved' ? 'active' : '' %>" href="<%= qs({ status: 'approved' }) %>">Approved <span class="tab-count"><%= counts.approved %></span></a>
+        <a class="dash-tab <%= status==='rejected' ? 'active' : '' %>" href="<%= qs({ status: 'rejected' }) %>">Rejected <span class="tab-count"><%= counts.rejected %></span></a>
+      </div>
+      <form class="fb-search" method="get" action="/admin/feedback">
+        <% if (status) { %><input type="hidden" name="status" value="<%= status %>" /><% } %>
+        <% if (category) { %><input type="hidden" name="category" value="<%= category %>" /><% } %>
+        <%- icon('search') %>
+        <input type="text" name="q" value="<%= q %>" placeholder="Search feedback…" autocomplete="off" />
+        <% if (q) { %><a class="fb-search-clear" href="<%= qs({ q: null }) %>" aria-label="Clear search"><%- icon('x') %></a><% } %>
+      </form>
     </div>
 
-    <% if (!items.length) { %><p class="muted" style="padding:12px 0">No feedback<%= status ? ' with status "'+status+'"' : '' %> yet.</p><% } %>
-    <% items.forEach(function (f) { %>
-      <section class="panel fb-card" data-id="<%= f.id %>">
+    <div class="fb-cat-filters">
+      <a class="fb-cat-filter <%= !category ? 'active' : '' %>" href="<%= qs({ category: null }) %>">All types</a>
+      <% categories.forEach(function (c) { var m = catMeta(c); %>
+        <a class="fb-cat-filter <%= category===c ? 'active' : '' %>" href="<%= qs({ category: c }) %>"><span class="ic ic-<%= m.ic %>"></span> <%= m.label %></a>
+      <% }); %>
+    </div>
+
+    <% if (!items.length) { %><div class="fb-empty"><span class="ic ic-message"></span><p>No feedback matches your filters.</p></div><% } %>
+    <% items.forEach(function (f) { var m = catMeta(f.category); var needsReply = f.last_sender === 'submitter'; %>
+      <section class="panel fb-card <%= needsReply ? 'fb-card-flag' : '' %>" data-id="<%= f.id %>">
         <div class="fb-card-head">
-          <div>
-            <strong class="fb-card-title"><%= f.title %></strong>
-            <span class="pill pill-<%= f.status==='open'?'amber':(f.status==='rejected'?'red':'grey') %>"><%= f.status %></span>
-            <div class="muted small">
-              by <%= f.submitted_by || 'anonymous' %><% if (f.roblox_user) { %> · Roblox: <strong><%= f.roblox_user %></strong><% } %>
+          <div class="fb-card-headmain">
+            <span class="fb-cat-chip cat-<%= f.category %>"><span class="ic ic-<%= m.ic %>"></span><%= m.label %></span>
+            <span class="pill pill-<%= f.status==='open'?'amber':(f.status==='rejected'?'red':'green') %>"><%= f.status %></span>
+            <% if (needsReply) { %><span class="fb-flag"><%- icon('message') %> Awaiting reply</span><% } %>
+            <div class="fb-card-title"><%= f.title %></div>
+            <div class="muted small fb-card-by">
+              by <strong><%= f.submitted_by || 'anonymous' %></strong><% if (f.roblox_user) { %> · Roblox <strong><%= f.roblox_user %></strong><% } %>
               · <time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time>
               · <%= f.msgs %> message<%= f.msgs===1?'':'s' %>
               <% if (f.status !== 'open' && f.status_by) { %> · <%= f.status %> by <%= f.status_by %><% } %>
@@ -35,20 +64,20 @@
             <% ['approved','rejected','open'].forEach(function (s) { if (f.status !== s) { %>
               <form method="post" action="/admin/feedback/status" class="inline">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= f.id %>" /><input type="hidden" name="status" value="<%= s %>" />
-                <button class="btn btn-ghost btn-sm <%= s==='rejected'?'danger':'' %>" type="submit"><%= s==='open' ? 'Reopen' : (s==='approved' ? 'Approve' : 'Reject') %></button>
+                <button class="btn btn-ghost btn-sm <%= s==='rejected'?'danger':(s==='approved'?'ok':'') %>" type="submit"><%= s==='open' ? 'Reopen' : (s==='approved' ? 'Approve' : 'Reject') %></button>
               </form>
             <% } }); %>
-            <button class="btn btn-ghost btn-sm" type="button" data-thread="<%= f.id %>"><%- icon('message') %> Chat</button>
+            <button class="btn btn-ghost btn-sm fb-chat-btn" type="button" data-thread="<%= f.id %>"><%- icon('message') %> Chat<% if (f.msgs) { %> <span class="tab-count"><%= f.msgs %></span><% } %></button>
           </div>
         </div>
         <p class="fb-card-body"><%= f.body %></p>
         <div class="fb-thread-inline" id="thread-<%= f.id %>" hidden>
-          <div class="fb-msgs" data-msgs></div>
-          <form class="fb-reply" data-reply="<%= f.id %>">
-            <textarea class="reason-ta" rows="2" maxlength="2000" placeholder="Reply to the submitter…"></textarea>
-            <button class="btn btn-solid btn-sm" type="submit">Send</button>
+          <div class="fb-chat fb-chat-inline" data-msgs></div>
+          <form class="fb-composer fb-composer-inline" data-reply="<%= f.id %>">
+            <textarea class="fb-composer-input" rows="1" maxlength="2000" placeholder="Reply to the submitter…"></textarea>
+            <button class="btn btn-solid fb-send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg></button>
           </form>
-          <div class="auth-error" data-err hidden><%- icon('danger') %> <span></span></div>
+          <div class="auth-error fb-composer-error" data-err hidden><%- icon('danger') %> <span></span></div>
         </div>
       </section>
     <% }); %>
@@ -57,16 +86,40 @@
 <script>
 (function () {
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function loadThread(id) {
+  function initial(name) { return (name || '?').trim().charAt(0).toUpperCase() || '?'; }
+  function hueOf(name) { var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360; return h; }
+  function avatar(name, staff) { return '<span class="fb-av' + (staff ? ' is-staff' : '') + '" style="--h:' + hueOf(name || 'anon') + '">' + esc(initial(name)) + '</span>'; }
+
+  var polls = {};
+  function renderChat(box, d) {
+    var msgs = [{ sender: 'submitter', body: d.feedback.body, created_at: d.feedback.created_at, _first: true, sender_name: d.feedback.submitted_by || 'Submitter' }].concat(d.messages);
+    var html = '', lastDay = '', prevSender = null;
+    msgs.forEach(function (m) {
+      var day = (m.created_at || '').slice(0, 10);
+      if (day && day !== lastDay) { html += '<div class="fb-day"><span>' + esc(day) + '</span></div>'; lastDay = day; prevSender = null; }
+      var mine = m.sender === 'staff';          // staff = "me" on the admin side
+      var name = mine ? (m.sender_name || 'You') : (m.sender_name || 'Submitter');
+      var grouped = m.sender === prevSender && !m._first;
+      html += '<div class="fb-bubble-row ' + (mine ? 'mine' : 'theirs') + (grouped ? ' grouped' : '') + '">';
+      html += grouped ? '<span class="fb-av-spacer"></span>' : avatar(name, mine);
+      html += '<div class="fb-bubble-col">';
+      if (!grouped) html += '<div class="fb-bubble-name">' + esc(name) + (mine ? ' <span class="fb-staff-tag">Staff</span>' : '') + '</div>';
+      html += '<div class="fb-bubble' + (m._first ? ' fb-bubble-first' : '') + '">' + esc(m.body) + '</div>';
+      html += '<div class="fb-bubble-time muted"><time data-time="' + esc(m.created_at) + '">' + esc((m.created_at || '').slice(0, 16)) + '</time></div>';
+      html += '</div></div>';
+      prevSender = m.sender;
+    });
+    box.innerHTML = html;
+    if (window.fillTimes) window.fillTimes();
+  }
+  function loadThread(id, scroll) {
     var wrap = document.getElementById('thread-' + id); if (!wrap) return;
-    fetch('/api/feedback/' + id + '/messages').then(function (r) { return r.json(); }).then(function (d) {
+    var box = wrap.querySelector('[data-msgs]');
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+    return fetch('/api/feedback/' + id + '/messages').then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) return;
-      var box = wrap.querySelector('[data-msgs]');
-      box.innerHTML = d.messages.length ? d.messages.map(function (m) {
-        return '<div class="fb-msg ' + (m.sender === 'staff' ? 'is-staff' : 'is-submitter') + '"><div class="fb-msg-body">' + esc(m.body) + '</div><div class="fb-msg-meta muted small">' + (m.sender === 'staff' ? esc(m.sender_name || 'staff') + ' (staff)' : 'submitter') + ' · <time data-time="' + esc(m.created_at) + '">' + esc(m.created_at.slice(0, 16)) + '</time></div></div>';
-      }).join('') : '<p class="muted small">No messages yet — say hello.</p>';
-      if (window.fillTimes) window.fillTimes();
-      box.scrollTop = box.scrollHeight;
+      renderChat(box, d);
+      if (scroll || atBottom) box.scrollTop = box.scrollHeight;
     }).catch(function () {});
   }
   document.addEventListener('click', function (e) {
@@ -74,7 +127,21 @@
     var id = b.getAttribute('data-thread');
     var wrap = document.getElementById('thread-' + id);
     wrap.hidden = !wrap.hidden;
-    if (!wrap.hidden) loadThread(id);
+    b.classList.toggle('active', !wrap.hidden);
+    if (!wrap.hidden) {
+      loadThread(id, true);
+      clearInterval(polls[id]); polls[id] = setInterval(function () { loadThread(id); }, 8000);
+      var ta = wrap.querySelector('textarea'); if (ta) setTimeout(function () { ta.focus(); }, 50);
+    } else { clearInterval(polls[id]); }
+  });
+  // composer: auto-grow + enter-to-send
+  document.addEventListener('input', function (e) {
+    var ta = e.target.closest('.fb-composer-input'); if (!ta) return;
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+  });
+  document.addEventListener('keydown', function (e) {
+    var ta = e.target.closest('.fb-composer-input'); if (!ta) return;
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.closest('form').requestSubmit(); }
   });
   document.addEventListener('submit', function (e) {
     var form = e.target.closest('[data-reply]'); if (!form) return;
@@ -83,14 +150,17 @@
     var ta = form.querySelector('textarea');
     var err = form.parentNode.querySelector('[data-err]');
     err.hidden = true;
-    if (!ta.value.trim()) return;
+    var body = ta.value.trim(); if (!body) return;
+    ta.disabled = true;
     fetch('/api/feedback/' + id + '/message', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: ta.value })
+      body: JSON.stringify({ body: body })
     }).then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; return; }
-      ta.value = ''; loadThread(id);
-    }).catch(function () {});
+      ta.disabled = false;
+      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; ta.focus(); return; }
+      ta.value = ''; ta.style.height = 'auto'; ta.focus();
+      loadThread(id, true);
+    }).catch(function () { ta.disabled = false; err.querySelector('span').textContent = 'Could not send — try again.'; err.hidden = false; });
   });
 })();
 </script>
