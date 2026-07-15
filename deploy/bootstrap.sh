@@ -45,11 +45,17 @@ NODE_ENV=production
 TRUST_PROXY=1
 SITE_URL=https://$DOMAIN
 SESSION_SECRET=$SECRET
+COOKIE_DOMAIN=.$(echo "$DOMAIN" | sed 's/^[^.]*\.//')
 ADMIN_USERNAME=$ADMIN_USERNAME
 ADMIN_PASSWORD=$PASS
 EOF
   echo "$PASS" > /root/vcf-admin-password.txt
   NEWPASS=1
+fi
+# Ensure COOKIE_DOMAIN is present on existing installs (needed for the dashboard
+# subdomain to share the login session with the docs site).
+if [ -f .env ] && ! grep -q '^COOKIE_DOMAIN=' .env; then
+  echo "COOKIE_DOMAIN=.$(echo "$DOMAIN" | sed 's/^[^.]*\.//')" >> .env
 fi
 
 echo "==> [5/6] Web server (Caddy)"
@@ -64,8 +70,15 @@ else
   echo "    (To use a Cloudflare Origin Certificate: put it in $APP_DIR/certs/origin.pem"
   echo "     + $APP_DIR/certs/origin.key and re-run this script.)"
 fi
+DASH_DOMAIN="dashboard.$(echo "$DOMAIN" | sed 's/^[^.]*\.//')"
 cat > Caddyfile.live <<EOF
 $DOMAIN {
+	encode gzip zstd
+	$TLS_DIRECTIVE
+	reverse_proxy app:3000
+}
+
+$DASH_DOMAIN {
 	encode gzip zstd
 	$TLS_DIRECTIVE
 	reverse_proxy app:3000

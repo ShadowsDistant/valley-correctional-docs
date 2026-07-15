@@ -101,7 +101,12 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '6mb' })); // headroom for base64 evidence uploads
+
+// Uploaded evidence files (staff dashboard). Size/type validated on upload.
+const UPLOAD_DIR = path.join(__dirname, 'data', 'uploads');
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: isProd ? '30d' : 0 }));
 
 // Generated icon stylesheet (custom SVG icons as CSS masks).
 const ICONS_CSS = icons.css();
@@ -152,6 +157,8 @@ app.use(
       httpOnly: true,
       sameSite: 'lax',
       secure: isProd,
+      // Shared across subdomains (docs.* + dashboard.*) so login persists.
+      domain: process.env.COOKIE_DOMAIN || undefined,
       maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
     },
   })
@@ -165,13 +172,13 @@ const touchLastSeen = db.prepare(
 );
 app.use((req, res, next) => {
   if (req.session && req.session.user) {
-    const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy FROM users WHERE id = ?').get(req.session.user.id);
+    const fresh = db.prepare('SELECT id, username, role, divisions, suspended, agreed_policy, rank FROM users WHERE id = ?').get(req.session.user.id);
     if (!fresh) return req.session.destroy(() => res.redirect('/'));
     try { touchLastSeen.run(fresh.id); } catch (e) { /* non-critical */ }
     req.session.user = {
       id: fresh.id, username: fresh.username,
       role: fresh.role, divisions: fresh.divisions || '', suspended: fresh.suspended,
-      agreed_policy: fresh.agreed_policy,
+      agreed_policy: fresh.agreed_policy, rank: fresh.rank || '',
     };
   }
   next();
@@ -350,7 +357,7 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
   const nextUrl = reqNext && !(reqNext.startsWith('/admin') && !auth.canEdit(user)) ? reqNext : landing;
   req.session.regenerate((err) => {
     if (err) return res.status(500).send('Session error');
-    req.session.user = { id: user.id, username: user.username, role: user.role, divisions: user.divisions || '' };
+    req.session.user = { id: user.id, username: user.username, role: user.role, divisions: user.divisions || '', rank: user.rank || '' };
     req.session.save(() => res.redirect(nextUrl));
   });
 });
@@ -798,13 +805,13 @@ const usesDivisions = (role) => role === 'staff' || role === 'editor';
 
 // Staff management (admins only)
 adminRouter.get('/staff', auth.requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, role, divisions, suspended, created_at, last_login, last_seen FROM users ORDER BY id').all();
+  const users = db.prepare('SELECT id, username, role, divisions, suspended, created_at, last_login, last_seen, rank FROM users ORDER BY id').all();
   const viewCounts = new Map(
     db.prepare('SELECT username, COUNT(*) AS n FROM page_views WHERE username IS NOT NULL GROUP BY username').all()
       .map((r) => [r.username, r.n])
   );
-  users.forEach((u) => { u.doc_views = viewCounts.get(u.username) || 0; });
-  res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS });
+  users.forEach((u) => { u.doc_views = viewCounts.get(u.username) || 0; u.rankLabel = auth.rankLabel(u.rank); });
+  res.render('admin/staff', { title: 'Admin · Staff', section: 'staff', users, divisions: auth.DIVISIONS, ranks: auth.RANKS });
 });
 
 adminRouter.post('/staff/create', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
@@ -842,9 +849,10 @@ adminRouter.post('/staff/access', auth.requireAdmin, auth.verifyCsrf, (req, res)
       message: 'You cannot change your own account out of the admin role.',
     });
   }
+  const rank = auth.RANKS[req.body.rank] ? req.body.rank : '';
   const target = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
-  db.prepare('UPDATE users SET role = ?, divisions = ? WHERE id = ?').run(role, divisions, id);
-  audit(req.session.user.username, 'user.role', target ? target.username : '#' + id, role + (divisions ? ' [' + divisions + ']' : ''));
+  db.prepare('UPDATE users SET role = ?, divisions = ?, rank = ? WHERE id = ?').run(role, divisions, rank, id);
+  audit(req.session.user.username, 'user.role', target ? target.username : '#' + id, role + (divisions ? ' [' + divisions + ']' : '') + (rank ? ' · ' + auth.rankLabel(rank) : ''));
   res.redirect('/admin/staff');
 });
 
@@ -1041,6 +1049,27 @@ adminRouter.get('/staff/activity', auth.requireAdmin, (req, res) => {
 // --- staff dashboard (BETA) — Moderation punishments + SID infractions ------
 const PUNISH_TYPES = ['Warning', 'Kick', 'Server Ban', 'Game Ban', 'Permanent Ban', 'Mute', 'Note'];
 const INFRACTION_TYPES = ['Verbal Warning', 'Written Warning', 'Strike', 'Suspension', 'Demotion', 'Termination'];
+// Handbook-based quick presets (staff can still pick "Custom" and type their own).
+const PUNISH_PRESETS = [
+  { label: 'Exploiting / cheating', type: 'Game Ban', reason: 'Use of exploits or cheats during a shift.' },
+  { label: 'Repeated exploiting', type: 'Permanent Ban', reason: 'Repeated or severe exploiting after prior action.' },
+  { label: 'RDM / random killing', type: 'Kick', reason: 'Random deathmatch / killing without valid roleplay reason.' },
+  { label: 'FRP / fail roleplay', type: 'Warning', reason: 'Failure to follow roleplay standards (FRP).' },
+  { label: 'Chat spam / abuse', type: 'Mute', reason: 'Spamming or abusive language in chat.' },
+  { label: 'Toxicity / harassment', type: 'Server Ban', reason: 'Toxic behavior or harassment toward members.' },
+  { label: 'Ban evasion', type: 'Permanent Ban', reason: 'Evading a prior ban on an alternate account.' },
+  { label: 'Behavioral note', type: 'Note', reason: 'Logged for awareness — no action taken.' },
+];
+const INFRACTION_PRESETS = [
+  { label: 'Minor procedural mistake', type: 'Verbal Warning', reason: 'Minor procedural mistake during duties.' },
+  { label: 'Failure to follow protocol', type: 'Written Warning', reason: 'Failure to follow shift or division protocol.' },
+  { label: 'Repeated violations', type: 'Strike', reason: 'Repeated policy violations after prior warnings.' },
+  { label: 'Inactivity', type: 'Written Warning', reason: 'Failure to meet activity requirements.' },
+  { label: 'Abuse of permissions', type: 'Suspension', reason: 'Misuse or abuse of granted permissions.' },
+  { label: 'Loss of confidence', type: 'Demotion', reason: 'Conduct resulting in loss of confidence in rank.' },
+  { label: 'Document leak', type: 'Termination', reason: 'Leaking or disclosing internal/classified documents.' },
+  { label: 'Gross misconduct', type: 'Termination', reason: 'Gross misconduct incompatible with continued service.' },
+];
 
 function requireDashboard(req, res, next) {
   const u = req.session && req.session.user;
@@ -1052,42 +1081,94 @@ function requireDashboard(req, res, next) {
 app.get('/dashboard', requireDashboard, auth.csrfToken, (req, res) => {
   const u = req.session.user;
   const q = String(req.query.q || '').trim();
-  let punishments = [], infractions = [];
+  const like = '%' + q + '%';
+  let punishments = [], infractions = [], pendingPun = [], pendingInf = [];
   if (auth.canModerate(u)) {
     punishments = q
-      ? db.prepare("SELECT * FROM punishments WHERE roblox_user LIKE ? ORDER BY created_at DESC LIMIT 100").all('%' + q + '%')
-      : db.prepare('SELECT * FROM punishments ORDER BY created_at DESC LIMIT 50').all();
+      ? db.prepare("SELECT * FROM punishments WHERE status='active' AND roblox_user LIKE ? ORDER BY created_at DESC LIMIT 100").all(like)
+      : db.prepare("SELECT * FROM punishments WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
   }
   if (auth.canSID(u)) {
     infractions = q
-      ? db.prepare("SELECT * FROM infractions WHERE staff_user LIKE ? ORDER BY created_at DESC LIMIT 100").all('%' + q + '%')
-      : db.prepare('SELECT * FROM infractions ORDER BY created_at DESC LIMIT 50').all();
+      ? db.prepare("SELECT * FROM infractions WHERE status='active' AND staff_user LIKE ? ORDER BY created_at DESC LIMIT 100").all(like)
+      : db.prepare("SELECT * FROM infractions WHERE status='active' ORDER BY created_at DESC LIMIT 50").all();
   }
+  if (auth.canApprove(u)) {
+    if (auth.canModerate(u)) pendingPun = db.prepare("SELECT * FROM punishments WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
+    if (auth.canSID(u)) pendingInf = db.prepare("SELECT * FROM infractions WHERE status='pending' ORDER BY created_at DESC LIMIT 100").all();
+  }
+  const cnt = (sql) => db.prepare(sql).get().n;
   const stats = {
-    punTotal: db.prepare('SELECT COUNT(*) AS n FROM punishments WHERE voided=0').get().n,
-    pun7: db.prepare("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND created_at >= datetime('now','-7 days')").get().n,
-    infTotal: db.prepare('SELECT COUNT(*) AS n FROM infractions WHERE voided=0').get().n,
-    inf7: db.prepare("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND created_at >= datetime('now','-7 days')").get().n,
+    punTotal: cnt("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND status='active'"),
+    pun7: cnt("SELECT COUNT(*) AS n FROM punishments WHERE voided=0 AND status='active' AND created_at >= datetime('now','-7 days')"),
+    infTotal: cnt("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND status='active'"),
+    inf7: cnt("SELECT COUNT(*) AS n FROM infractions WHERE voided=0 AND status='active' AND created_at >= datetime('now','-7 days')"),
+    pending: pendingPun.length + pendingInf.length,
   };
   res.render('dashboard', {
     title: 'Staff Dashboard', bodyClass: 'has-dashboard',
-    punishments, infractions, stats, q,
+    punishments, infractions, pendingPun, pendingInf, stats, q,
     punishTypes: PUNISH_TYPES, infractionTypes: INFRACTION_TYPES,
+    punishPresets: PUNISH_PRESETS, infractionPresets: INFRACTION_PRESETS,
+    rankLabel: auth.rankLabel(u.rank), needsApproval: auth.needsApproval(u), canApprove: auth.canApprove(u),
     staffList: db.prepare("SELECT username FROM users WHERE suspended=0 ORDER BY username").all().map((r) => r.username),
   });
 });
 
+// Server-side Roblox username lookup (avoids CSP/client CORS issues).
+app.get('/api/roblox/:username', requireDashboard, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const name = String(req.params.username || '').trim().slice(0, 60);
+  if (!name) return res.json({ ok: false });
+  try {
+    const r = await fetch('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernames: [name], excludeBannedUsers: false }),
+    });
+    const j = await r.json();
+    const usr = j && j.data && j.data[0];
+    if (!usr) return res.json({ ok: false });
+    let avatar = null;
+    try {
+      const t = await fetch('https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=' + usr.id + '&size=150x150&format=Png&isCircular=false');
+      const tj = await t.json();
+      avatar = tj && tj.data && tj.data[0] && tj.data[0].imageUrl;
+    } catch (e) { /* avatar optional */ }
+    res.json({ ok: true, id: usr.id, name: usr.name, displayName: usr.displayName, avatar });
+  } catch (e) {
+    res.json({ ok: false, error: 'Roblox lookup failed' });
+  }
+});
+
+// Evidence file upload (base64 JSON). Restricted type + size.
+const UPLOAD_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'application/pdf': 'pdf' };
+const MAX_UPLOAD = 4 * 1024 * 1024; // 4 MB
+app.post('/api/upload', requireDashboard, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const type = String((req.body && req.body.type) || '');
+  if (!UPLOAD_TYPES[type]) return res.status(400).json({ ok: false, error: 'File type not allowed (png/jpg/gif/webp/pdf).' });
+  const buf = Buffer.from(String((req.body && req.body.data) || '').replace(/^data:[^,]+,/, ''), 'base64');
+  if (!buf.length) return res.status(400).json({ ok: false, error: 'Empty file.' });
+  if (buf.length > MAX_UPLOAD) return res.status(400).json({ ok: false, error: 'File too large (max 4 MB).' });
+  const name = crypto.randomBytes(10).toString('hex') + '.' + UPLOAD_TYPES[type];
+  try { fs.writeFileSync(path.join(UPLOAD_DIR, name), buf); } catch (e) { return res.status(500).json({ ok: false, error: 'Save failed.' }); }
+  audit(req.session.user.username, 'file.upload', name, type + ' · ' + Math.round(buf.length / 1024) + ' KB');
+  res.json({ ok: true, url: '/uploads/' + name });
+});
+
 app.post('/dashboard/punishment', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  if (!auth.canModerate(req.session.user)) return res.status(403).render('error', { title: 'Forbidden', heading: 'Moderation only', message: 'Only Moderation staff can log punishments.' });
+  const u = req.session.user;
+  if (!auth.canModerate(u)) return res.status(403).render('error', { title: 'Forbidden', heading: 'Moderation only', message: 'Only Moderation staff can log punishments.' });
   const rblx = String(req.body.roblox_user || '').trim().slice(0, 60);
   if (!rblx) return res.status(400).render('error', { title: 'Invalid', heading: 'Roblox user required', message: 'Enter the Roblox username being punished.' });
   const type = PUNISH_TYPES.includes(req.body.type) ? req.body.type : 'Warning';
-  db.prepare('INSERT INTO punishments (roblox_user, roblox_id, type, reason, evidence, duration, moderator) VALUES (?, ?, ?, ?, ?, ?, ?)')
+  const status = auth.needsApproval(u) ? 'pending' : 'active';
+  db.prepare('INSERT INTO punishments (roblox_user, roblox_id, type, reason, evidence, duration, moderator, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .run(rblx, String(req.body.roblox_id || '').trim().slice(0, 40), type,
       String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500),
-      String(req.body.duration || '').trim().slice(0, 40), req.session.user.username);
-  audit(req.session.user.username, 'punish.create', rblx, type);
-  res.redirect('/dashboard?saved=punish');
+      String(req.body.duration || '').trim().slice(0, 40), u.username, status);
+  audit(u.username, 'punish.create', rblx, type + (status === 'pending' ? ' (pending approval)' : ''));
+  res.redirect('/dashboard?saved=' + (status === 'pending' ? 'pending' : 'punish'));
 });
 
 app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -1098,15 +1179,29 @@ app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.ve
   res.redirect('/dashboard');
 });
 
+app.post('/dashboard/punishment/review', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  if (!auth.canApprove(req.session.user)) return res.status(403).json({ ok: false });
+  const id = Number(req.body.id), approve = req.body.decision === 'approve';
+  const p = db.prepare("SELECT roblox_user FROM punishments WHERE id = ? AND status='pending'").get(id);
+  if (p) {
+    if (approve) db.prepare("UPDATE punishments SET status='active', approved_by=? WHERE id=?").run(req.session.user.username, id);
+    else db.prepare('DELETE FROM punishments WHERE id=?').run(id);
+    audit(req.session.user.username, approve ? 'punish.approve' : 'punish.reject', p.roblox_user, '');
+  }
+  res.redirect('/dashboard');
+});
+
 app.post('/dashboard/infraction', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
-  if (!auth.canSID(req.session.user)) return res.status(403).render('error', { title: 'Forbidden', heading: 'SID only', message: 'Only Specialized Investigations staff can issue infractions.' });
+  const u = req.session.user;
+  if (!auth.canSID(u)) return res.status(403).render('error', { title: 'Forbidden', heading: 'SID only', message: 'Only Specialized Investigations staff can issue infractions.' });
   const staffUser = String(req.body.staff_user || '').trim().slice(0, 60);
   if (!staffUser) return res.status(400).render('error', { title: 'Invalid', heading: 'Staff member required', message: 'Select the staff member being issued an infraction.' });
   const type = INFRACTION_TYPES.includes(req.body.type) ? req.body.type : 'Verbal Warning';
-  db.prepare('INSERT INTO infractions (staff_user, type, reason, evidence, issued_by) VALUES (?, ?, ?, ?, ?)')
-    .run(staffUser, type, String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500), req.session.user.username);
-  audit(req.session.user.username, 'infraction.create', staffUser, type);
-  res.redirect('/dashboard?saved=infraction');
+  const status = auth.needsApproval(u) ? 'pending' : 'active';
+  db.prepare('INSERT INTO infractions (staff_user, type, reason, evidence, issued_by, status) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(staffUser, type, String(req.body.reason || '').trim().slice(0, 500), String(req.body.evidence || '').trim().slice(0, 500), u.username, status);
+  audit(u.username, 'infraction.create', staffUser, type + (status === 'pending' ? ' (pending approval)' : ''));
+  res.redirect('/dashboard?saved=' + (status === 'pending' ? 'pending' : 'infraction'));
 });
 
 app.post('/dashboard/infraction/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -1114,6 +1209,18 @@ app.post('/dashboard/infraction/void', requireDashboard, auth.csrfToken, auth.ve
   const inf = db.prepare('SELECT staff_user FROM infractions WHERE id = ?').get(Number(req.body.id));
   db.prepare('UPDATE infractions SET voided = 1 WHERE id = ?').run(Number(req.body.id));
   if (inf) audit(req.session.user.username, 'infraction.void', inf.staff_user, '');
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/infraction/review', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  if (!auth.canApprove(req.session.user)) return res.status(403).json({ ok: false });
+  const id = Number(req.body.id), approve = req.body.decision === 'approve';
+  const inf = db.prepare("SELECT staff_user FROM infractions WHERE id = ? AND status='pending'").get(id);
+  if (inf) {
+    if (approve) db.prepare("UPDATE infractions SET status='active', approved_by=? WHERE id=?").run(req.session.user.username, id);
+    else db.prepare('DELETE FROM infractions WHERE id=?').run(id);
+    audit(req.session.user.username, approve ? 'infraction.approve' : 'infraction.reject', inf.staff_user, '');
+  }
   res.redirect('/dashboard');
 });
 

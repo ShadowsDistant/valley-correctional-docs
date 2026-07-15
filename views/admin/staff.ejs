@@ -54,6 +54,7 @@
               <div class="staff-fact"><span class="fact-label">Last login</span><span class="fact-val"><% if (u.last_login) { %><time data-time="<%= u.last_login %>"><%= u.last_login.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
               <div class="staff-fact"><span class="fact-label">Last seen</span><span class="fact-val"><% if (u.last_seen) { %><time data-time="<%= u.last_seen %>"><%= u.last_seen.slice(0,16).replace('T',' ') %></time><% } else { %><span class="muted">never</span><% } %></span></div>
               <div class="staff-fact"><span class="fact-label">Doc views</span><span class="fact-val mono"><%= u.doc_views %></span></div>
+              <% if (u.rankLabel) { %><div class="staff-fact"><span class="fact-label">Rank</span><span class="badge badge-internal"><%= u.rankLabel %></span></div><% } %>
             </div>
           </div>
 
@@ -84,6 +85,12 @@
                     <option value="staff" <%= u.role==='staff'?'selected':'' %>>Staff</option>
                     <option value="editor" <%= u.role==='editor'?'selected':'' %>>Editor</option>
                     <option value="admin" <%= u.role==='admin'?'selected':'' %>>Admin</option>
+                  </select>
+                </label>
+                <label class="field field-sm">Dashboard rank
+                  <select name="rank">
+                    <option value="">— None —</option>
+                    <% Object.keys(ranks).forEach(function (k) { %><option value="<%= k %>" <%= u.rank===k?'selected':'' %>><%= ranks[k].label %></option><% }); %>
                   </select>
                 </label>
                 <div class="field div-picker">
