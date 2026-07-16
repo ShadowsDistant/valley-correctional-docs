@@ -9,7 +9,7 @@
       <div class="profile-avatar" data-rbx-avatar="<%= user.username %>"><%= user.username.slice(0,1).toUpperCase() %></div>
       <div class="profile-id">
         <div class="profile-name"><strong><%= user.username %></strong></div>
-        <div class="profile-sub muted small">Roblox <span class="rbx-status">— loading…</span></div>
+        <div class="profile-sub muted small"><span class="rbx-status">Loading…</span></div>
         <div class="profile-badges">
           <span class="badge cap <%= user.role==='admin'?'badge-internal':'' %>"><%= user.role %></span>
           <% ranks.forEach(function(rl){ %><span class="badge badge-internal"><%= rl %></span><% }); %>
@@ -118,7 +118,7 @@
   var name = box.getAttribute('data-user');
   fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
     var st = box.querySelector('.rbx-status');
-    if (!d.ok) { st.textContent = '— not linked to a Roblox account'; return; }
+    if (!d.ok) { st.textContent = 'No linked account'; return; }
     st.innerHTML = '<strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span> · <a href="https://www.roblox.com/users/' + d.id + '/profile" target="_blank" rel="noopener">profile ↗</a>';
   }).catch(function () {});
 })();
@@ -136,7 +136,10 @@
   }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function render(list_) {
-    var csrf = section.querySelector('input[name="_csrf"]').value;
+    // read the CSRF token from any form on the page — on the first passkey the
+    // section has no rows yet, so it wouldn't have its own token.
+    var tok = document.querySelector('input[name="_csrf"]');
+    var csrf = tok ? tok.value : '';
     list.innerHTML = list_.map(function (p) {
       return '<li class="pk-item" data-pk="' + p.id + '"><span class="pk-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M15 8l2 2"/></svg></span>' +
         '<div class="pk-meta"><strong>' + esc(p.name) + '</strong><span class="muted small">Added ' + (p.created_at||'').slice(0,10) + '</span></div>' +

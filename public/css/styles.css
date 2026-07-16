@@ -216,7 +216,7 @@ kbd {
 }
 .brand-logo { width: 36px; height: 36px; border-radius: 50%; display: block; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.2; }
-.brand-title { font-weight: 700; font-size: 14.5px; letter-spacing: -0.01em; }
+.brand-title { font-weight: 700; font-size: 14.5px; letter-spacing: -0.01em; color: #fff; white-space: nowrap; }
 .brand-sub { font-size: 11.5px; color: var(--muted); }
 
 .search { position: relative; flex: 1; min-width: 0; max-width: 440px; margin: 0 auto; }
