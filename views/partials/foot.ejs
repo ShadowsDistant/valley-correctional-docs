@@ -2,6 +2,7 @@
   <script src="/assets/js/app.js?v=<%= assetVersion %>"></script>
   <script src="/assets/js/custom-inputs.js?v=<%= assetVersion %>"></script>
   <% if (user) { %><script src="/assets/js/access-guard.js?v=<%= assetVersion %>"></script><% } %>
+  <% if (user) { %><script src="/assets/js/assistant.js?v=<%= assetVersion %>"></script><% } %>
   <% if (typeof pageScripts !== 'undefined') { pageScripts.forEach(function (s) { %>
     <script src="<%= s %><%= s.indexOf('?') === -1 ? '?v=' + assetVersion : '' %>"></script>
   <% }); } %>

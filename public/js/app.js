@@ -498,19 +498,32 @@
         for (var i = 0; i < old.attributes.length; i++) {
           s.setAttribute(old.attributes[i].name, old.attributes[i].value);
         }
-        if (!old.src) s.textContent = old.textContent;
+        if (old.src) s.async = false;              // preserve execution order for external scripts
+        else s.textContent = old.textContent;
         old.parentNode.replaceChild(s, old);
       });
     }
 
-    var busy = false;
+    // Latest click wins: each navigation gets a sequence number and aborts the
+    // previous in-flight fetch. A stale response (or its abort error) is simply
+    // discarded — it must never hard-navigate to an outdated URL or leave the
+    // page in a half-loaded state.
+    var navSeq = 0, inflight = null;
     function navigate(url, push) {
-      if (busy) return; busy = true;
+      var seq = ++navSeq;
+      if (inflight) { try { inflight.abort(); } catch (e) {} }
+      var ctrl = (window.AbortController ? new AbortController() : null);
+      inflight = ctrl;
       main.classList.add('pjax-loading');
-      fetch(url, { headers: { 'X-Requested-With': 'fetch' } }).then(function (r) {
+      fetch(url, { headers: { 'X-Requested-With': 'fetch' }, signal: ctrl && ctrl.signal }).then(function (r) {
+        if (seq !== navSeq) throw { stale: true };
+        // a redirect (e.g. session expired -> /login) means this isn't the page
+        // we asked for — do a real navigation so the right chrome loads.
+        if (r.redirected && new URL(r.url).pathname !== new URL(url, location.origin).pathname) { location.href = url; throw { stale: true }; }
         if (!r.ok || !/text\/html/.test(r.headers.get('content-type') || '')) throw 0;
         return r.text();
       }).then(function (html) {
+        if (seq !== navSeq) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var newMain = doc.querySelector('main.content');
         // full-load if the target isn't a normal page, is confidential, or has
@@ -537,9 +550,12 @@
         loadAvatars(main); initTOC();
         if (window.enhanceInputs) window.enhanceInputs(main);
         if (window.vcfWireRoblox) window.vcfWireRoblox(main);
+        try { window.dispatchEvent(new CustomEvent('pjax:load', { detail: { url: url } })); } catch (e) {}
         main.classList.remove('pjax-loading');
-        busy = false;
-      }).catch(function () { location.href = url; });
+      }).catch(function (err) {
+        if (seq !== navSeq || (err && (err.stale || err.name === 'AbortError'))) return; // superseded — newest wins
+        location.href = url; // genuine failure: fall back to a real navigation
+      });
     }
 
     document.addEventListener('click', function (e) {
