@@ -29,7 +29,7 @@
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <div class="field-grid">
             <div class="field">Roblox / staff username
-              <div class="rbx-search"><input type="text" name="username" id="new-username" required autocomplete="off" placeholder="Start typing a Roblox name…" /><div class="rbx-suggest" hidden></div></div>
+              <div class="rbx-search"><input type="text" name="username" id="new-username" data-rbx-autocomplete required autocomplete="off" placeholder="Start typing a Roblox name…" /><div class="rbx-suggest" hidden></div></div>
             </div>
             <label class="field">Password<input type="password" name="password" minlength="6" required autocomplete="new-password" /></label>
             <label class="field">Role
@@ -215,23 +215,8 @@
   // custom-enhanced selects dispatch `change`, the text box dispatches `input` — listen to both
   [fd, fr, fq].forEach(function (el) { if (el) { el.addEventListener('input', applyFilters); el.addEventListener('change', applyFilters); } });
   applyFilters();
-  // roblox username autocomplete on the create form
-  var uName = document.getElementById('new-username');
-  if (uName) {
-    var box = uName.parentNode.querySelector('.rbx-suggest'), t;
-    uName.addEventListener('input', function () {
-      clearTimeout(t); var q = uName.value.trim(); if (q.length < 2) { box.hidden = true; return; }
-      t = setTimeout(function () {
-        fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
-          if (!d.data || !d.data.length) { box.hidden = true; return; }
-          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + u.name + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + u.avatar + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + u.name + '</strong> <span class="muted">' + u.displayName + '</span></span></div>'; }).join('');
-          box.hidden = false;
-        }).catch(function () {});
-      }, 250);
-    });
-    box.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); uName.value = o.getAttribute('data-name'); box.hidden = true; } });
-    document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search')) box.hidden = true; });
-  }
+  // Roblox username autocomplete on the create form is wired by app.js
+  // (data-rbx-autocomplete on #new-username).
 })();
 </script>
 <%- include('../partials/foot') %>

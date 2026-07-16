@@ -243,6 +243,10 @@ app.use((req, res, next) => {
   // Render a single policy clause: escape it, then allow simple **bold** spans.
   res.locals.policyLine = (s) =>
     res.locals.escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // SEO: keep staff/app surfaces out of search indexes. Public doc pages stay
+  // indexable (internal handbooks are additionally excluded in head.ejs).
+  res.locals.noindex = /^\/(admin|dashboard|account|login|feedback|api)\b/.test(req.path);
+  res.locals.isDashboardHost = res.locals.isDashboardHost || false;
   next();
 });
 
@@ -435,6 +439,32 @@ app.get('/search-index.json', (req, res) => {
   });
   res.set('Cache-Control', 'no-store');
   res.json(index);
+});
+
+// --- SEO: robots.txt + sitemap.xml (public, non-internal pages only) --------
+function siteOrigin(req) {
+  return (process.env.SITE_URL || (req.protocol + '://' + req.get('host'))).replace(/\/+$/, '');
+}
+app.get('/robots.txt', (req, res) => {
+  const origin = siteOrigin(req);
+  res.type('text/plain').send(
+    'User-agent: *\n' +
+    'Allow: /\n' +
+    'Disallow: /admin\nDisallow: /dashboard\nDisallow: /account\nDisallow: /login\nDisallow: /feedback\nDisallow: /api\nDisallow: /internal-documents\n\n' +
+    'Sitemap: ' + origin + '/sitemap.xml\n'
+  );
+});
+app.get('/sitemap.xml', (req, res) => {
+  const origin = siteOrigin(req);
+  const pages = db.prepare("SELECT slug, updated_at FROM pages WHERE published = 1 AND internal = 0 ORDER BY sort").all();
+  const esc = (s) => String(s).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
+  const urls = pages.map((p) => {
+    const lastmod = (p.updated_at || '').slice(0, 10);
+    return '  <url><loc>' + esc(origin + '/' + p.slug) + '</loc>' + (lastmod ? '<lastmod>' + lastmod + '</lastmod>' : '') + '<changefreq>weekly</changefreq></url>';
+  }).join('\n');
+  res.type('application/xml').send(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + '\n</urlset>\n'
+  );
 });
 
 // Realtime access check — the client polls this so a page locks the instant a
@@ -1317,26 +1347,26 @@ function requireFeedbackStaff(req, res, next) {
 }
 app.get('/admin/feedback', requireFeedbackStaff, auth.csrfToken, viewRecorder('admin'), (req, res) => {
   res.set('Cache-Control', 'no-store');
+  // Return everything; filtering (status / category / search) happens instantly
+  // client-side so switching tabs never reloads the page. The query params only
+  // pre-select the initial filter for deep links.
   const status = ['open', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
   const category = FEEDBACK_CATEGORIES.includes(req.query.category) ? req.query.category : '';
   const q = String(req.query.q || '').trim().slice(0, 80);
-  const where = [], params = [];
-  if (status) { where.push('f.status = ?'); params.push(status); }
-  if (category) { where.push('f.category = ?'); params.push(category); }
-  if (q) { where.push('(f.title LIKE ? OR f.body LIKE ? OR f.submitted_by LIKE ? OR f.roblox_user LIKE ?)'); const like = '%' + q + '%'; params.push(like, like, like, like); }
   const items = db.prepare(
     `SELECT f.*,
             (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS msgs,
             (SELECT sender FROM feedback_messages m WHERE m.feedback_id = f.id ORDER BY m.id DESC LIMIT 1) AS last_sender
-     FROM feedback f ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-     ORDER BY COALESCE(f.last_msg_at, f.created_at) DESC LIMIT 200`
-  ).all(...params);
+     FROM feedback f
+     ORDER BY COALESCE(f.last_msg_at, f.created_at) DESC LIMIT 300`
+  ).all();
   const counts = {
-    open: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='open'").get().n,
-    approved: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='approved'").get().n,
-    rejected: db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status='rejected'").get().n,
+    all: items.length,
+    open: items.filter((f) => f.status === 'open').length,
+    approved: items.filter((f) => f.status === 'approved').length,
+    rejected: items.filter((f) => f.status === 'rejected').length,
     // Threads whose latest message is from the submitter — a staff reply is due.
-    needsReply: db.prepare("SELECT COUNT(*) AS n FROM feedback f WHERE (SELECT sender FROM feedback_messages m WHERE m.feedback_id=f.id ORDER BY m.id DESC LIMIT 1)='submitter'").get().n,
+    needsReply: items.filter((f) => f.last_sender === 'submitter').length,
   };
   res.render('admin/feedback', { title: 'Admin · Feedback', section: 'feedback', items, counts, status, category, q, categories: FEEDBACK_CATEGORIES });
 });
@@ -1544,7 +1574,9 @@ app.get('/api/roblox/:username', auth.requireAuth, async (req, res) => {
 
 // Roblox username autocomplete (matching users dropdown, with headshots).
 // Public (rate-limited): also used by the anonymous feedback form.
-const robloxSearchLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+// Autocomplete fires per keystroke (debounced) — a low cap made the dropdown
+// go quiet mid-typing. Higher cap; the client caches per query to stay well under it.
+const robloxSearchLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
 app.get('/api/roblox-search', robloxSearchLimiter, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const q = String(req.query.q || '').trim();

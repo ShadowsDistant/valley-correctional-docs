@@ -163,6 +163,43 @@
   }
 
   var CALLOUT_TYPES = ['note', 'info', 'tip', 'success', 'warning', 'danger', 'important'];
+  var CALLOUT_META = {
+    note: { label: 'Note', color: '#3b82f6', ic: 'info' },
+    info: { label: 'Info', color: '#38bdf8', ic: 'info' },
+    tip: { label: 'Tip', color: '#22c55e', ic: 'check' },
+    success: { label: 'Success', color: '#22c55e', ic: 'check' },
+    warning: { label: 'Warning', color: '#f59e0b', ic: 'warning' },
+    danger: { label: 'Danger', color: '#ef4444', ic: 'danger' },
+    important: { label: 'Important', color: '#a855f7', ic: 'star' },
+  };
+  // A small custom dropdown for the callout type, with a color dot per option.
+  function calloutTypeControl(current, onPick) {
+    var cur = CALLOUT_META[current] ? current : 'info';
+    var wrap = document.createElement('div'); wrap.className = 'wz-co-cs';
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'wz-co-cs-btn';
+    function label(t) { var m = CALLOUT_META[t]; return '<span class="wz-co-dot" style="background:' + m.color + '"></span>' + m.label + '<span class="wz-co-caret">▾</span>'; }
+    btn.innerHTML = label(cur);
+    var pop = null;
+    function close() { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', out, true); } }
+    function out(e) { if (pop && !pop.contains(e.target) && e.target !== btn) close(); }
+    function open() {
+      close();
+      pop = document.createElement('div'); pop.className = 'wz-co-cs-pop';
+      pop.innerHTML = CALLOUT_TYPES.map(function (t) { var m = CALLOUT_META[t]; return '<button type="button" class="wz-co-cs-opt' + (t === cur ? ' sel' : '') + '" data-t="' + t + '"><span class="wz-co-dot" style="background:' + m.color + '"></span>' + m.label + '</button>'; }).join('');
+      document.body.appendChild(pop);
+      var r = btn.getBoundingClientRect();
+      pop.style.position = 'fixed';
+      pop.style.left = r.left + 'px';
+      pop.style.minWidth = r.width + 'px';
+      pop.style.top = (r.bottom + 4 + pop.offsetHeight > window.innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
+      pop.addEventListener('click', function (e) { var o = e.target.closest('.wz-co-cs-opt'); if (!o) return; cur = o.getAttribute('data-t'); btn.innerHTML = label(cur); close(); onPick(cur); });
+      setTimeout(function () { document.addEventListener('mousedown', out, true); }, 0);
+    }
+    btn.addEventListener('click', function (e) { e.preventDefault(); pop ? close() : open(); });
+    wrap.appendChild(btn);
+    wrap.value = function () { return cur; };
+    return wrap;
+  }
   function parseCallout(mdText) {
     var m = /^:::\s*([a-zA-Z]+)\s*(.*)\n?([\s\S]*?)\n?:::\s*$/.exec(String(mdText).trim());
     if (!m) return { type: 'info', title: '', body: '' };
@@ -213,13 +250,10 @@
     actions.appendChild(del); bar.appendChild(actions);
 
     var head = document.createElement('div'); head.className = 'wz-co-head';
-    var typeSel = null;
+    var typeCtl = null;
     if (!isAcc) {
-      typeSel = document.createElement('select'); typeSel.className = 'wz-co-type'; typeSel.setAttribute('data-no-enhance', '');
-      CALLOUT_TYPES.forEach(function (t) {
-        var o = document.createElement('option'); o.value = t; o.textContent = t; if (t === c.type) o.selected = true; typeSel.appendChild(o);
-      });
-      head.appendChild(typeSel);
+      typeCtl = calloutTypeControl(c.type, function () { applyLook(); sync(); });
+      head.appendChild(typeCtl);
     }
     var title = document.createElement('input');
     title.type = 'text'; title.className = 'wz-co-title'; title.placeholder = isAcc ? 'Section title' : 'Title (optional)';
@@ -230,14 +264,13 @@
     body.className = 'wz-co-body wz-rt markdown'; body.contentEditable = 'true';
     body.innerHTML = mdToHtml(c.body) || '<p><br></p>';
 
-    function currentType() { return isAcc ? 'details' : (typeSel ? typeSel.value : 'info'); }
-    function applyLook() { wrap.className = 'wz-block wz-inline-block co-' + (isAcc ? 'details' : (typeSel ? typeSel.value : 'info')); }
+    function currentType() { return isAcc ? 'details' : (typeCtl ? typeCtl.value() : 'info'); }
+    function applyLook() { wrap.className = 'wz-block wz-inline-block co-' + currentType(); }
     function sync() {
       wrap._md = calloutMd(currentType(), title.value.trim(), htmlToMd(body).trim());
       markDirty(); scheduleFlush();
     }
     applyLook();
-    if (typeSel) typeSel.addEventListener('change', function () { applyLook(); sync(); });
     title.addEventListener('input', sync);
     body.addEventListener('input', sync);
     del.addEventListener('click', function () {
@@ -321,40 +354,86 @@
   function openCardModal(wrap, prev) {
     var data = parseCards(wrap._md) || { cols: 2, cards: [{ title: 'Title', body: 'Body text.' }] };
     var back = document.createElement('div'); back.className = 'wz-modal-back';
-    back.innerHTML = '<div class="wz-modal wz-card-modal"><h3>Edit cards</h3>'
-      + '<label class="wz-card-cols">Columns <select class="wz-cols-sel" data-no-enhance><option value="2">2</option><option value="3">3</option></select></label>'
-      + '<div class="wz-card-list"></div>'
-      + '<button type="button" class="btn btn-ghost btn-sm wz-card-add">+ Add card</button>'
+    back.innerHTML = '<div class="wz-modal wz-card-modal">'
+      + '<div class="wz-card-modal-head"><h3>Edit card grid</h3>'
+      + '<div class="wz-card-cols">Columns'
+      + '<div class="wz-seg"><button type="button" data-cols="2">2</button><button type="button" data-cols="3">3</button></div></div></div>'
+      + '<div class="wz-card-modal-body">'
+      + '<div class="wz-card-editor"><div class="wz-card-list"></div>'
+      + '<button type="button" class="btn btn-ghost btn-sm wz-card-add">' + '+ Add card</button></div>'
+      + '<div class="wz-card-preview-wrap"><div class="wz-card-preview-label">Live preview</div><div class="markdown wz-card-preview">Loading…</div></div>'
+      + '</div>'
       + '<div class="wz-modal-actions"><button type="button" class="btn btn-ghost btn-sm wz-cancel">Cancel</button>'
       + '<button type="button" class="btn btn-solid btn-sm wz-ok">Apply</button></div></div>';
     document.body.appendChild(back);
     var list = back.querySelector('.wz-card-list');
-    var colsSel = back.querySelector('.wz-cols-sel'); colsSel.value = String(data.cols);
-    function addRow(card) {
-      var row = document.createElement('div'); row.className = 'wz-card-row';
-      row.innerHTML = '<div class="wz-card-fields">'
-        + '<input type="text" class="wz-card-t" placeholder="Card title (icons: :i[shield]:)" />'
-        + '<textarea class="wz-card-b" rows="2" placeholder="Card body"></textarea></div>'
-        + '<button type="button" class="wz-card-del" title="Remove card">✕</button>';
-      row.querySelector('.wz-card-t').value = card.title;
-      row.querySelector('.wz-card-b').value = card.body;
-      row.querySelector('.wz-card-del').addEventListener('click', function () { row.remove(); });
-      list.appendChild(row);
-    }
-    data.cards.forEach(addRow);
-    back.querySelector('.wz-card-add').addEventListener('click', function () { addRow({ title: '', body: '' }); });
-    function close() { back.remove(); }
-    back.querySelector('.wz-cancel').addEventListener('click', close);
-    back.addEventListener('click', function (e) { if (e.target === back) close(); });
-    back.querySelector('.wz-ok').addEventListener('click', function () {
-      var cards = Array.prototype.map.call(list.querySelectorAll('.wz-card-row'), function (row) {
+    var preview = back.querySelector('.wz-card-preview');
+    var cols = +data.cols || 2;
+    var seg = back.querySelector('.wz-seg');
+    function markCols() { seg.querySelectorAll('button').forEach(function (b) { b.classList.toggle('active', +b.getAttribute('data-cols') === cols); }); }
+    seg.addEventListener('click', function (e) { var b = e.target.closest('[data-cols]'); if (b) { cols = +b.getAttribute('data-cols'); markCols(); refresh(); } });
+    markCols();
+
+    function collect() {
+      return Array.prototype.map.call(list.querySelectorAll('.wz-card-row'), function (row) {
         return { title: row.querySelector('.wz-card-t').value.trim(), body: row.querySelector('.wz-card-b').value.trim() };
       }).filter(function (c) { return c.title || c.body; });
-      if (!cards.length) cards = [{ title: 'Title', body: 'Body text.' }];
-      wrap._md = cardsToHtml({ cols: +colsSel.value || 2, cards: cards });
+    }
+    var refreshT;
+    function refresh() {
+      clearTimeout(refreshT);
+      refreshT = setTimeout(function () {
+        var cards = collect(); if (!cards.length) cards = [{ title: 'Title', body: 'Body text.' }];
+        fetchPreview(cardsToHtml({ cols: cols, cards: cards }), preview);
+      }, 350);
+    }
+    function addRow(card) {
+      var row = document.createElement('div'); row.className = 'wz-card-row';
+      row.innerHTML = '<span class="wz-card-drag" title="Drag to reorder" draggable="true">⋮⋮</span>'
+        + '<div class="wz-card-fields">'
+        + '<div class="wz-card-title-row"><input type="text" class="wz-card-t" placeholder="Card title" />'
+        + '<button type="button" class="wz-card-icon" title="Insert icon"><span class="ic ic-star"></span></button></div>'
+        + '<textarea class="wz-card-b" rows="3" placeholder="Card body — supports **bold**, links, and :i[icon]: shortcodes"></textarea></div>'
+        + '<button type="button" class="wz-card-del" title="Remove card"><span class="ic ic-trash"></span></button>';
+      var tInput = row.querySelector('.wz-card-t');
+      tInput.value = card.title; row.querySelector('.wz-card-b').value = card.body;
+      row.querySelector('.wz-card-del').addEventListener('click', function () { row.remove(); refresh(); });
+      row.querySelector('.wz-card-icon').addEventListener('click', function (e) {
+        openIconPicker(e.currentTarget, function (name) {
+          var pos = tInput.selectionStart != null ? tInput.selectionStart : tInput.value.length;
+          tInput.value = tInput.value.slice(0, pos) + ':i[' + name + ']: ' + tInput.value.slice(pos);
+          tInput.focus(); refresh();
+        }, false);
+      });
+      row.addEventListener('input', refresh);
+      // drag to reorder cards within the modal
+      var handle = row.querySelector('.wz-card-drag');
+      handle.addEventListener('dragstart', function (e) { row._dragging = true; row.classList.add('dragging'); try { e.dataTransfer.setData('text/plain', 'card'); } catch (x) {} });
+      handle.addEventListener('dragend', function () { row.classList.remove('dragging'); refresh(); });
+      list.appendChild(row);
+    }
+    list.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      var dragging = list.querySelector('.wz-card-row.dragging'); if (!dragging) return;
+      var after = null;
+      Array.prototype.forEach.call(list.querySelectorAll('.wz-card-row:not(.dragging)'), function (r) {
+        var box = r.getBoundingClientRect();
+        if (e.clientY > box.top + box.height / 2) after = r;
+      });
+      if (after) after.after(dragging); else list.prepend(dragging);
+    });
+    data.cards.forEach(addRow);
+    back.querySelector('.wz-card-add').addEventListener('click', function () { addRow({ title: 'Title', body: 'Body text.' }); refresh(); });
+    function close() { clearTimeout(refreshT); back.remove(); }
+    back.querySelector('.wz-cancel').addEventListener('click', close);
+    back.addEventListener('mousedown', function (e) { if (e.target === back) close(); });
+    back.querySelector('.wz-ok').addEventListener('click', function () {
+      var cards = collect(); if (!cards.length) cards = [{ title: 'Title', body: 'Body text.' }];
+      wrap._md = cardsToHtml({ cols: cols, cards: cards });
       if (prev) fetchPreview(wrap._md, prev);
       afterStructuralChange(); close();
     });
+    refresh();
   }
 
   // ============================ icon picker ================================
@@ -547,6 +626,78 @@
     e.preventDefault();
     var rect = sel.getRangeAt(0).getClientRects()[0] || rt.getBoundingClientRect();
     openMenu(rect.left, rect.bottom + 4, true, applyPick);
+  });
+
+  // ============================ right-click context menu ===================
+  var ctxEl = null;
+  function closeCtx() { if (ctxEl) { ctxEl.remove(); ctxEl = null; document.removeEventListener('mousedown', ctxOut, true); document.removeEventListener('keydown', ctxKey, true); } }
+  function ctxOut(e) { if (ctxEl && !ctxEl.contains(e.target)) closeCtx(); }
+  function ctxKey(e) { if (e.key === 'Escape') closeCtx(); }
+  function buildCtx(x, y, items) {
+    closeCtx();
+    ctxEl = document.createElement('div'); ctxEl.className = 'wz-ctx';
+    ctxEl.innerHTML = items.map(function (it) {
+      if (it.sep) return '<div class="wz-ctx-sep"></div>';
+      return '<button type="button" class="wz-ctx-item' + (it.danger ? ' danger' : '') + (it.disabled ? ' disabled' : '') + '"' + (it.disabled ? ' disabled' : '') + '>' + (it.icon ? '<span class="ic ic-' + it.icon + '"></span>' : '<span class="wz-ctx-ico"></span>') + '<span>' + it.label + '</span>' + (it.key ? '<kbd>' + it.key + '</kbd>' : '') + '</button>';
+    }).join('');
+    document.body.appendChild(ctxEl);
+    ctxEl.style.position = 'fixed';
+    ctxEl.style.left = Math.min(x, window.innerWidth - ctxEl.offsetWidth - 8) + 'px';
+    ctxEl.style.top = Math.min(y, window.innerHeight - ctxEl.offsetHeight - 8) + 'px';
+    var btns = ctxEl.querySelectorAll('.wz-ctx-item');
+    var real = items.filter(function (it) { return !it.sep; });
+    Array.prototype.forEach.call(btns, function (b, i) {
+      if (real[i].disabled) return;
+      b.addEventListener('click', function () { closeCtx(); real[i].action(); });
+    });
+    setTimeout(function () { document.addEventListener('mousedown', ctxOut, true); document.addEventListener('keydown', ctxKey, true); }, 0);
+  }
+  function moveBlock(node, dir) {
+    if (dir < 0 && node.previousElementSibling) node.previousElementSibling.before(node);
+    else if (dir > 0 && node.nextElementSibling) node.nextElementSibling.after(node);
+    ensureTrailingRt(); afterStructuralChange();
+  }
+  function duplicateBlock(node) {
+    var seg = tokenize(node._md || '')[0];
+    var copy = seg ? makeBlock(seg) : null;
+    if (copy) { node.after(copy); ensureTrailingRt(); afterStructuralChange(); }
+  }
+  wzEditor.addEventListener('contextmenu', function (e) {
+    // let the native menu through with Shift (spellcheck, etc.)
+    if (e.shiftKey) return;
+    var block = e.target.closest ? e.target.closest('.wz-block') : null;
+    var rt = e.target.closest ? e.target.closest('.wz-rt') : null;
+    var items;
+    if (block && !block.classList.contains('wz-inline-block')) {
+      var isCards = block.dataset.kind === 'html' && /md-cards/.test(block._md || '');
+      items = [
+        { label: 'Edit block', icon: 'edit', action: function () { var prev = block.querySelector('.wz-block-preview'); if (isCards) openCardModal(block, prev); else openBlockModal(block, prev); } },
+        { label: 'Duplicate', icon: 'files', action: function () { duplicateBlock(block); } },
+        { sep: true },
+        { label: 'Move up', icon: 'chart', disabled: !block.previousElementSibling, action: function () { moveBlock(block, -1); } },
+        { label: 'Move down', icon: 'chart', disabled: !block.nextElementSibling, action: function () { moveBlock(block, 1); } },
+        { sep: true },
+        { label: 'Delete block', icon: 'trash', danger: true, action: function () { block.remove(); ensureTrailingRt(); afterStructuralChange(); } },
+      ];
+    } else if (rt || block) {
+      // rich-text (or inline callout body): formatting + insert actions
+      if (rt) lastRt = rt;
+      items = [
+        { label: 'Bold', icon: 'bold', key: 'Ctrl B', action: function () { exec('bold'); } },
+        { label: 'Italic', icon: 'italic', action: function () { exec('italic'); } },
+        { label: 'Link', icon: 'link', key: 'Ctrl K', action: function () { exec('link'); } },
+        { label: 'Inline code', icon: 'code', action: function () { exec('code'); } },
+        { sep: true },
+        { label: 'Heading', icon: 'heading', action: function () { exec('h2'); } },
+        { label: 'Subheading', icon: 'heading', action: function () { exec('h3'); } },
+        { label: 'Bulleted list', icon: 'list', action: function () { exec('ul'); } },
+        { sep: true },
+        { label: 'Insert icon…', icon: 'star', action: function () { exec('icon'); } },
+        { label: 'Insert block…', icon: 'plus', action: function () { var r = wzEditor.getBoundingClientRect(); openMenu(e.clientX, e.clientY, false, applyPick); } },
+      ];
+    } else { return; }
+    e.preventDefault();
+    buildCtx(e.clientX, e.clientY, items);
   });
 
   // ============================ drag & drop reorder ========================

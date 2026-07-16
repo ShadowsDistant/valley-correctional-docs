@@ -31,7 +31,7 @@
             <span class="fb-count" data-for="fb-body">0 / 4000</span>
           </label>
           <div class="field">Roblox username <small>(optional — required to earn the Contributor role)</small>
-            <div class="rbx-search"><input type="text" id="fb-roblox" autocomplete="off" placeholder="Start typing…" /><div class="rbx-suggest" id="fb-suggest" hidden></div></div>
+            <div class="rbx-search"><input type="text" id="fb-roblox" data-rbx-autocomplete autocomplete="off" placeholder="Start typing…" /><div class="rbx-suggest" id="fb-suggest" hidden></div></div>
           </div>
           <div id="fb-error" class="auth-error" hidden><%- icon('danger') %> <span></span></div>
           <div id="fb-ok" class="account-ok" hidden><%- icon('check') %> <span>Feedback submitted — thank you! It now appears under “Your submissions”.</span></div>
@@ -160,24 +160,7 @@
     }).catch(function () { btn.disabled = false; err.querySelector('span').textContent = 'Submission failed — try again.'; err.hidden = false; });
   });
 
-  // ---- roblox autocomplete ----
-  (function () {
-    var input = document.getElementById('fb-roblox'), box = document.getElementById('fb-suggest'), t;
-    input.addEventListener('input', function () {
-      clearTimeout(t);
-      var q = input.value.trim();
-      if (q.length < 2) { box.hidden = true; return; }
-      t = setTimeout(function () {
-        fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
-          if (!d.ok || !d.data.length) { box.hidden = true; return; }
-          box.innerHTML = d.data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></span></div>'; }).join('');
-          box.hidden = false;
-        }).catch(function () { box.hidden = true; });
-      }, 250);
-    });
-    box.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); input.value = o.getAttribute('data-name'); box.hidden = true; } });
-    input.addEventListener('blur', function () { setTimeout(function () { box.hidden = true; }, 150); });
-  })();
+  // Roblox autocomplete is wired by app.js via the data-rbx-autocomplete attribute.
 
   // ---- chat drawer ----
   var drawer = document.getElementById('fbDrawer'), scrim = document.getElementById('fbScrim');

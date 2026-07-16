@@ -338,6 +338,74 @@
       }).catch(function () {});
   })();
 
+  // ---------- shared Roblox username autocomplete ----------
+  // One resilient implementation for every roblox search field. Fixes the
+  // "dropdown stops showing results" issue: a race token so a slow stale
+  // response can't clobber a newer one, a per-query cache (also softens the
+  // rate limit), an exact-username fallback when the fuzzy search hides a
+  // moderated name, and it never hides on a transient network error.
+  var RBX_CACHE = {};
+  function robloxAutocomplete(input, box, onPick) {
+    if (!input || !box || input._rbxWired) return;
+    input._rbxWired = true;
+    var authed = document.body.hasAttribute('data-authed');
+    var timer, token = 0, lastQ = '';
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function hide() { box.hidden = true; box.innerHTML = ''; }
+    function render(data) {
+      if (!data || !data.length) { hide(); return; }
+      box.innerHTML = data.map(function (u) {
+        return '<div class="rbx-opt" data-name="' + esc(u.name) + '">'
+          + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>')
+          + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName || '') + '</span></span></div>';
+      }).join('');
+      box.hidden = false;
+    }
+    function exactFallback(q, my) {
+      if (!authed) { hide(); return; } // /api/roblox/:name needs a session
+      fetch('/api/roblox/' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (ex) {
+        if (my !== token) return;
+        var data = (ex && ex.ok) ? [{ name: ex.name, displayName: ex.displayName, avatar: ex.avatar }] : [];
+        RBX_CACHE[q.toLowerCase()] = data;
+        render(data);
+      }).catch(function () { /* keep whatever is shown */ });
+    }
+    function search(q) {
+      var key = q.toLowerCase();
+      if (RBX_CACHE[key]) { render(RBX_CACHE[key]); return; }
+      var my = ++token;
+      fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
+        if (my !== token || input.value.trim() !== q) return; // stale
+        var data = (d && d.data) || [];
+        if (data.length) { RBX_CACHE[key] = data; render(data); }
+        else exactFallback(q, my);
+      }).catch(function () { /* transient error — leave current results, retry next keystroke */ });
+    }
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      var q = input.value.trim();
+      if (q === lastQ) return; lastQ = q;
+      if (q.length < 2) { hide(); return; }
+      timer = setTimeout(function () { search(q); }, 200);
+    });
+    input.addEventListener('focus', function () { var q = input.value.trim(); if (q.length >= 2 && RBX_CACHE[q.toLowerCase()]) render(RBX_CACHE[q.toLowerCase()]); });
+    box.addEventListener('mousedown', function (e) {
+      var o = e.target.closest('.rbx-opt'); if (!o) return;
+      e.preventDefault();
+      var name = o.getAttribute('data-name');
+      input.value = name; hide();
+      if (onPick) onPick(name);
+    });
+    input.addEventListener('blur', function () { setTimeout(hide, 160); });
+  }
+  window.robloxAutocomplete = robloxAutocomplete;
+  // Auto-wire any plain field marked data-rbx-autocomplete (its sibling .rbx-suggest).
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-rbx-autocomplete]'), function (inp) {
+    var box = inp.parentNode.querySelector('.rbx-suggest');
+    if (box) robloxAutocomplete(inp, box, null);
+  });
+
   // ---------- TOC scrollspy ----------
   var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
   if (tocLinks.length && 'IntersectionObserver' in window) {

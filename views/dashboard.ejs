@@ -262,36 +262,42 @@
     document.getElementById('inf-mandatory').value = opt.getAttribute('data-mandatory') || '0';
   });
 
-  // Roblox autocomplete on a field, with race protection + exact fallback.
+  // Roblox autocomplete: race token, per-query cache (softens the rate limit),
+  // exact-username fallback, and it never blanks the list on a transient error.
+  var RBX_CACHE = {};
   function attachRoblox(input, suggest, onPick) {
-    var t, token = 0;
+    var t, token = 0, lastQ = '';
     function hide() { suggest.hidden = true; }
-    input.addEventListener('input', function () {
-      clearTimeout(t); var q = input.value.trim();
-      if (q.length < 2) { hide(); return; }
-      t = setTimeout(function () {
-        var my = ++token;
-        fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
-          if (my !== token) return; // stale
-          var data = (d && d.data) || [];
-          if (!data.length) {
-            // fallback: exact lookup (search hides some moderated names)
-            fetch('/api/roblox/' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (ex) {
-              if (my !== token) return;
-              if (ex && ex.ok) { render([{ name: ex.name, displayName: ex.displayName }]); } else hide();
-            }).catch(hide);
-            return;
-          }
-          render(data);
-        }).catch(function () {});
-      }, 220);
-    });
     function render(data) {
-      suggest.innerHTML = data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName) + '</span></span></div>'; }).join('');
+      if (!data || !data.length) { hide(); return; }
+      suggest.innerHTML = data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName || '') + '</span></span></div>'; }).join('');
       suggest.hidden = false;
     }
+    function run(q) {
+      var key = q.toLowerCase();
+      if (RBX_CACHE[key]) { render(RBX_CACHE[key]); return; }
+      var my = ++token;
+      fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
+        if (my !== token || input.value.trim() !== q) return; // stale
+        var data = (d && d.data) || [];
+        if (data.length) { RBX_CACHE[key] = data; render(data); return; }
+        // fallback: exact lookup (search hides some moderated names)
+        fetch('/api/roblox/' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (ex) {
+          if (my !== token) return;
+          var d2 = (ex && ex.ok) ? [{ name: ex.name, displayName: ex.displayName, avatar: ex.avatar }] : [];
+          RBX_CACHE[key] = d2; render(d2);
+        }).catch(function () {});
+      }).catch(function () { /* transient — keep current results */ });
+    }
+    input.addEventListener('input', function () {
+      clearTimeout(t); var q = input.value.trim();
+      if (q === lastQ) return; lastQ = q;
+      if (q.length < 2) { hide(); return; }
+      t = setTimeout(function () { run(q); }, 200);
+    });
+    input.addEventListener('focus', function () { var q = input.value.trim(); if (q.length >= 2 && RBX_CACHE[q.toLowerCase()]) render(RBX_CACHE[q.toLowerCase()]); });
     suggest.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); input.value = o.getAttribute('data-name'); hide(); onPick(o.getAttribute('data-name')); } });
-    input.addEventListener('blur', function () { setTimeout(hide, 150); });
+    input.addEventListener('blur', function () { setTimeout(hide, 160); });
     document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search') || (!suggest.contains(e.target) && e.target !== input)) hide(); });
   }
 

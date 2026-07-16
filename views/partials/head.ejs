@@ -5,25 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title><%= title ? title + ' · ' + siteName : siteName %></title>
   <%
-    var _pageDesc = (typeof page !== 'undefined' && page && page.description) ? page.description : siteTagline;
+    var _page = (typeof page !== 'undefined') ? page : null;
+    var _pageDesc = (_page && _page.description) ? _page.description : siteTagline;
     var _ogTitle = title ? title + ' · ' + siteName : siteName;
-    var _ogImg = (typeof baseUrl !== 'undefined' ? baseUrl : '') + '/assets/logo.png';
+    var _base = (typeof baseUrl !== 'undefined' ? baseUrl : '');
+    var _ogImg = _base + '/assets/logo.png';
+    var _canonical = (typeof pageUrl !== 'undefined') ? pageUrl : '';
+    var _noindex = (typeof noindex !== 'undefined' && noindex) || (_page && _page.internal);
+    var _isArticle = _page && !_page.internal;
+    function _jsonEsc(s) { return String(s == null ? '' : s).replace(/[<>&\\"]/g, function (c) { return { '<': '\\u003c', '>': '\\u003e', '&': '\\u0026', '\\': '\\\\', '"': '\\"' }[c]; }); }
   %>
   <meta name="description" content="<%= _pageDesc %>" />
   <meta name="theme-color" content="#ffa200" />
   <meta name="author" content="<%= siteName %>" />
+  <meta name="robots" content="<%= _noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large' %>" />
+  <% if (_canonical && !_noindex) { %><link rel="canonical" href="<%= _canonical %>" /><% } %>
   <!-- Open Graph / social & Discord embeds -->
-  <meta property="og:type" content="website" />
+  <meta property="og:type" content="<%= _isArticle ? 'article' : 'website' %>" />
   <meta property="og:site_name" content="<%= siteName %>" />
   <meta property="og:title" content="<%= _ogTitle %>" />
   <meta property="og:description" content="<%= _pageDesc %>" />
-  <% if (typeof pageUrl !== 'undefined') { %><meta property="og:url" content="<%= pageUrl %>" /><% } %>
+  <meta property="og:locale" content="en_US" />
+  <% if (_canonical) { %><meta property="og:url" content="<%= _canonical %>" /><% } %>
   <meta property="og:image" content="<%= _ogImg %>" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image:alt" content="<%= siteName %> logo" />
+  <% if (_isArticle && _page.updated_at) { %><meta property="article:modified_time" content="<%= _page.updated_at.replace(' ', 'T') + 'Z' %>" /><% } %>
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="<%= _ogTitle %>" />
   <meta name="twitter:description" content="<%= _pageDesc %>" />
   <meta name="twitter:image" content="<%= _ogImg %>" />
   <link rel="icon" href="/assets/logo.png" type="image/png" />
+  <% if (!_noindex) { %>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Organization","name":"<%- _jsonEsc(siteName) %>","url":"<%- _jsonEsc(_base || '/') %>","logo":"<%- _jsonEsc(_ogImg) %>"},
+    {"@type":"WebSite","name":"<%- _jsonEsc(siteName) %>","url":"<%- _jsonEsc(_base || '/') %>"}<% if (_isArticle) { %>,
+    {"@type":"Article","headline":"<%- _jsonEsc(_page.title) %>","description":"<%- _jsonEsc(_pageDesc) %>"<% if (_canonical) { %>,"mainEntityOfPage":"<%- _jsonEsc(_canonical) %>"<% } %><% if (_page.updated_at) { %>,"dateModified":"<%- _jsonEsc(_page.updated_at.replace(' ','T')+'Z') %>"<% } %>,"author":{"@type":"Organization","name":"<%- _jsonEsc(siteName) %>"},"publisher":{"@type":"Organization","name":"<%- _jsonEsc(siteName) %>","logo":{"@type":"ImageObject","url":"<%- _jsonEsc(_ogImg) %>"}}}<% } %>
+  ]}
+  </script>
+  <% } %>
   <link rel="stylesheet" href="/assets/icons.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
   <link rel="stylesheet" href="/assets/css/styles.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
 </head>
