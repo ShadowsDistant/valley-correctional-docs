@@ -35,9 +35,13 @@
       <div class="auth-error"><%- icon('danger') %> <span><%= error %></span></div>
     <% } %>
 
-    <div class="profile-grid">
-      <div class="profile-col">
-      <div class="profile-col-label"><%- icon('scale') %> Record</div>
+    <div class="dash-tabs profile-tabs" role="tablist">
+      <button class="dash-tab active" type="button" role="tab" data-ptab="record"><%- icon('scale') %> Staff record</button>
+      <button class="dash-tab" type="button" role="tab" data-ptab="security"><%- icon('shield') %> Security</button>
+    </div>
+
+    <div class="profile-panes">
+      <div class="dash-tabpane profile-pane" data-pane="record">
       <!-- Disciplinary record -->
       <section class="panel account-panel account-record">
         <div class="panel-head"><h2>Disciplinary record</h2><span class="badge <%= (typeof myPoints!=='undefined'&&myPoints>=3)?'badge-danger':'' %>"><%= infr.length %> active</span></div>
@@ -61,8 +65,7 @@
       </section>
       </div>
 
-      <div class="profile-col">
-      <div class="profile-col-label"><%- icon('shield') %> Security</div>
+      <div class="dash-tabpane profile-pane" data-pane="security" hidden>
       <!-- Change password -->
       <section class="panel account-panel">
         <div class="panel-head"><h2>Change password</h2></div>
@@ -113,6 +116,24 @@
 </div>
 <script src="/assets/js/passkey.js?v=<%= assetVersion %>"></script>
 <script>
+// ---- profile tabs (Staff record / Security) ----
+(function () {
+  var tabs = document.querySelectorAll('.profile-tabs .dash-tab');
+  var panes = document.querySelectorAll('.profile-pane');
+  if (!tabs.length) return;
+  function show(name) {
+    tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-ptab') === name); });
+    panes.forEach(function (p) {
+      var on = p.getAttribute('data-pane') === name;
+      p.hidden = !on;
+      if (on) { p.classList.remove('pane-in'); void p.offsetWidth; p.classList.add('pane-in'); }
+    });
+  }
+  tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.getAttribute('data-ptab')); }); });
+  // deep-link: #security opens that tab (e.g. after adding a passkey)
+  if ((location.hash || '').replace('#', '') === 'security') show('security');
+})();
+
 (function () {
   var box = document.getElementById('robloxAccount'); if (!box) return;
   var name = box.getAttribute('data-user');

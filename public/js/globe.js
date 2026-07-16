@@ -19,6 +19,26 @@
   };
   var data = (window.GLOBE_DATA || []).filter(function (c) { return COORDS[c.country]; });
 
+  // Markers: prefer Cloudflare's exact per-visitor city coordinates when present
+  // (each { country, city, lat, lon, n }); otherwise fall back to country
+  // centroids so the globe still shows origin even without the geo transform.
+  var cityData = (window.GLOBE_CITIES || []).filter(function (c) {
+    return typeof c.lat === 'number' && typeof c.lon === 'number';
+  });
+  var MARKERS, markerMax = 1, cityMode = cityData.length > 0;
+  if (cityMode) {
+    MARKERS = cityData.map(function (c) {
+      var label = c.city || (COORDS[c.country] && COORDS[c.country][2]) || c.country || 'Unknown';
+      return { lat: c.lat, lon: c.lon, n: c.n, label: label, country: c.country, key: c.lat + ',' + c.lon };
+    });
+  } else {
+    MARKERS = data.map(function (c) {
+      var co = COORDS[c.country];
+      return { lat: co[0], lon: co[1], n: c.n, label: co[2], country: c.country, key: c.country };
+    });
+  }
+  MARKERS.forEach(function (m) { if (m.n > markerMax) markerMax = m.n; });
+
   // Major cities — rendered as warm "night-side lights" for extra surface detail.
   var CITIES = [
     [40.7, -74], [34, -118.2], [41.9, -87.6], [29.8, -95.4], [19.4, -99.1], [25.8, -80.2],
@@ -87,18 +107,41 @@
     for (var i = 0; i < LAND.length; i++) if (pointInPoly(lat, lon, LAND[i])) return true;
     return false;
   }
+  // Rough desert bands (lon ranges by latitude) so arid regions read as tan
+  // rather than green — enough to give the map a believable biome texture.
+  function isDesert(lat, lon) {
+    if (lat > 12 && lat < 33 && lon > -12 && lon < 52) return true;   // Sahara + Arabia
+    if (lat > 25 && lat < 42 && lon > 55 && lon < 78) return true;    // Iran/Central Asia
+    if (lat > -30 && lat < -19 && lon > 118 && lon < 141) return true; // Australian outback
+    if (lat > 30 && lat < 42 && lon > -116 && lon < -104) return true; // US Southwest
+    if (lat > -27 && lat < -16 && lon > -71 && lon < -64) return true; // Atacama/Andes
+    return false;
+  }
+  // Deterministic per-cell jitter (0..1) for subtle surface mottling.
+  function noise(lat, lon) {
+    var s = Math.sin(lat * 12.9898 + lon * 78.233) * 43758.5453;
+    return s - Math.floor(s);
+  }
   // Precompute land dots on a fine grid (density scaled by latitude), tagging
-  // each as coastal (near an ocean cell) so coastlines can be drawn brighter.
+  // each as coastal (near an ocean cell) so coastlines can be drawn brighter,
+  // plus a biome tint (temperate green / boreal / tropical / desert tan).
   var landPts = [];
-  var STEP = 1.65;
+  var STEP = 1.35;
   for (var la = -56; la <= 80; la += STEP) {
     var stepLon = Math.max(STEP, STEP / Math.max(0.18, Math.cos(la * Math.PI / 180)));
     for (var lo = -180; lo < 180; lo += stepLon) {
       if (!isLand(la, lo)) continue;
       var coastal = !isLand(la + STEP, lo) || !isLand(la - STEP, lo) || !isLand(la, lo + stepLon) || !isLand(la, lo - stepLon);
-      landPts.push([la, lo, coastal ? 1 : 0]);
+      var alat = Math.abs(la), biome;
+      if (isDesert(la, lo)) biome = 'd';
+      else if (alat > 58) biome = 'b';        // boreal / cold
+      else if (alat < 23) biome = 't';        // tropical
+      else biome = 'g';                        // temperate green
+      landPts.push([la, lo, coastal ? 1 : 0, biome, noise(la, lo)]);
     }
   }
+  // Biome base colours [r,g,b]; coastal cells get a lighter tint at draw time.
+  var BIOME = { g: [104, 196, 138], t: [86, 200, 120], b: [120, 176, 150], d: [206, 186, 120] };
   // Polar ice caps — Antarctica (a whole continent) and the Arctic sea-ice
   // sheet, rendered as pale blue-white so the Earth reads correctly top & bottom.
   var icePts = [];
@@ -128,7 +171,10 @@
     for (var i = 0; i < 70; i++) stars.push([Math.random(), Math.random(), 0.3 + Math.random() * 0.7, Math.random() * 6.28]);
   })();
 
-  var TILT = 20 * Math.PI / 180, cosT = Math.cos(TILT), sinT = Math.sin(TILT);
+  // View tilt is adjustable (vertical drag) so you can bring either pole into
+  // view; zoom magnifies the sphere so specific spots can be inspected closely.
+  var TILT = 20 * Math.PI / 180, viewTilt = TILT, cosT = Math.cos(viewTilt), sinT = Math.sin(viewTilt);
+  var zoom = 1, Rz = 0;
   function project(latDeg, lonDeg, rot) {
     var lat = latDeg * Math.PI / 180, lon = (lonDeg + rot) * Math.PI / 180;
     var x = Math.cos(lat) * Math.sin(lon);
@@ -136,10 +182,9 @@
     var z = Math.cos(lat) * Math.cos(lon);
     var y2 = y * cosT - z * sinT;
     var z2 = y * sinT + z * cosT;
-    return { sx: cx + x * R, sy: cy - y2 * R, z: z2 };
+    return { sx: cx + x * Rz, sy: cy - y2 * Rz, z: z2 };
   }
 
-  var max = 1; data.forEach(function (c) { if (c.n > max) max = c.n; });
   var rot = 0, raf = null, t = 0, stopped = false;
 
   // ---- interaction: drag to spin, hover a marker for its country ----------
@@ -149,19 +194,65 @@
     var p = (e.touches && e.touches[0]) || e;
     return { x: p.clientX - r.left, y: p.clientY - r.top };
   }
-  function onDown(e) { drag = { x: localPt(e).x, rot: rot }; canvas.classList.add('is-drag'); }
+  var MIN_TILT = -78 * Math.PI / 180, MAX_TILT = 78 * Math.PI / 180;
+  var MIN_ZOOM = 1, MAX_ZOOM = 4.5;
+  function onDown(e) { var p = localPt(e); drag = { x: p.x, y: p.y, rot: rot, tilt: viewTilt }; canvas.classList.add('is-drag'); }
   function onMove(e) {
     mouse = localPt(e);
-    if (drag) { rot = drag.rot + (mouse.x - drag.x) * 0.55; e.preventDefault && e.preventDefault(); }
+    if (drag) {
+      rot = drag.rot + (mouse.x - drag.x) * (0.55 / zoom);
+      viewTilt = Math.max(MIN_TILT, Math.min(MAX_TILT, drag.tilt + (mouse.y - drag.y) * (0.006 / zoom)));
+      e.preventDefault && e.preventDefault();
+    }
   }
   function onUp() { drag = null; canvas.classList.remove('is-drag'); }
+  function onWheel(e) {
+    e.preventDefault();
+    var f = Math.exp(-e.deltaY * 0.0016);
+    zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * f));
+    if (zoom <= MIN_ZOOM + 0.001) zoom = MIN_ZOOM;
+    updateZoomUi();
+  }
   canvas.addEventListener('mousedown', onDown);
   canvas.addEventListener('mousemove', onMove);
   canvas.addEventListener('mouseleave', function () { mouse = null; onUp(); });
   window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('touchstart', onDown, { passive: true });
   canvas.addEventListener('touchmove', onMove, { passive: false });
   canvas.addEventListener('touchend', onUp);
+  // pinch-to-zoom (two-finger)
+  var pinch = null;
+  canvas.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 2) { pinch = { d: touchDist(e), z: zoom }; }
+  }, { passive: true });
+  canvas.addEventListener('touchmove', function (e) {
+    if (pinch && e.touches.length === 2) {
+      var d = touchDist(e);
+      zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinch.z * (d / pinch.d)));
+      updateZoomUi(); e.preventDefault();
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchend', function (e) { if (e.touches.length < 2) pinch = null; });
+  function touchDist(e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+
+  // On-canvas zoom controls (+ / − / reset). Reset also re-levels the tilt.
+  var zoomReadout = null;
+  (function buildZoomUi() {
+    var host = canvas.parentNode; if (!host) return;
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    var box = document.createElement('div'); box.className = 'globe-zoom';
+    var mk = function (txt, tip) { var b = document.createElement('button'); b.type = 'button'; b.className = 'globe-zoom-btn'; b.textContent = txt; b.setAttribute('aria-label', tip); return b; };
+    var bIn = mk('+', 'Zoom in'), bOut = mk('−', 'Zoom out'), bReset = mk('⤿', 'Reset view');
+    zoomReadout = document.createElement('span'); zoomReadout.className = 'globe-zoom-rd'; zoomReadout.textContent = '1.0×';
+    var step = function (f) { zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * f)); if (zoom <= MIN_ZOOM + 0.001) zoom = MIN_ZOOM; updateZoomUi(); };
+    bIn.addEventListener('click', function () { step(1.35); });
+    bOut.addEventListener('click', function () { step(1 / 1.35); });
+    bReset.addEventListener('click', function () { zoom = 1; viewTilt = TILT; updateZoomUi(); });
+    box.appendChild(bIn); box.appendChild(bOut); box.appendChild(bReset); box.appendChild(zoomReadout);
+    host.appendChild(box);
+  })();
+  function updateZoomUi() { if (zoomReadout) zoomReadout.textContent = zoom.toFixed(1) + '×'; }
 
   function drawGraticule() {
     // meridians + parallels as faint dotted arcs on the near hemisphere
@@ -189,7 +280,9 @@
     // self-clean: stop drawing if the canvas has been removed (PJAX away)
     if (!document.body.contains(canvas)) { stopped = true; raf = null; return; }
     t++;
-    if (!drag) rot += spin;             // hand on the globe stops the spin
+    if (!drag && zoom <= 1.02) rot += spin;   // auto-spin only when not zoomed/held
+    cosT = Math.cos(viewTilt); sinT = Math.sin(viewTilt);
+    Rz = R * zoom;
     var hot = null;                     // marker under the pointer this frame
     ctx.clearRect(0, 0, W, H);
 
@@ -202,41 +295,48 @@
     }
 
     // atmosphere glow
-    var atm = ctx.createRadialGradient(cx, cy, R * 0.86, cx, cy, R * 1.22);
+    var atm = ctx.createRadialGradient(cx, cy, Rz * 0.86, cx, cy, Rz * 1.22);
     atm.addColorStop(0, 'rgba(255,178,60,0)');
     atm.addColorStop(0.55, 'rgba(255,168,40,0.10)');
     atm.addColorStop(1, 'rgba(255,150,20,0)');
-    ctx.beginPath(); ctx.arc(cx, cy, R * 1.22, 0, 6.2832); ctx.fillStyle = atm; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, Rz * 1.22, 0, 6.2832); ctx.fillStyle = atm; ctx.fill();
 
-    // ocean sphere (glass)
-    var grad = ctx.createRadialGradient(cx - R * 0.4, cy - R * 0.45, R * 0.1, cx, cy, R);
-    grad.addColorStop(0, 'rgba(70,120,175,0.30)');
-    grad.addColorStop(0.55, 'rgba(38,74,120,0.20)');
-    grad.addColorStop(1, 'rgba(6,20,40,0.30)');
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fillStyle = grad; ctx.fill();
+    // ocean sphere — layered blue with a lighter tropical band for depth realism
+    var grad = ctx.createRadialGradient(cx - Rz * 0.4, cy - Rz * 0.45, Rz * 0.1, cx, cy, Rz);
+    grad.addColorStop(0, 'rgba(78,132,190,0.34)');
+    grad.addColorStop(0.45, 'rgba(44,92,150,0.24)');
+    grad.addColorStop(0.78, 'rgba(24,58,104,0.24)');
+    grad.addColorStop(1, 'rgba(5,18,38,0.34)');
+    ctx.beginPath(); ctx.arc(cx, cy, Rz, 0, 6.2832); ctx.fillStyle = grad; ctx.fill();
 
     // terminator shading (day/night) — soft dark on the trailing edge
-    var term = ctx.createLinearGradient(cx - R, cy, cx + R, cy);
+    var term = ctx.createLinearGradient(cx - Rz, cy, cx + Rz, cy);
     term.addColorStop(0, 'rgba(0,0,0,0.28)');
     term.addColorStop(0.4, 'rgba(0,0,0,0.04)');
     term.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.clip();
-    ctx.fillStyle = term; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    ctx.beginPath(); ctx.arc(cx, cy, Rz, 0, 6.2832); ctx.clip();
+    ctx.fillStyle = term; ctx.fillRect(cx - Rz, cy - Rz, Rz * 2, Rz * 2);
     ctx.restore();
 
     drawGraticule();
 
-    // continents (dotted land); coastal cells render brighter + slightly larger
+    // continents (dotted land): biome-tinted, coastal cells brighter + larger,
+    // per-cell noise for a mottled, map-like surface. Dot size tracks zoom so
+    // zooming in reveals finer terrain instead of just bigger blobs.
+    var dotScale = 0.8 + 0.5 * Math.min(zoom - 1, 2.4);
     for (var i = 0; i < landPts.length; i++) {
       var pt = landPts[i];
       var p = project(pt[0], pt[1], rot);
       if (p.z <= 0.02) continue;
-      var coastal = pt[2];
-      var a = (coastal ? 0.24 : 0.13) + p.z * (coastal ? 0.55 : 0.42);
-      var rr = (coastal ? 1.0 : 0.8) + p.z * 0.8;
+      var coastal = pt[2], col = BIOME[pt[3]] || BIOME.g, mott = 0.82 + pt[4] * 0.36;
+      var a = (coastal ? 0.26 : 0.15) + p.z * (coastal ? 0.55 : 0.44);
+      var rr = ((coastal ? 1.0 : 0.82) + p.z * 0.8) * dotScale;
+      var r0 = Math.round(col[0] * (coastal ? 1.28 : mott));
+      var g0 = Math.round(col[1] * (coastal ? 1.12 : mott));
+      var b0 = Math.round(col[2] * (coastal ? 1.18 : mott));
       ctx.beginPath(); ctx.arc(p.sx, p.sy, rr, 0, 6.2832);
-      ctx.fillStyle = (coastal ? 'rgba(150,225,175,' : 'rgba(104,196,138,') + a.toFixed(3) + ')'; ctx.fill();
+      ctx.fillStyle = 'rgba(' + Math.min(255, r0) + ',' + Math.min(255, g0) + ',' + Math.min(255, b0) + ',' + a.toFixed(3) + ')'; ctx.fill();
     }
 
     // polar ice caps — cool white, slightly glowing
@@ -264,34 +364,34 @@
     }
 
     // specular sun glint on the lit (leading) shoulder of the globe
-    var sunx = cx - R * 0.42, suny = cy - R * 0.46;
-    var sg = ctx.createRadialGradient(sunx, suny, 0, sunx, suny, R * 0.5);
+    var sunx = cx - Rz * 0.42, suny = cy - Rz * 0.46;
+    var sg = ctx.createRadialGradient(sunx, suny, 0, sunx, suny, Rz * 0.5);
     sg.addColorStop(0, 'rgba(255,255,240,0.16)');
     sg.addColorStop(1, 'rgba(255,255,240,0)');
     ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.clip();
-    ctx.beginPath(); ctx.arc(sunx, suny, R * 0.5, 0, 6.2832); ctx.fillStyle = sg; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, Rz, 0, 6.2832); ctx.clip();
+    ctx.beginPath(); ctx.arc(sunx, suny, Rz * 0.5, 0, 6.2832); ctx.fillStyle = sg; ctx.fill();
     ctx.restore();
 
     // limb darkening — the edge falls away, so the disc reads as a sphere
-    var limb = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
+    var limb = ctx.createRadialGradient(cx, cy, Rz * 0.62, cx, cy, Rz);
     limb.addColorStop(0, 'rgba(0,0,0,0)');
     limb.addColorStop(1, 'rgba(2,6,16,0.45)');
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fillStyle = limb; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, Rz, 0, 6.2832); ctx.fillStyle = limb; ctx.fill();
 
     // rim light
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832);
+    ctx.beginPath(); ctx.arc(cx, cy, Rz, 0, 6.2832);
     ctx.strokeStyle = 'rgba(255,236,200,0.22)'; ctx.lineWidth = 1.1; ctx.stroke();
 
-    // traffic markers + arcs to the busiest hub
-    var hub = data.length ? COORDS[data[0].country] : null;
-    var hubP = hub ? project(hub[0], hub[1], rot) : null;
-    data.forEach(function (c, idx) {
-      var co = COORDS[c.country]; if (!co) return;
-      var p = project(co[0], co[1], rot);
+    // traffic markers at exact visitor locations (city-precise when Cloudflare
+    // geo is present, otherwise country centroids) + arcs to the busiest hub.
+    var hubP = MARKERS.length ? project(MARKERS[0].lat, MARKERS[0].lon, rot) : null;
+    var showLabels = zoom >= 1.9;         // reveal spot labels once zoomed in
+    MARKERS.forEach(function (c, idx) {
+      var p = project(c.lat, c.lon, rot);
       if (p.z <= 0) return;
-      var rad = 2 + 5 * Math.sqrt(c.n / max);
-      var pulse = 1 + 0.35 * Math.sin(t * 0.06 + c.country.charCodeAt(0));
+      var rad = 2 + 5 * Math.sqrt(c.n / markerMax);
+      var pulse = 1 + 0.35 * Math.sin(t * 0.06 + (c.key.charCodeAt(0) || idx));
       var alpha = 0.35 + p.z * 0.6;
       // connecting arc to hub
       if (hubP && idx > 0 && hubP.z > 0) {
@@ -321,12 +421,19 @@
       ctx.fillStyle = 'rgba(255,' + (isHot ? 225 : 196) + ',' + (isHot ? 140 : 70) + ',' + alpha.toFixed(3) + ')'; ctx.fill();
       ctx.beginPath(); ctx.arc(p.sx, p.sy, isHot ? rad + 1.5 : rad, 0, 6.2832);
       ctx.strokeStyle = 'rgba(255,255,255,' + ((isHot ? 0.95 : 0.55) * alpha).toFixed(3) + ')'; ctx.lineWidth = 1; ctx.stroke();
+      // when zoomed in, pin a small always-on label so specific spots are legible
+      if (showLabels && !isHot && p.z > 0.25) {
+        ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillStyle = 'rgba(255,236,200,' + (0.5 + p.z * 0.4).toFixed(3) + ')';
+        ctx.textAlign = 'left';
+        ctx.fillText(c.label, p.sx + rad + 4, p.sy + 3);
+        ctx.textAlign = 'start';
+      }
     });
 
-    // hovered marker gets a floating label with its country + visitor count
+    // hovered marker gets a floating label with its city/country + visitor count
     if (hot) {
-      var name = (COORDS[hot.c.country] && COORDS[hot.c.country][2]) || hot.c.country;
-      var label = name + ' · ' + hot.c.n;
+      var label = hot.c.label + (hot.c.country ? ' (' + hot.c.country + ')' : '') + ' · ' + hot.c.n + (hot.c.n === 1 ? ' visitor' : ' visitors');
       ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
       var tw = ctx.measureText(label).width, pad = 7;
       var bx = Math.min(Math.max(hot.p.sx - tw / 2 - pad, 4), W - tw - pad * 2 - 4);
@@ -365,16 +472,18 @@
     window.removeEventListener('resize', resize);
   });
 
-  // build the side list
+  // build the side list — exact cities when available, else countries
   var list = document.getElementById('globeList');
   if (list) {
-    if (!data.length) {
-      list.innerHTML = '<li class="muted small">No location data yet. Country origin appears once traffic arrives through Cloudflare.</li>';
+    if (!MARKERS.length) {
+      list.innerHTML = '<li class="muted small">No location data yet. Visitor origin appears once traffic arrives through Cloudflare.</li>';
     } else {
-      list.innerHTML = data.slice(0, 8).map(function (c) {
-        var name = (COORDS[c.country] && COORDS[c.country][2]) || c.country;
-        var pct = Math.round(c.n / max * 100);
-        return '<li class="globe-row"><span class="globe-flag">' + flag(c.country) + '</span><span class="globe-name">' + name + '</span>'
+      var rows = MARKERS.slice().sort(function (a, b) { return b.n - a.n; }).slice(0, 8);
+      list.innerHTML = rows.map(function (c) {
+        var pct = Math.round(c.n / markerMax * 100);
+        var flg = /^[A-Z]{2}$/.test(c.country) ? flag(c.country) : '📍';
+        var esc = String(c.label).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; });
+        return '<li class="globe-row"><span class="globe-flag">' + flg + '</span><span class="globe-name">' + esc + '</span>'
           + '<span class="globe-bar"><span style="width:' + pct + '%"></span></span><span class="globe-n">' + c.n + '</span></li>';
       }).join('');
     }

@@ -166,7 +166,50 @@
   // Assistant conversation viewer (admin only) — lazy-loads each thread.
   var list = document.querySelector('.ai-log-list'); if (!list) return;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function strip(s) { return esc(s).replace(/\[\[([^\]|]+)\|[^\]]+\]\]/g, '<span class="ai-log-cite">$1</span>'); }
+  // Inline + block markdown, mirroring the assistant's own renderer so the logs
+  // read exactly like the answers staff saw. Citations render as inert chips.
+  function inline(s) {
+    return s
+      .replace(/\[\[([^\]|]{1,120})\|[^\]]+\]\]/g, '<span class="ai-log-cite">$1</span>')
+      .replace(/`([^`]+)`/g, function (m, c) { return '<code>' + c + '</code>'; })
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      .replace(/\[([^\]]+)\]\((\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+  function strip(src) {
+    var lines = esc(String(src || '')).split('\n');
+    var out = [], listT = null, code = false, buf = [];
+    function closeList() { if (listT) { out.push(listT === 'ul' ? '</ul>' : '</ol>'); listT = null; } }
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      if (/^```/.test(l)) { if (code) { out.push('<pre><code>' + buf.join('\n') + '</code></pre>'); buf = []; } code = !code; continue; }
+      if (code) { buf.push(l); continue; }
+      if (/^\s*\|.*\|\s*$/.test(l)) {
+        closeList(); var rows = [];
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i].trim()); i++; }
+        i--;
+        var t = '<table class="ai-log-table">';
+        rows.forEach(function (row, ri) {
+          var cells = row.replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); });
+          if (cells.every(function (c) { return /^:?-{2,}:?$/.test(c); })) return;
+          var tag = ri === 0 ? 'th' : 'td';
+          t += '<tr>' + cells.map(function (c) { return '<' + tag + '>' + inline(c) + '</' + tag + '>'; }).join('') + '</tr>';
+        });
+        out.push(t + '</table>'); continue;
+      }
+      var h = /^(#{1,4})\s+(.*)$/.exec(l);
+      var ul = /^\s*[-*]\s+(.*)$/.exec(l);
+      var ol = /^\s*\d+[.)]\s+(.*)$/.exec(l);
+      if (h) { closeList(); out.push('<h4>' + inline(h[2]) + '</h4>'); }
+      else if (ul) { if (listT !== 'ul') { closeList(); out.push('<ul>'); listT = 'ul'; } out.push('<li>' + inline(ul[1]) + '</li>'); }
+      else if (ol) { if (listT !== 'ol') { closeList(); out.push('<ol>'); listT = 'ol'; } out.push('<li>' + inline(ol[1]) + '</li>'); }
+      else if (!l.trim()) { closeList(); }
+      else { closeList(); out.push('<p>' + inline(l) + '</p>'); }
+    }
+    if (code && buf.length) out.push('<pre><code>' + buf.join('\n') + '</code></pre>');
+    closeList();
+    return out.join('');
+  }
   list.addEventListener('click', function (e) {
     var btn = e.target.closest('.ai-log-open'); if (!btn) return;
     var item = btn.closest('.ai-log-item');
@@ -184,7 +227,7 @@
           if (m.role === 'user') return '<div class="ai-log-turn is-q"><span class="ai-log-who">Asked</span><div>' + esc(m.content) + '</div></div>';
           var th = m.thinking
             ? '<details class="ai-log-think"><summary>Model reasoning</summary><pre>' + esc(m.thinking) + '</pre></details>' : '';
-          return '<div class="ai-log-turn is-a"><span class="ai-log-who">Answered</span><div>' + strip(m.content).replace(/\n/g, '<br>') + '</div>' + th + '</div>';
+          return '<div class="ai-log-turn is-a"><span class="ai-log-who">Answered</span><div class="ai-log-md">' + strip(m.content) + '</div>' + th + '</div>';
         }).join('') || '<p class="muted small">Empty conversation.</p>';
       })
       .catch(function () { body.innerHTML = '<p class="muted small">Could not load.</p>'; });

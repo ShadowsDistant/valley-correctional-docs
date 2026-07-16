@@ -28,10 +28,10 @@
       <div class="globe-layout">
         <div class="globe-stage">
           <canvas id="trafficGlobe" width="380" height="380" aria-label="Rotating globe of traffic origin"></canvas>
-          <p class="globe-hint muted small">Drag to spin · hover a marker for detail</p>
+          <p class="globe-hint muted small">Drag to spin &amp; tilt · scroll or ± to zoom into a spot · hover a marker for detail</p>
         </div>
         <div class="globe-side">
-          <div class="globe-side-h">Top countries</div>
+          <div class="globe-side-h" id="globeSideH">Top locations</div>
           <ul class="globe-list" id="globeList"><li class="muted small">Loading…</li></ul>
         </div>
       </div>
@@ -168,7 +168,7 @@
   if (window.pjaxRegister) window.pjaxRegister(function () { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); });
 })();
 </script>
-<script>window.GLOBE_DATA = <%- JSON.stringify(countries || []) %>;</script>
+<script>window.GLOBE_DATA = <%- JSON.stringify(countries || []) %>; window.GLOBE_CITIES = <%- JSON.stringify(cities || []) %>;</script>
 <script src="/assets/js/globe.js?v=<%= assetVersion %>"></script>
   </main>
 </div>

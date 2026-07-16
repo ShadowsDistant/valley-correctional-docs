@@ -214,9 +214,27 @@
     chatId = null; msgsEl.innerHTML = ''; renderEmpty();
     setSub('Answers from your documentation'); showDrawer(false); input.focus();
   }
+  var drawerAnim = null;
   function showDrawer(on) {
-    drawer.hidden = !on;
-    if (on) loadList();
+    if (on) {
+      if (drawerAnim) { drawer.removeEventListener('animationend', drawerAnim); drawerAnim = null; }
+      drawer.classList.remove('closing');
+      drawer.hidden = false;
+      loadList();
+      return;
+    }
+    if (drawer.hidden || drawer.classList.contains('closing')) return;
+    // Fade the drawer out before hiding it (the global [hidden] rule kills any
+    // transition once hidden is set, so animate first, then hide on animationend).
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { drawer.hidden = true; return; }
+    drawerAnim = function () {
+      drawer.removeEventListener('animationend', drawerAnim); drawerAnim = null;
+      drawer.classList.remove('closing');
+      drawer.hidden = true;
+    };
+    drawer.addEventListener('animationend', drawerAnim);
+    drawer.classList.add('closing');
   }
 
   listEl.addEventListener('click', function (e) {

@@ -338,9 +338,15 @@ function recordViewRow(req, { slug, area }) {
     // Cloudflare supplies the visitor's country; only ISO-3166 alpha-2 kept.
     const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
     const country = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' && cc !== 'T1' ? cc : '';
+    // Optional finer geo from Cloudflare's visitor-location Managed Transform.
+    const city = String(req.headers['cf-ipcity'] || '').slice(0, 80);
+    const latH = parseFloat(req.headers['cf-iplatitude']);
+    const lonH = parseFloat(req.headers['cf-iplongitude']);
+    const lat = Number.isFinite(latH) && latH >= -90 && latH <= 90 ? latH : null;
+    const lon = Number.isFinite(lonH) && lonH >= -180 && lonH <= 180 ? lonH : null;
     db.prepare(
-      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username, area, country)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username, area, country, city, lat, lon)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       req.path,
       slug || null,
@@ -351,7 +357,10 @@ function recordViewRow(req, { slug, area }) {
       u ? 1 : 0,
       u ? u.username : null,
       area || 'docs',
-      country
+      country,
+      city,
+      lat,
+      lon
     );
   } catch (e) {
     // analytics must never break a page render
@@ -384,10 +393,16 @@ const loginLimiter = rateLimit({
   message: 'Too many login attempts. Try again in 15 minutes.',
 });
 
+function noStore(res) {
+  // Belt-and-suspenders against any cache (browser, bfcache, Cloudflare) serving
+  // a stale login page whose CSRF token no longer matches the visitor's session.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('CDN-Cache-Control', 'no-store');   // Cloudflare-tier cache
+  res.set('Vary', 'Cookie');
+}
 app.get('/login', auth.csrfToken, (req, res) => {
-  // no-store: a cached/bfcached login form carries a stale CSRF token, which
-  // locks users out after logout until they clear the cache.
-  res.set('Cache-Control', 'no-store');
+  noStore(res);
   if (req.session.user) return res.redirect('/admin');
   res.render('login', {
     title: 'Staff Login',
@@ -395,6 +410,15 @@ app.get('/login', auth.csrfToken, (req, res) => {
     error: null,
     layout: false,
   });
+});
+
+// A fresh CSRF token for the CURRENT session, fetched by the login page just
+// before submit. This makes login work even if the page HTML itself was served
+// stale from a cache — the token always matches the live session, so nobody has
+// to clear their cache to sign in.
+app.get('/login/token', auth.csrfToken, (req, res) => {
+  noStore(res);
+  res.json({ csrf: res.locals.csrfToken });
 });
 
 app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -1258,10 +1282,24 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
   ).all(since);
   const countryTotal = countries.reduce((a, c) => a + c.n, 0);
 
+  // Exact-location clusters for the globe — visitors grouped by ~0.1° cells so
+  // nearby hits collapse into one city dot at its average lat/lon.
+  const cities = db.prepare(
+    `SELECT country,
+            MAX(city) AS city,
+            ROUND(AVG(lat), 3) AS lat,
+            ROUND(AVG(lon), 3) AS lon,
+            COUNT(DISTINCT visitor) AS n
+     FROM page_views
+     WHERE area='docs' AND lat IS NOT NULL AND lon IS NOT NULL AND day >= date('now', ?)
+     GROUP BY ROUND(lat, 1), ROUND(lon, 1)
+     ORDER BY n DESC LIMIT 250`
+  ).all(since).map((c) => ({ country: c.country || '', city: c.city || '', lat: c.lat, lon: c.lon, n: c.n }));
+
   res.render('admin/analytics', {
     title: 'Admin · Analytics', section: 'analytics',
     series, totals, topPages, referrers, authed, scope, byHour,
-    browsers: toArr(brow), oses: toArr(os), recent, countries, countryTotal,
+    browsers: toArr(brow), oses: toArr(os), recent, countries, countryTotal, cities,
   });
 });
 
@@ -1885,8 +1923,18 @@ function systemStats() {
     const s = fs.statfsSync(DATA_DIR);
     disk = { total: s.blocks * s.bsize, free: s.bavail * s.bsize };
   } catch (e) {}
-  let dbBytes = 0;
-  try { dbBytes = fs.statSync(path.join(DATA_DIR, 'vcf.sqlite')).size; } catch (e) {}
+  const sizeOf = (p) => { try { return fs.statSync(p).size; } catch (e) { return 0; } };
+  const dbMain = sizeOf(path.join(DATA_DIR, 'vcf.sqlite'));
+  const dbWal = sizeOf(path.join(DATA_DIR, 'vcf.sqlite-wal'));
+  const dbShm = sizeOf(path.join(DATA_DIR, 'vcf.sqlite-shm'));
+  const dbBytes = dbMain + dbWal + dbShm;
+  const evidence = uploadsTotal();
+  const count = (sql) => { try { return db.prepare(sql).get().n; } catch (e) { return null; } };
+  const counts = {
+    docs: count('SELECT COUNT(*) n FROM pages'),
+    staff: count('SELECT COUNT(*) n FROM users WHERE deleted=0'),
+    sessions: count("SELECT COUNT(*) n FROM sessions WHERE expire > strftime('%s','now')*1000"),
+  };
   const mem = process.memoryUsage();
   const beat = (() => { try { return fs.statSync(UPDATER_BEAT).mtimeMs; } catch (e) { return 0; } })();
   return {
@@ -1902,6 +1950,11 @@ function systemStats() {
     memory: { total, free, used: total - free },
     disk,
     db: { bytes: dbBytes },
+    storage: {
+      dbMain, dbWal, dbShm, dbTotal: dbBytes,
+      evidence, evidenceCap: UPLOAD_CAP,
+    },
+    counts,
     app: {
       node: process.version, pid: process.pid, uptime: process.uptime(),
       rss: mem.rss, heapUsed: mem.heapUsed, env: process.env.NODE_ENV || 'development',

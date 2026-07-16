@@ -20,6 +20,7 @@
         <span class="stat-num" id="sysCpu">—</span>
         <span class="stat-label">CPU load · 1 min</span>
         <div class="sys-meter"><span id="sysCpuBar" style="width:0%"></span></div>
+        <canvas class="sys-spark" id="sysCpuSpark" width="240" height="34" aria-hidden="true"></canvas>
         <span class="muted small" id="sysCpuSub">—</span>
       </div>
       <div class="stat-card">
@@ -70,6 +71,29 @@
         </dl>
       </section>
     </div>
+
+    <section class="panel sys-storage-panel">
+      <div class="panel-head"><h2><%- icon('cabinet') %> Storage &amp; content</h2></div>
+      <div class="sys-storage-grid">
+        <div class="sys-store">
+          <div class="sys-store-top"><span class="sys-store-label">Database</span><span class="mono" id="sysStDbTot">—</span></div>
+          <dl class="sys-dl sys-store-dl">
+            <dt>Main</dt><dd class="mono" id="sysStDbMain">—</dd>
+            <dt>Write-ahead log</dt><dd class="mono" id="sysStDbWal">—</dd>
+          </dl>
+        </div>
+        <div class="sys-store">
+          <div class="sys-store-top"><span class="sys-store-label">Evidence uploads</span><span class="mono" id="sysStEv">—</span></div>
+          <div class="sys-meter sys-store-meter"><span id="sysStEvBar" style="width:0%"></span></div>
+          <span class="muted small" id="sysStEvSub">—</span>
+        </div>
+      </div>
+      <div class="sys-count-row">
+        <div class="sys-count"><span class="sys-count-n" id="sysCntDocs">—</span><span class="sys-count-l">Documents</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntStaff">—</span><span class="sys-count-l">Staff accounts</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntSess">—</span><span class="sys-count-l">Active sessions</span></div>
+      </div>
+    </section>
 
     <% if (pending && pending.length) { %>
       <section class="panel sys-pending">
@@ -142,6 +166,34 @@
     el.style.width = Math.max(0, Math.min(100, pct)) + '%';
     el.className = pct >= 90 ? 'is-crit' : pct >= 70 ? 'is-warn' : '';
   }
+  // Rolling CPU-load sparkline — a lightweight sense of the trend, not just the
+  // instantaneous number. Keeps the last ~60 samples (2 minutes at 2s).
+  var spark = [], SPARK_MAX = 60;
+  function pushSpark(pct) {
+    spark.push(Math.max(0, Math.min(100, pct)));
+    if (spark.length > SPARK_MAX) spark.shift();
+    drawSpark();
+  }
+  function drawSpark() {
+    var c = $('sysCpuSpark'); if (!c || !c.getContext) return;
+    var ctx = c.getContext('2d'), w = c.width, h = c.height, n = spark.length;
+    ctx.clearRect(0, 0, w, h);
+    if (n < 2) return;
+    var css = getComputedStyle(document.documentElement);
+    var accent = (css.getPropertyValue('--accent') || '#6ea8fe').trim();
+    var step = w / (SPARK_MAX - 1), pad = 3, ih = h - pad * 2;
+    var x0 = w - (n - 1) * step;
+    var yOf = function (v) { return pad + ih - (v / 100) * ih; };
+    ctx.beginPath();
+    for (var i = 0; i < n; i++) { var x = x0 + i * step, y = yOf(spark[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.lineTo(x0 + (n - 1) * step, h); ctx.lineTo(x0, h); ctx.closePath();
+    var g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, accent + '55'); g.addColorStop(1, accent + '00');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath();
+    for (var j = 0; j < n; j++) { var xx = x0 + j * step, yy = yOf(spark[j]); j ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+    ctx.strokeStyle = accent; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+  }
   function paint(s) {
     var loadPct = s.cpu.cores ? (s.cpu.load[0] / s.cpu.cores) * 100 : 0;
     $('sysCpu').textContent = s.cpu.load[0].toFixed(2);
@@ -165,6 +217,24 @@
     $('sysProcUp').textContent = dur(s.app.uptime);
     $('sysRss').textContent = bytes(s.app.rss) + ' RSS · ' + bytes(s.app.heapUsed) + ' heap';
     $('sysDb').textContent = bytes(s.db.bytes);
+
+    pushSpark(loadPct);
+
+    if (s.storage) {
+      $('sysStDbTot').textContent = bytes(s.storage.dbTotal);
+      $('sysStDbMain').textContent = bytes(s.storage.dbMain);
+      $('sysStDbWal').textContent = bytes(s.storage.dbWal);
+      $('sysStEv').textContent = bytes(s.storage.evidence);
+      var evPct = s.storage.evidenceCap ? (s.storage.evidence / s.storage.evidenceCap) * 100 : 0;
+      meter($('sysStEvBar'), evPct);
+      $('sysStEvSub').textContent = Math.round(evPct) + '% of ' + bytes(s.storage.evidenceCap) + ' cap · ' + bytes(Math.max(0, s.storage.evidenceCap - s.storage.evidence)) + ' free';
+    }
+    if (s.counts) {
+      var fmt = function (n) { return n == null ? 'n/a' : String(n); };
+      $('sysCntDocs').textContent = fmt(s.counts.docs);
+      $('sysCntStaff').textContent = fmt(s.counts.staff);
+      $('sysCntSess').textContent = fmt(s.counts.sessions);
+    }
 
     var pill = $('sysUpdaterPill');
     pill.textContent = s.updater.installed ? 'updater online' : 'updater offline';

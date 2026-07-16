@@ -17,7 +17,7 @@
         <a class="auth-back" href="/login">← Start over</a>
       </div>
     <% } else { %>
-      <form method="post" action="/login" class="auth-form">
+      <form method="post" action="/login" class="auth-form" id="loginForm">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="hidden" name="next" value="<%= next %>" />
         <label class="auth-field">
@@ -39,6 +39,31 @@
 <script>
 // A bfcache-restored login form carries a stale CSRF token — reload for a fresh one.
 window.addEventListener('pageshow', function (e) { if (e.persisted) window.location.reload(); });
+// Belt-and-suspenders: even if this page HTML was served stale from a cache, pull a
+// live CSRF token for the current session right before submit so nobody has to clear
+// their browser cache to sign in.
+(function () {
+  var form = document.getElementById('loginForm');
+  if (!form) return;
+  var submitting = false;
+  form.addEventListener('submit', function (e) {
+    if (submitting) return;                 // second pass — let it through
+    e.preventDefault();
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    var done = function () { submitting = true; if (btn) btn.disabled = false; form.submit(); };
+    fetch('/login/token', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.csrf) {
+          var f = form.querySelector('input[name="_csrf"]');
+          if (f) f.value = d.csrf;
+        }
+      })
+      .catch(function () {})                 // network hiccup — fall back to embedded token
+      .then(done);
+  });
+})();
 (function () {
   var step = document.getElementById('passkeyStep');
   if (!step) return;
