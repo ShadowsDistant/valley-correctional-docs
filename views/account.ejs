@@ -75,9 +75,37 @@
           <div><button class="btn btn-solid" type="submit"><%- icon('lock') %> Update password</button></div>
         </form>
       </section>
+
+      <!-- Passkeys (WebAuthn 2FA) -->
+      <section class="panel account-panel" id="passkeySection">
+        <div class="panel-head"><h2><%- icon('key') %> Passkeys</h2><% if (typeof passkeys !== 'undefined' && passkeys.length) { %><span class="badge badge-internal">2FA on</span><% } %></div>
+        <p class="muted small pk-intro">Add a passkey (fingerprint, face, PIN, or a hardware key) as a second step at login. Once you have one, your password alone won't be enough to sign in — a stolen password can't get in without your device.</p>
+        <ul class="pk-list" id="pkList">
+          <% (typeof passkeys !== 'undefined' ? passkeys : []).forEach(function (p) { %>
+            <li class="pk-item" data-pk="<%= p.id %>">
+              <span class="pk-ico"><%- icon('key') %></span>
+              <div class="pk-meta">
+                <strong><%= p.name %></strong>
+                <span class="muted small">Added <time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,10) %></time><% if (p.last_used) { %> · last used <time data-time="<%= p.last_used %>"><%= p.last_used.slice(0,10) %></time><% } %></span>
+              </div>
+              <form method="post" action="/account/passkey/<%= p.id %>/remove" class="inline pk-remove" data-confirm="Remove this passkey? If it's your last one, your account drops back to password-only." data-confirm-title="Remove passkey" data-confirm-ok="Remove">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <button class="btn btn-ghost btn-sm" type="submit"><%- icon('trash') %></button>
+              </form>
+            </li>
+          <% }); %>
+        </ul>
+        <p class="pk-empty muted small"<%= (typeof passkeys !== 'undefined' && passkeys.length) ? ' hidden' : '' %>>No passkeys yet — you sign in with your password only.</p>
+        <div class="pk-add-row">
+          <input type="text" id="pkName" maxlength="40" placeholder="Name this device (e.g. My laptop)" autocomplete="off" />
+          <button class="btn btn-solid" type="button" id="pkAdd"><%- icon('plus') %> Add a passkey</button>
+        </div>
+        <div class="pk-msg" id="pkAddMsg"></div>
+      </section>
     </div>
   </div>
 </div>
+<script src="/assets/js/passkey.js?v=<%= assetVersion %>"></script>
 <script>
 (function () {
   var box = document.getElementById('robloxAccount'); if (!box) return;
@@ -87,6 +115,45 @@
     if (!d.ok) { st.textContent = '— not linked to a Roblox account'; return; }
     st.innerHTML = '<strong>' + d.displayName + '</strong> <span class="muted">@' + d.name + '</span> · <a href="https://www.roblox.com/users/' + d.id + '/profile" target="_blank" rel="noopener">profile ↗</a>';
   }).catch(function () {});
+})();
+
+// ---- passkey management ----
+(function () {
+  var add = document.getElementById('pkAdd'); if (!add) return;
+  var msg = document.getElementById('pkAddMsg'), list = document.getElementById('pkList');
+  var empty = document.querySelector('.pk-empty'), nameIn = document.getElementById('pkName');
+  var section = document.getElementById('passkeySection');
+  if (!window.vcfPasskey || !window.vcfPasskey.supported) {
+    add.disabled = true; msg.className = 'pk-msg err';
+    msg.textContent = 'This browser does not support passkeys.';
+    return;
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function render(list_) {
+    var csrf = section.querySelector('input[name="_csrf"]').value;
+    list.innerHTML = list_.map(function (p) {
+      return '<li class="pk-item" data-pk="' + p.id + '"><span class="pk-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M15 8l2 2"/></svg></span>' +
+        '<div class="pk-meta"><strong>' + esc(p.name) + '</strong><span class="muted small">Added ' + (p.created_at||'').slice(0,10) + '</span></div>' +
+        '<form method="post" action="/account/passkey/' + p.id + '/remove" class="inline pk-remove" data-confirm="Remove this passkey? If it\'s your last one, your account drops back to password-only." data-confirm-title="Remove passkey" data-confirm-ok="Remove">' +
+        '<input type="hidden" name="_csrf" value="' + csrf + '" /><button class="btn btn-ghost btn-sm" type="submit"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></form></li>';
+    }).join('');
+    if (empty) empty.hidden = list_.length > 0;
+    if (window.fillTimes) window.fillTimes();
+  }
+  add.addEventListener('click', function () {
+    add.disabled = true; msg.className = 'pk-msg'; msg.textContent = 'Follow your device prompt…';
+    window.vcfPasskey.register(nameIn.value.trim()).then(function (d) {
+      add.disabled = false;
+      if (!d || !d.ok) { msg.className = 'pk-msg err'; msg.textContent = (d && d.error) || 'Could not add passkey.'; return; }
+      nameIn.value = ''; msg.className = 'pk-msg ok'; msg.textContent = 'Passkey added. It will be required at your next login.';
+      render(d.passkeys || []);
+    }).catch(function (e) {
+      add.disabled = false; msg.className = 'pk-msg err';
+      msg.textContent = (e && e.name === 'NotAllowedError') ? 'Prompt dismissed — nothing added.' : ((e && e.message) || 'Could not add passkey.');
+    });
+  });
+  // Removal uses the native form POST via the shared confirm modal (data-confirm),
+  // which redirects back to /account with the list refreshed.
 })();
 </script>
 <%- include('partials/foot') %>

@@ -8,26 +8,65 @@
 
     <% if (error) { %><div class="auth-error"><%- icon('danger') %> <span><%= error %></span></div><% } %>
 
-    <form method="post" action="/login" class="auth-form">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <input type="hidden" name="next" value="<%= next %>" />
-      <label class="auth-field">
-        <span class="auth-label">Username</span>
-        <input type="text" name="username" autocomplete="username" required autofocus placeholder="your username" />
-      </label>
-      <label class="auth-field">
-        <span class="auth-label">Password</span>
-        <input type="password" name="password" autocomplete="current-password" required placeholder="••••••••" />
-      </label>
-      <button class="btn btn-solid btn-block" type="submit"><%- icon('lock') %> Sign in</button>
-    </form>
-
-    <a class="auth-back" href="/home">← Back to documentation</a>
+    <% if (typeof passkeyStep !== 'undefined' && passkeyStep) { %>
+      <div class="auth-passkey" id="passkeyStep" data-step="<%- JSON.stringify(passkeyStep).replace(/"/g,'&quot;') %>">
+        <div class="auth-passkey-ico"><%- icon('key') %></div>
+        <p class="auth-passkey-lead">Password accepted. Confirm it's you with your passkey.</p>
+        <div class="auth-passkey-msg" id="pkMsg"></div>
+        <button class="btn btn-solid btn-block" type="button" id="pkBtn"><%- icon('key') %> Use passkey</button>
+        <a class="auth-back" href="/login">← Start over</a>
+      </div>
+    <% } else { %>
+      <form method="post" action="/login" class="auth-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="next" value="<%= next %>" />
+        <label class="auth-field">
+          <span class="auth-label">Username</span>
+          <input type="text" name="username" autocomplete="username" required autofocus placeholder="your username" />
+        </label>
+        <label class="auth-field">
+          <span class="auth-label">Password</span>
+          <input type="password" name="password" autocomplete="current-password" required placeholder="••••••••" />
+        </label>
+        <button class="btn btn-solid btn-block" type="submit"><%- icon('lock') %> Sign in</button>
+      </form>
+      <a class="auth-back" href="/home">← Back to documentation</a>
+    <% } %>
   </div>
   <p class="auth-foot">Access is monitored. Unauthorized use is prohibited.</p>
 </div>
+<script src="/assets/js/passkey.js?v=<%= assetVersion %>"></script>
 <script>
 // A bfcache-restored login form carries a stale CSRF token — reload for a fresh one.
 window.addEventListener('pageshow', function (e) { if (e.persisted) window.location.reload(); });
+(function () {
+  var step = document.getElementById('passkeyStep');
+  if (!step) return;
+  var data;
+  try { data = JSON.parse(step.getAttribute('data-step')); } catch (e) { return; }
+  var btn = document.getElementById('pkBtn'), msg = document.getElementById('pkMsg');
+  if (!window.vcfPasskey || !window.vcfPasskey.supported) {
+    msg.className = 'auth-passkey-msg err';
+    msg.textContent = 'This device does not support passkeys. Sign in from a device where you enrolled one.';
+    btn.disabled = true; return;
+  }
+  function go() {
+    btn.disabled = true;
+    msg.className = 'auth-passkey-msg';
+    msg.textContent = 'Waiting for your passkey…';
+    window.vcfPasskey.login(data).then(function (res) {
+      if (res && res.ok) { window.location.href = res.redirect || '/admin'; return; }
+      msg.className = 'auth-passkey-msg err';
+      msg.textContent = (res && res.error) || 'Passkey verification failed.';
+      btn.disabled = false;
+    }).catch(function (e) {
+      msg.className = 'auth-passkey-msg err';
+      msg.textContent = (e && e.name === 'NotAllowedError') ? 'Passkey prompt was dismissed.' : ((e && e.message) || 'Could not use your passkey.');
+      btn.disabled = false;
+    });
+  }
+  btn.addEventListener('click', go);
+  setTimeout(go, 250); // auto-trigger the prompt
+})();
 </script>
 <%- include('partials/foot') %>

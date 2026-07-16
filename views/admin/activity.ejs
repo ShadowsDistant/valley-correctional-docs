@@ -92,6 +92,29 @@
     <p class="muted small">Time on page is estimated from the gap between consecutive views (capped at 15 minutes); the most recent view has no measured duration.</p>
 
     <% if (isAdminViewer) { %>
+      <section class="panel">
+        <div class="panel-head"><h2><%- icon('key') %> Passkeys</h2><span class="badge <%= (targetPasskeys && targetPasskeys.length) ? 'badge-internal' : '' %>"><%= (targetPasskeys && targetPasskeys.length) ? (targetPasskeys.length + ' · 2FA on') : 'none' %></span></div>
+        <% if (!targetPasskeys || !targetPasskeys.length) { %>
+          <p class="muted small" style="margin:0"><strong><%= target.username %></strong> has no passkeys — they sign in with a password only.</p>
+        <% } else { %>
+          <p class="muted small ai-log-note">Remove a passkey if this staff member lost the device. Removing their last one drops the account back to password-only.</p>
+          <ul class="pk-list">
+            <% targetPasskeys.forEach(function (p) { %>
+              <li class="pk-item">
+                <span class="pk-ico"><%- icon('key') %></span>
+                <div class="pk-meta"><strong><%= p.name %></strong><span class="muted small">Added <time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,10) %></time><% if (p.last_used) { %> · last used <time data-time="<%= p.last_used %>"><%= p.last_used.slice(0,10) %></time><% } %></span></div>
+                <form method="post" action="/admin/staff/passkey/remove" class="inline" data-confirm="Remove <%= target.username %>'s passkey &quot;<%= p.name %>&quot;? They'll need to re-enrol on their device." data-confirm-title="Remove passkey" data-confirm-ok="Remove">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                  <input type="hidden" name="passkey_id" value="<%= p.id %>" />
+                  <input type="hidden" name="user_id" value="<%= target.id %>" />
+                  <button class="btn btn-ghost btn-sm" type="submit"><%- icon('trash') %> Remove</button>
+                </form>
+              </li>
+            <% }); %>
+          </ul>
+        <% } %>
+      </section>
+
       <section class="panel ai-log-panel">
         <div class="panel-head">
           <h2><%- icon('message') %> Assistant conversations</h2>

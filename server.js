@@ -441,16 +441,62 @@ app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => 
       layout: false,
     });
   }
-  db.prepare('UPDATE users SET last_login = datetime(\'now\') WHERE id = ?').run(user.id);
-  audit(user.username, 'user.login', user.username, user.role + ' · ' + (req.ip || ''));
   // Division-limited staff can't use the admin panel — land them on the site.
   const landing = auth.canEdit(user) ? '/admin' : '/home';
   const nextUrl = reqNext && !(reqNext.startsWith('/admin') && !auth.canEdit(user)) ? reqNext : landing;
+
+  // Second factor: if this account has any passkeys, the password alone is not
+  // enough — hold the login in a pending state and require a passkey assertion.
+  const pks = db.prepare('SELECT cred_id FROM passkeys WHERE user_id = ?').all(user.id);
+  if (pks.length) {
+    const challenge = webauthn.randomChallenge();
+    req.session.pendingLogin = { userId: user.id, challenge, nextUrl, at: Date.now() };
+    return req.session.save(() => res.render('login', {
+      title: 'Confirm it\'s you', next: nextUrl, error: null, layout: false,
+      passkeyStep: { rpId: rpInfo(req).rpId, challenge, allow: pks.map((p) => p.cred_id) },
+    }));
+  }
+  establishSession(req, user, (err) => err ? res.status(500).send('Session error') : res.redirect(nextUrl));
+});
+
+// Regenerate the session and mark the user fully signed in.
+function establishSession(req, user, done) {
+  db.prepare('UPDATE users SET last_login = datetime(\'now\') WHERE id = ?').run(user.id);
+  audit(user.username, 'user.login', user.username, user.role + ' · ' + (req.ip || ''));
   req.session.regenerate((err) => {
-    if (err) return res.status(500).send('Session error');
+    if (err) return done(err);
     req.session.user = { id: user.id, username: user.username, role: user.role, divisions: user.divisions || '', rank: user.rank || '', ranks: user.ranks || '', terminated: user.terminated || 0 };
-    req.session.save(() => res.redirect(nextUrl));
+    req.session.save(() => done(null));
   });
+}
+
+// Complete a passkey-gated login. The pending state was set by POST /login
+// only AFTER the password was verified, so this can only finish an
+// already-authenticated first factor.
+app.post('/login/passkey/verify', express.json(), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const pending = req.session.pendingLogin;
+  if (!pending || Date.now() - pending.at > 5 * 60 * 1000) {
+    return res.status(400).json({ ok: false, error: 'Login timed out — please start again.' });
+  }
+  const cred = db.prepare('SELECT * FROM passkeys WHERE cred_id = ? AND user_id = ?')
+    .get(String((req.body && req.body.credentialId) || ''), pending.userId);
+  if (!cred) return res.status(400).json({ ok: false, error: 'Unrecognised passkey.' });
+  const { origins, rpId } = rpInfo(req);
+  const v = webauthn.verifyAuthentication(req.body || {}, cred, { challenge: pending.challenge, origins, rpId });
+  if (!v.ok) {
+    const uname = (db.prepare('SELECT username FROM users WHERE id = ?').get(pending.userId) || {}).username || 'unknown';
+    audit(uname, 'user.login_2fa_fail', uname, v.error + ' · IP ' + (req.ip || ''));
+    return res.status(401).json({ ok: false, error: v.error });
+  }
+  db.prepare('UPDATE passkeys SET counter = ?, last_used = datetime(\'now\') WHERE id = ?').run(v.counter, cred.id);
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(pending.userId);
+  if (!user || auth.isSuspended(user)) return res.status(403).json({ ok: false, error: 'This account is no longer available.' });
+  const nextUrl = pending.nextUrl || (auth.canEdit(user) ? '/admin' : '/home');
+  delete req.session.pendingLogin;
+  establishSession(req, user, (err) => err
+    ? res.status(500).json({ ok: false, error: 'Session error' })
+    : res.json({ ok: true, redirect: nextUrl }));
 });
 
 app.post('/logout', (req, res) => {
@@ -744,7 +790,7 @@ function accountData(req) {
   ).all(uname);
   const row = db.prepare('SELECT ranks, rank FROM users WHERE id = ?').get(req.session.user.id) || {};
   const rankLabels = Object.values(auth.userRanks(row)).map(auth.rankLabel).filter(Boolean);
-  return { myInfractions, myPoints: staffPoints(uname), rankLabels };
+  return { myInfractions, myPoints: staffPoints(uname), rankLabels, passkeys: listPasskeys(req.session.user.id) };
 }
 app.get('/account', auth.requireAuth, auth.csrfToken, (req, res) => {
   res.render('account', Object.assign({
@@ -762,6 +808,74 @@ app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf,
   if (error) return res.status(400).render('account', Object.assign({ title: 'Your account', done: false, error }, accountData(req)));
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(auth.hashPassword(next_), u.id);
   audit(u.username, 'user.password', u.username, 'changed own password');
+  res.redirect('/account?updated=1');
+});
+
+// --- passkeys (WebAuthn 2FA) ------------------------------------------------
+const webauthn = require('./lib/webauthn');
+function rpInfo(req) {
+  const xfHost = req.headers['x-forwarded-host'];
+  const host = xfHost || req.headers.host || 'localhost';
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http');
+  const origins = [];
+  if (process.env.SITE_URL) origins.push(process.env.SITE_URL.replace(/\/+$/, ''));
+  origins.push(proto + '://' + host);
+  return { rpId: String(host).split(':')[0], origins: Array.from(new Set(origins)) };
+}
+const listPasskeys = (userId) =>
+  db.prepare('SELECT id, name, created_at, last_used FROM passkeys WHERE user_id = ? ORDER BY id').all(userId);
+const userPasskeys = (userId) =>
+  db.prepare('SELECT id, cred_id, public_key, alg, counter FROM passkeys WHERE user_id = ?').all(userId);
+
+// Begin enrollment — issue a challenge for navigator.credentials.create().
+app.post('/account/passkey/register/options', auth.requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const { rpId } = rpInfo(req);
+  const challenge = webauthn.randomChallenge();
+  req.session.pkReg = { challenge, at: Date.now() };
+  const u = req.session.user;
+  const existing = userPasskeys(u.id).map((p) => ({ id: p.cred_id, type: 'public-key' }));
+  res.json({
+    ok: true,
+    options: {
+      challenge,
+      rp: { name: 'Valley Correctional Facility', id: rpId },
+      user: { id: webauthn.b64url.encode(Buffer.from('u' + u.id)), name: u.username, displayName: u.username },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      excludeCredentials: existing,
+      timeout: 60000,
+      attestation: 'none',
+    },
+  });
+});
+
+// Finish enrollment — store the SPKI key the browser extracted.
+app.post('/account/passkey/register/verify', auth.requireAuth, express.json(), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const reg = req.session.pkReg;
+  if (!reg || Date.now() - reg.at > 5 * 60 * 1000) return res.status(400).json({ ok: false, error: 'Enrollment expired — try again.' });
+  delete req.session.pkReg;
+  const { origins } = rpInfo(req);
+  const v = webauthn.verifyRegistration(req.body || {}, { challenge: reg.challenge, origins });
+  if (!v.ok) return res.status(400).json({ ok: false, error: v.error });
+  const u = req.session.user;
+  if (db.prepare('SELECT 1 FROM passkeys WHERE cred_id = ?').get(v.credentialId)) {
+    return res.status(409).json({ ok: false, error: 'That passkey is already registered.' });
+  }
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 40) || ('Passkey ' + (listPasskeys(u.id).length + 1));
+  db.prepare('INSERT INTO passkeys (user_id, cred_id, public_key, alg, name) VALUES (?, ?, ?, ?, ?)')
+    .run(u.id, v.credentialId, v.publicKeySpki, v.algorithm, name);
+  audit(u.username, 'passkey.add', u.username, name);
+  res.json({ ok: true, passkeys: listPasskeys(u.id) });
+});
+
+// Remove one of your own passkeys.
+app.post('/account/passkey/:id/remove', auth.requireAuth, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const u = req.session.user;
+  const pk = db.prepare('SELECT id, name FROM passkeys WHERE id = ? AND user_id = ?').get(Number(req.params.id), u.id);
+  if (pk) { db.prepare('DELETE FROM passkeys WHERE id = ?').run(pk.id); audit(u.username, 'passkey.remove', u.username, pk.name); }
+  if (req.headers['x-requested-with'] === 'fetch') return res.json({ ok: true, passkeys: listPasskeys(u.id) });
   res.redirect('/account?updated=1');
 });
 
@@ -1326,6 +1440,19 @@ adminRouter.post('/staff/reinstate', auth.requireAdmin, auth.verifyCsrf, (req, r
   res.redirect('/admin/staff');
 });
 
+// Admins can remove a staff member's passkey (e.g. lost device). Removing the
+// last one drops that account back to password-only until they re-enrol.
+adminRouter.post('/staff/passkey/remove', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+  const pkId = Number(req.body.passkey_id);
+  const pk = db.prepare('SELECT p.id, p.name, u.username FROM passkeys p JOIN users u ON u.id = p.user_id WHERE p.id = ?').get(pkId);
+  if (pk) {
+    db.prepare('DELETE FROM passkeys WHERE id = ?').run(pk.id);
+    audit(req.session.user.username, 'passkey.admin_remove', pk.username, 'removed passkey "' + pk.name + '"');
+  }
+  if (req.headers['x-requested-with'] === 'fetch') return res.json({ ok: true });
+  res.redirect('/admin/staff/overview?id=' + Number(req.body.user_id || 0));
+});
+
 // Rename a staff account. Usernames are soft foreign keys across the logs, so
 // every referencing column is rewritten in one transaction. The audit log is
 // deliberately left as-is (history records what actually happened) — a
@@ -1697,12 +1824,13 @@ function staffOverview(req, res) {
   // saved and reviewable; see the notice in the assistant panel).
   const isAdminViewer = viewer.role === 'admin';
   const aiChats = isAdminViewer ? aiChatList(target.id) : null;
+  const targetPasskeys = isAdminViewer ? listPasskeys(target.id) : null;
   res.render('admin/activity', {
     title: 'Overview · ' + target.username, section: 'staff',
     target, stats, items: items.slice(0, 300),
     rankLabels, seeMod, seeSID, punReceived, punIssued, infReceived, infIssued,
     points: seeSID ? staffPoints(target.username) : null,
-    isAdminViewer, aiChats,
+    isAdminViewer, aiChats, targetPasskeys, csrfToken: req.session.csrf,
   });
 }
 // Read any staff member's assistant conversation (admin only).
