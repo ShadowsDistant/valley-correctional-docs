@@ -521,6 +521,8 @@ kbd {
 .account-panel .stack-form { max-width: 100%; }
 .account-ok { display: flex; align-items: center; gap: 9px; background: color-mix(in srgb, #22c55e 12%, transparent); border: 1px solid color-mix(in srgb, #22c55e 40%, transparent); color: #22c55e; padding: 11px 14px; border-radius: var(--r-sm); font-size: 13.5px; margin-bottom: 18px; font-weight: 600; }
 .account-ok .ic { background-color: #22c55e; width: 16px; height: 16px; }
+/* `display:flex` above beats the UA `[hidden]` rule — restore hide-when-hidden. */
+.auth-error[hidden], .account-ok[hidden] { display: none; }
 
 /* homepage cards must not inherit the markdown link underline */
 .markdown a.doc-card, .markdown a.doc-card:hover { text-decoration: none; }

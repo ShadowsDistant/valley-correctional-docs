@@ -90,7 +90,10 @@
   function hueOf(name) { var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360; return h; }
   function avatar(name, staff) { return '<span class="fb-av' + (staff ? ' is-staff' : '') + '" style="--h:' + hueOf(name || 'anon') + '">' + esc(initial(name)) + '</span>'; }
 
-  var polls = {};
+  var polls = {}, sigs = {};
+  function chatSig(id, d) {
+    return id + '|' + d.feedback.status + '|' + d.messages.map(function (m) { return m.created_at + m.sender + m.body; }).join('~');
+  }
   function renderChat(box, d) {
     var msgs = [{ sender: 'submitter', body: d.feedback.body, created_at: d.feedback.created_at, _first: true, sender_name: d.feedback.submitted_by || 'Submitter' }].concat(d.messages);
     var html = '', lastDay = '', prevSender = null;
@@ -118,6 +121,11 @@
     var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
     return fetch('/api/feedback/' + id + '/messages').then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) return;
+      // Only rebuild when the thread actually changed — avoids the 8s poll
+      // re-animating every bubble. Forced scroll (open / after send) always renders.
+      var sig = chatSig(id, d);
+      if (sig === sigs[id] && !scroll) return;
+      sigs[id] = sig;
       renderChat(box, d);
       if (scroll || atBottom) box.scrollTop = box.scrollHeight;
     }).catch(function () {});

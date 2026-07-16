@@ -182,7 +182,10 @@
   // ---- chat drawer ----
   var drawer = document.getElementById('fbDrawer'), scrim = document.getElementById('fbScrim');
   var chat = document.getElementById('fbChat');
-  var openId = null, pollT = null, lastCount = -1;
+  var openId = null, pollT = null, lastSig = '';
+  function chatSig(id, d) {
+    return id + '|' + d.feedback.status + '|' + d.feedback.title + '|' + d.messages.map(function (m) { return m.created_at + m.sender + m.body; }).join('~');
+  }
 
   function renderChat(d) {
     var msgs = [{ sender: 'submitter', body: d.feedback.body, created_at: d.feedback.created_at, _first: true }].concat(d.messages);
@@ -210,14 +213,18 @@
     return fetch('/api/feedback/' + id + '/messages?token=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) return;
       openId = id;
-      var m = CATS[d.feedback.category] || CATS.other;
+      readMap[id] = d.messages.length; saveRead();
+      // Skip the DOM rebuild when nothing changed — polling every 8s otherwise
+      // replays the entrance animation on every bubble (the "glitch"). A forced
+      // scroll (open / after send) always renders so we can jump to the bottom.
+      var sig = chatSig(id, d);
+      if (sig === lastSig && !scroll) return;
+      lastSig = sig;
       document.getElementById('fbDrawerTitle').textContent = d.feedback.title;
       document.getElementById('fbDrawerSub').innerHTML = catChip(d.feedback.category) + (statusPill[d.feedback.status] || '');
       var atBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 60;
       renderChat(d);
       if (scroll || atBottom) chat.scrollTop = chat.scrollHeight;
-      lastCount = d.messages.length;
-      readMap[id] = d.messages.length; saveRead();
     }).catch(function () {});
   }
 
