@@ -467,6 +467,10 @@
   // dashboard, and non-page targets always full-load.
   (function () {
     if (!window.history || !window.fetch || !document.querySelector('main.content')) return;
+    // diagnostic kill switch: run `localStorage.vcfNoPjax = '1'` in the console
+    // to turn client-side navigation off entirely (every click full-loads);
+    // `localStorage.removeItem('vcfNoPjax')` turns it back on.
+    try { if (localStorage.getItem('vcfNoPjax') === '1') return; } catch (e) {}
     var main = document.querySelector('main.content');
     var isProtected = function () { return !!document.querySelector('.doc.protected'); };
     var isAdminChrome = function (scope) { return !!(scope || document).querySelector('.admin-sidebar'); };
@@ -515,7 +519,17 @@
       var ctrl = (window.AbortController ? new AbortController() : null);
       inflight = ctrl;
       main.classList.add('pjax-loading');
-      fetch(url, { headers: { 'X-Requested-With': 'fetch' }, signal: ctrl && ctrl.signal }).then(function (r) {
+      // a fetch that hangs (proxy queueing, flaky network) must not leave the
+      // page dimmed forever — after 8s give up and navigate for real.
+      var timedOut = false;
+      var timer = setTimeout(function () {
+        if (seq !== navSeq) return;
+        timedOut = true;
+        if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+        location.href = url;
+      }, 8000);
+      fetch(url, { headers: { 'X-Requested-With': 'fetch' }, cache: 'no-store', signal: ctrl && ctrl.signal }).then(function (r) {
+        clearTimeout(timer);
         if (seq !== navSeq) throw { stale: true };
         // a redirect (e.g. session expired -> /login) means this isn't the page
         // we asked for — do a real navigation so the right chrome loads.
@@ -566,6 +580,8 @@
         main.classList.remove('pjax-loading');
         watchdog(seq);
       }).catch(function (err) {
+        clearTimeout(timer);
+        if (timedOut) return; // the timeout already started a real navigation
         if (seq !== navSeq || (err && (err.stale || err.name === 'AbortError'))) return; // superseded — newest wins
         location.href = url; // genuine failure: fall back to a real navigation
       });
