@@ -48,6 +48,12 @@ compose_file() {
   printf '%s' 'docker-compose.yml'
 }
 
+# Total RAM + swap in MB — the Docker build compiles better-sqlite3 natively,
+# which needs roughly 1.5GB of headroom. 1GB droplets OOM without swap.
+mem_budget_mb() {
+  awk '/^MemTotal:/{m=$2} /^SwapTotal:/{s=$2} END{printf "%d", (m+s)/1024}' /proc/meminfo 2>/dev/null || echo 9999
+}
+
 esc() { printf '%s' "$1" | tr -d '\r' | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g' | cut -c1-600; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 sha() { git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown; }
@@ -97,7 +103,20 @@ tick() {
   write_status running "Rebuilding containers…"
   local cf; cf="$(compose_file)"
   say "rebuilding with $cf"
-  out=$(docker compose -f "$cf" up -d --build 2>&1) || { write_status error "docker compose failed: $out"; die "compose failed"; }
+  local memnote=""
+  if [ "$(mem_budget_mb)" -lt 1600 ]; then
+    memnote=" (low memory host — if this fails, add swap: see deploy/update-watcher.sh --help)"
+    say "warning: only $(mem_budget_mb)MB RAM+swap — the native build may be tight"
+  fi
+  out=$(docker compose -f "$cf" up -d --build 2>&1) || {
+    # An OOM-killed compile is the classic failure on small droplets; say so.
+    if printf '%s' "$out" | grep -qiE 'killed|out of memory|signal 9|cannot allocate'; then
+      write_status error "Build ran out of memory on this host. Add swap (see below) and retry.$memnote"
+    else
+      write_status error "docker compose failed: $out"
+    fi
+    die "compose failed"
+  }
 
   write_status ok "Updated to $(sha) — $(git -C "$APP_DIR" log -1 --pretty=%s 2>/dev/null)"
   say "done: $(sha)"
@@ -139,6 +158,13 @@ do_install() {
   say "app directory: $APP_DIR"
   say "compose file : $(compose_file)"
 
+  # Drop any earlier hand-added cron line for this script so we don't end up
+  # double-scheduled (a systemd timer AND cron both ticking).
+  if have crontab && crontab -l 2>/dev/null | grep -Fq "update-watcher.sh"; then
+    ( crontab -l 2>/dev/null | grep -Fv "update-watcher.sh" ) | crontab -
+    say "removed a previous cron entry for this script"
+  fi
+
   if have systemctl && install_systemd; then
     say "installed: systemd timer vcf-update.timer (runs every minute)"
   elif have crontab && install_cron; then
@@ -167,6 +193,16 @@ do_status() {
   say "git checkout : $(git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1 && echo "yes ($(sha))" || echo 'NO — the update button needs a git clone')"
   say "docker       : $(have docker && echo yes || echo 'NO')"
   say "compose file : $(compose_file)"
+  local mb; mb="$(mem_budget_mb)"
+  if [ "$mb" -lt 1600 ]; then
+    say "memory       : ${mb}MB RAM+swap — TIGHT. The image build compiles better-sqlite3"
+    say "               and may be OOM-killed. Add 2GB of swap once:"
+    say "                 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile"
+    say "                 sudo mkswap /swapfile && sudo swapon /swapfile"
+    say "                 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
+  else
+    say "memory       : ${mb}MB RAM+swap (ok for the native build)"
+  fi
   if have systemctl && systemctl list-unit-files 2>/dev/null | grep -q '^vcf-update.timer'; then
     say "schedule     : systemd timer — $(systemctl is-active vcf-update.timer 2>/dev/null)"
     systemctl list-timers vcf-update.timer --no-pager 2>/dev/null | sed -n '2p'
