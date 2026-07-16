@@ -526,14 +526,26 @@
         if (seq !== navSeq) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var newMain = doc.querySelector('main.content');
-        // full-load if the target isn't a normal page, is confidential, or has
-        // different chrome (public<->admin) than the current page.
-        if (!newMain || doc.querySelector('.doc.protected') || isAdminChrome(doc) !== isAdminChrome()) {
+        // full-load if the target isn't a normal page, is empty, is
+        // confidential, or has different chrome (public<->admin) than the
+        // current page.
+        if (!newMain || !newMain.children.length || doc.querySelector('.doc.protected') || isAdminChrome(doc) !== isAdminChrome()) {
+          location.href = url; return;
+        }
+        // a deploy happened since this tab loaded: the fetched page was built
+        // against different assets than the JS/CSS currently running — mixing
+        // them breaks pages, so do a real navigation to pick everything up.
+        var curV = document.querySelector('meta[name="asset-v"]');
+        var newV = doc.querySelector('meta[name="asset-v"]');
+        if (curV && newV && curV.getAttribute('content') !== newV.getAttribute('content')) {
           location.href = url; return;
         }
         runCleanups();
         main.innerHTML = newMain.innerHTML;
         main.className = newMain.className;                 // keep admin-content / wide variants
+        // mark the document: entrance animations are disabled from now on so
+        // swapped-in content can never be stuck invisible (see styles.css).
+        document.documentElement.classList.add('pjaxed');
         main.classList.remove('pjax-in'); void main.offsetWidth; main.classList.add('pjax-in');
         document.title = doc.title;
         runScripts(main);

@@ -9,8 +9,13 @@
 
   // ---------- tiny safe markdown renderer ----------
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var CITE_ICO = '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
   function inline(s) {
     return s
+      // citation tokens: [[Document Title|slug]] -> clickable source chip
+      .replace(/\[\[([^\]|]{1,120})\|([a-z0-9][a-z0-9\/_\-]{0,120})\]\]/gi, function (m, t, slug) {
+        return '<a class="ai-cite" href="/' + slug + '" target="_blank" rel="noopener" data-tip="Open source document">' + CITE_ICO + '<span>' + t.trim() + '</span></a>';
+      })
       .replace(/`([^`]+)`/g, function (m, c) { return '<code>' + c + '</code>'; })
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
@@ -74,7 +79,8 @@
     '<div class="ai-composer">' +
       '<textarea id="aiInput" rows="1" placeholder="Ask about any handbook or policy…" maxlength="4000"></textarea>' +
       '<button type="button" id="aiSend" aria-label="Send"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>' +
-    '</div>';
+    '</div>' +
+    '<div class="ai-hint"><kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for a new line · answers cite the docs you can access</div>';
 
   document.body.appendChild(fab);
   document.body.appendChild(panel);
@@ -96,14 +102,17 @@
     d.innerHTML = '<div class="ai-bubble">' + esc(text) + '</div>';
     msgsEl.appendChild(d); scrollBottom();
   }
+  var BOT_AV = '<span class="ai-av"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3z"/></svg></span>';
   function addAssistantShell() {
     var d = document.createElement('div'); d.className = 'ai-msg ai-bot';
-    d.innerHTML =
-      '<div class="ai-think" hidden>' +
-        '<button type="button" class="ai-think-toggle"><span class="ai-think-dot"></span><span class="ai-think-label">Thinking…</span><svg class="ai-think-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>' +
-        '<div class="ai-think-body"></div>' +
-      '</div>' +
-      '<div class="ai-bubble ai-answer"><span class="ai-cursor"></span></div>';
+    d.innerHTML = BOT_AV +
+      '<div class="ai-col">' +
+        '<div class="ai-think" hidden>' +
+          '<button type="button" class="ai-think-toggle"><span class="ai-think-dot"></span><span class="ai-think-label">Thinking…</span><svg class="ai-think-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>' +
+          '<div class="ai-think-body"></div>' +
+        '</div>' +
+        '<div class="ai-bubble ai-answer"><span class="ai-cursor"></span></div>' +
+      '</div>';
     msgsEl.appendChild(d); scrollBottom();
     var think = d.querySelector('.ai-think');
     think.querySelector('.ai-think-toggle').addEventListener('click', function () { think.classList.toggle('open'); scrollBottom(); });
@@ -132,7 +141,7 @@
       if (m.role === 'user') addUser(m.content);
       else {
         var d = document.createElement('div'); d.className = 'ai-msg ai-bot';
-        d.innerHTML = '<div class="ai-bubble ai-answer">' + mdLite(m.content) + '</div>';
+        d.innerHTML = BOT_AV + '<div class="ai-col"><div class="ai-bubble ai-answer">' + mdLite(m.content) + '</div></div>';
         msgsEl.appendChild(d);
       }
     });
@@ -191,7 +200,7 @@
             var j; try { j = JSON.parse(s.slice(5)); } catch (e) { return; }
             if (j.t === 'think') {
               if (!thinkStart) { thinkStart = Date.now(); thinkEl.hidden = false; thinkEl.classList.add('open'); }
-              thinkTxt += j.d; thinkBody.textContent = thinkTxt; scrollBottom();
+              thinkTxt += j.d; thinkBody.innerHTML = mdLite(thinkTxt); scrollBottom();
             } else if (j.t === 'text') {
               finishThinking();
               answerTxt += j.d;
@@ -243,4 +252,8 @@
   });
   input.addEventListener('input', function () { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden && document.activeElement !== input) setOpen(false); });
+  // close when the user navigates to another page client-side — the panel
+  // shouldn't linger over fresh content (the conversation is kept and
+  // restores the next time it's opened).
+  window.addEventListener('pjax:load', function () { if (!panel.hidden) setOpen(false); });
 })();

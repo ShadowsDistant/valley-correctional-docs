@@ -363,29 +363,16 @@ kbd {
 @media (prefers-reduced-motion: no-preference) {
   @keyframes riseIn { from { transform: translateY(10px); } to { transform: none; } }
   .content.pjax-in { animation: riseIn .28s var(--ease); }
-  /* once content has arrived via PJAX, don't re-run the opacity-fade entrances
-     on the swapped children — the container's rise covers the transition and
-     the children stay at their natural (visible) opacity. Covers every
-     entrance-animated element that can appear inside swapped content. */
-  .content.pjax-in .doc,
-  .content.pjax-in .hero,
-  .content.pjax-in .doc-breadcrumb,
-  .content.pjax-in .admin-titlerow,
-  .content.pjax-in .admin-h1,
-  .content.pjax-in .fb-card,
-  .content.pjax-in .fb-item,
-  .content.pjax-in .doc-card,
-  .content.pjax-in .stat-card,
-  .content.pjax-in .panel,
-  .content.pjax-in .action,
-  .content.pjax-in .clause-row,
-  .content.pjax-in .wm-tool,
-  .content.pjax-in .log-filters,
-  .content.pjax-in .table-scroll,
-  .content.pjax-in .settings-grid,
-  .content.pjax-in .staff-card,
-  .content.pjax-in .policy-editor-grid > * { animation: none; }
 }
+/* Once any client-side swap has happened (html.pjaxed), entrance animations
+   inside the swapped container complete instantly — CSS animations don't
+   reliably (re)play on innerHTML-inserted nodes, and an opacity-0 keyframe
+   with fill-mode "both" would leave that content permanently invisible.
+   Blanket rule so EVERY current and future entrance-animated element is safe;
+   the container's transform-only rise still provides the transition. Chrome
+   outside <main> (sidebar/topbar) already ran its animations and is not
+   affected, nor are portalled popups (they attach to <body>). */
+html.pjaxed main.content * { animation-duration: 0s !important; animation-delay: 0s !important; }
 
 .scrim { display: none; }
 
@@ -1674,11 +1661,11 @@ body.fb-drawer-open { overflow: hidden; }
 
 #aiPanel {
   position: fixed; right: 22px; bottom: 86px; z-index: 220;
-  width: min(400px, calc(100vw - 32px)); height: min(560px, calc(100vh - 120px));
+  width: min(420px, calc(100vw - 32px)); height: min(600px, calc(100vh - 120px));
   display: flex; flex-direction: column; overflow: hidden;
-  border: 1px solid var(--border-2); border-radius: 16px;
-  background: color-mix(in srgb, var(--elevated) 92%, transparent);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-2); border-radius: 18px;
+  background: color-mix(in srgb, var(--elevated) 94%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 24px 60px -18px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03), 0 8px 40px -20px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) { #aiPanel:not([hidden]) { animation: cpopUp .2s var(--ease); } }
@@ -1691,10 +1678,24 @@ body.fb-drawer-open { overflow: hidden; }
 .ai-head-btn { width: 28px; height: 28px; border: none; border-radius: 7px; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .14s var(--ease), color .14s var(--ease); }
 .ai-head-btn:hover { background: var(--surface-2, rgba(255,255,255,.06)); color: var(--text); }
 
-.ai-msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.ai-msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+.ai-msgs::-webkit-scrollbar { width: 8px; }
+.ai-msgs::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+.ai-msgs::-webkit-scrollbar-track { background: transparent; }
 .ai-msg { display: flex; flex-direction: column; max-width: 100%; }
+@media (prefers-reduced-motion: no-preference) {
+  .ai-msg { animation: aiMsgIn .22s var(--ease); }
+  @keyframes aiMsgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
 .ai-msg.ai-user { align-items: flex-end; }
-.ai-msg.ai-bot { align-items: flex-start; }
+.ai-msg.ai-bot { flex-direction: row; align-items: flex-start; gap: 8px; }
+.ai-av {
+  flex: none; width: 26px; height: 26px; margin-top: 1px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; color: #241500;
+  background: linear-gradient(135deg, var(--accent), #ffca5f);
+  box-shadow: 0 2px 8px -3px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.ai-col { display: flex; flex-direction: column; min-width: 0; flex: 1; align-items: flex-start; }
 .ai-bubble { max-width: 88%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.55; word-wrap: break-word; overflow-wrap: anywhere; }
 .ai-user .ai-bubble { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 26%, var(--surface)), color-mix(in srgb, var(--accent) 14%, var(--surface))); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-bottom-right-radius: 5px; }
 .ai-bot .ai-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 5px; width: fit-content; max-width: 96%; }
@@ -1709,6 +1710,23 @@ body.fb-drawer-open { overflow: hidden; }
 .ai-table th, .ai-table td { padding: 5px 9px; border: 1px solid var(--border); text-align: left; }
 .ai-table th { background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent-strong); font-weight: 600; }
 
+/* citation chips — which handbook a block of text came from */
+.ai-cite {
+  display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline;
+  margin: 0 2px; padding: 1.5px 8px 1.5px 6px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1.5; text-decoration: none;
+  color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: background .14s var(--ease), border-color .14s var(--ease), transform .14s var(--ease);
+  max-width: 100%;
+}
+.ai-cite span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-cite svg { flex: none; opacity: .8; }
+.ai-cite:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); transform: translateY(-1px); text-decoration: none; }
+
+.ai-hint { padding: 0 14px 10px; font-size: 10.5px; color: var(--faint); text-align: center; }
+.ai-hint kbd { font: inherit; font-size: 10px; padding: 0 4px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); color: var(--muted); }
+
 .ai-cursor { display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--accent); animation: aiBlink .9s steps(1) infinite; }
 @keyframes aiBlink { 50% { opacity: 0; } }
 
@@ -1719,8 +1737,16 @@ body.fb-drawer-open { overflow: hidden; }
 @keyframes aiPulse { 50% { opacity: .25; transform: scale(.7); } }
 .ai-think-caret { margin-left: auto; transition: transform .16s var(--ease); }
 .ai-think.open .ai-think-caret { transform: rotate(180deg); }
-.ai-think-body { display: none; padding: 2px 12px 10px; font-size: 12px; line-height: 1.55; color: var(--muted); white-space: pre-wrap; max-height: 180px; overflow-y: auto; border-top: 1px dashed var(--border); }
+.ai-think-body { display: none; padding: 6px 12px 10px; font-size: 12px; line-height: 1.55; color: var(--muted); max-height: 190px; overflow-y: auto; border-top: 1px dashed var(--border); scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
 .ai-think.open .ai-think-body { display: block; }
+.ai-think-body p { margin: 0 0 7px; } .ai-think-body p:last-child { margin-bottom: 0; }
+.ai-think-body h4 { margin: 8px 0 4px; font-size: 12px; color: var(--text-2); }
+.ai-think-body ul, .ai-think-body ol { margin: 3px 0 7px; padding-left: 18px; }
+.ai-think-body li { margin: 2px 0; }
+.ai-think-body code { font-size: 11px; background: rgba(0,0,0,.25); border-radius: 3px; padding: 0 4px; }
+.ai-think-body .ai-cite { pointer-events: none; opacity: .75; }
+.ai-think-body::-webkit-scrollbar { width: 6px; }
+.ai-think-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
 
 .ai-empty { text-align: center; padding: 34px 18px 12px; color: var(--muted); }
 .ai-empty-ico { width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 15px; display: flex; align-items: center; justify-content: center; color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 12%, transparent); }

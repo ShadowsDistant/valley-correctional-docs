@@ -35,6 +35,7 @@
   <meta name="twitter:description" content="<%= _pageDesc %>" />
   <meta name="twitter:image" content="<%= _ogImg %>" />
   <link rel="icon" href="/assets/logo.png" type="image/png" />
+  <meta name="asset-v" content="<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
   <% if (!_noindex) { %>
   <script type="application/ld+json">
   {"@context":"https://schema.org","@graph":[
