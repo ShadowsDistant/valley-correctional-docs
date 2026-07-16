@@ -46,5 +46,14 @@
   <% } %>
   <link rel="stylesheet" href="/assets/icons.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
   <link rel="stylesheet" href="/assets/css/styles.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>" />
+  <script>
+    // Client-side navigation (PJAX) support. Defined early so page scripts can
+    // register teardown before app.js loads. pjaxRegister(fn): run fn when the
+    // user navigates away (clears intervals / removes document listeners).
+    window.pjaxCleanups = window.pjaxCleanups || [];
+    window.pjaxRegister = function (fn) { if (typeof fn === 'function') window.pjaxCleanups.push(fn); };
+    window.__pjaxOnce = window.__pjaxOnce || {};
+    window.pjaxOnce = function (k, fn) { if (window.__pjaxOnce[k]) return; window.__pjaxOnce[k] = 1; try { fn(); } catch (e) {} };
+  </script>
 </head>
 <body class="<%= typeof bodyClass !== 'undefined' ? bodyClass : '' %>"<%- (typeof user !== 'undefined' && user) ? ' data-authed' : '' %>>

@@ -132,8 +132,6 @@
     </section>
 
     <p class="muted small">No third-party trackers are used. All metrics are computed from first-party server logs.</p>
-  </main>
-</div>
 <script>
 (function () {
   var esc = function (s) { return String(s == null ? '' : s).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }); };
@@ -160,10 +158,15 @@
         : '<li class="muted">No recent views</li>';
     }).catch(function () {});
   }
-  tick(); var iv = setInterval(tick, 5000);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
+  function onVis() { if (!document.hidden) tick(); }
+  function liveOn() { var el = document.getElementById('liveActive'); return !!el && document.body.contains(el); }
+  tick(); var iv = setInterval(function () { if (liveOn()) tick(); }, 5000);
+  document.addEventListener('visibilitychange', onVis);
+  if (window.pjaxRegister) window.pjaxRegister(function () { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); });
 })();
 </script>
 <script>window.GLOBE_DATA = <%- JSON.stringify(countries || []) %>;</script>
 <script src="/assets/js/globe.js?v=<%= assetVersion %>"></script>
+  </main>
+</div>
 <%- include('../partials/foot') %>

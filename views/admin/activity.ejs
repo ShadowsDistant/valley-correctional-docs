@@ -90,8 +90,6 @@
       <% } %>
     </section>
     <p class="muted small">Time on page is estimated from the gap between consecutive views (capped at 15 minutes); the most recent view has no measured duration.</p>
-  </main>
-</div>
 <script>
 (function () {
   // "View more" reveals the doc-activity table 25 rows at a time.
@@ -111,7 +109,8 @@
       try { lt.textContent = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: tz }) + ' — ' + tz.split('/').pop().replace(/_/g, ' '); }
       catch (e) { lt.textContent = tz; }
     }
-    tick(); setInterval(tick, 30000);
+    tick(); var iv = setInterval(tick, 30000);
+    if (window.pjaxRegister) window.pjaxRegister(function () { clearInterval(iv); });
   }
 })();
 (function () {
@@ -126,4 +125,6 @@
   }).catch(function () {});
 })();
 </script>
+  </main>
+</div>
 <%- include('../partials/foot') %>

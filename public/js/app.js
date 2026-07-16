@@ -425,10 +425,14 @@
   }
   window.robloxAutocomplete = robloxAutocomplete;
   // Auto-wire any plain field marked data-rbx-autocomplete (its sibling .rbx-suggest).
-  Array.prototype.forEach.call(document.querySelectorAll('input[data-rbx-autocomplete]'), function (inp) {
-    var box = inp.parentNode.querySelector('.rbx-suggest');
-    if (box) robloxAutocomplete(inp, box, null);
-  });
+  function wireRoblox(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('input[data-rbx-autocomplete]'), function (inp) {
+      var box = inp.parentNode.querySelector('.rbx-suggest');
+      if (box) robloxAutocomplete(inp, box, null);
+    });
+  }
+  window.vcfWireRoblox = wireRoblox;
+  wireRoblox();
 
   // ---------- TOC scrollspy ----------
   var tocObs = null;
@@ -453,24 +457,52 @@
   window.vcfInitTOC = initTOC;
   initTOC();
 
-  // ---------- client-side navigation (PJAX) for the docs sidebar ----------
-  // Clicking a public doc in the sidebar swaps the content in place instead of
-  // a full reload. Internal (protected) pages always full-load so protect.js
-  // and the access guard run. Modifier-clicks and cross-origin links pass through.
+  // ---------- client-side navigation (PJAX) ----------
+  // Any eligible same-origin link swaps <main> in place instead of a full
+  // reload. Works across public docs AND admin pages: page-specific scripts
+  // live inside <main>, so after swapping we re-execute them and re-run the
+  // shared enhancers. Chrome (sidebar/topbar) stays put, so a navigation is
+  // only PJAX'd when source and target share the same chrome (both admin or
+  // both public). Protected/confidential pages, the editor, the staff
+  // dashboard, and non-page targets always full-load.
   (function () {
     if (!window.history || !window.fetch || !document.querySelector('main.content')) return;
     var main = document.querySelector('main.content');
     var isProtected = function () { return !!document.querySelector('.doc.protected'); };
-    function samePageDoc(href) {
+    var isAdminChrome = function (scope) { return !!(scope || document).querySelector('.admin-sidebar'); };
+
+    // Paths that must always full-load (stateful pages, auth, non-HTML, files).
+    var EXCLUDE = /^\/(admin\/edit|admin\/new|dashboard|login|logout|feedback|api|assets|uploads|internal-documents)\b/;
+    function candidate(href) {
       var a = document.createElement('a'); a.href = href;
       if (a.origin !== location.origin) return null;
       var path = a.pathname;
-      // only public docs: not admin/dashboard/account/api/internal, not files
-      if (/^\/(admin|dashboard|account|login|feedback|api|assets|uploads)\b/.test(path)) return null;
-      if (/^\/internal-documents\b/.test(path)) return null;
-      if (/\.[a-z0-9]+$/i.test(path)) return null;
+      if (EXCLUDE.test(path)) return null;
+      if (/\.[a-z0-9]+$/i.test(path)) return null;   // has a file extension
+      if (a.hash && a.pathname === location.pathname && a.search === location.search) return null; // same-page anchor
       return a.href;
     }
+
+    function runCleanups() {
+      var list = window.pjaxCleanups || [];
+      window.pjaxCleanups = [];
+      for (var i = 0; i < list.length; i++) { try { list[i](); } catch (e) {} }
+    }
+    // Re-execute the <script> tags inside the swapped main (innerHTML-inserted
+    // scripts don't run on their own). Shared scripts live in the page foot,
+    // outside main, so they are never re-run — no duplicate global bindings.
+    function runScripts(scope) {
+      var scripts = scope.querySelectorAll('script');
+      Array.prototype.forEach.call(scripts, function (old) {
+        var s = document.createElement('script');
+        for (var i = 0; i < old.attributes.length; i++) {
+          s.setAttribute(old.attributes[i].name, old.attributes[i].value);
+        }
+        if (!old.src) s.textContent = old.textContent;
+        old.parentNode.replaceChild(s, old);
+      });
+    }
+
     var busy = false;
     function navigate(url, push) {
       if (busy) return; busy = true;
@@ -481,31 +513,42 @@
       }).then(function (html) {
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var newMain = doc.querySelector('main.content');
-        // if the target isn't a normal doc layout, hard-navigate instead
-        if (!newMain || doc.querySelector('.doc.protected')) { location.href = url; return; }
+        // full-load if the target isn't a normal page, is confidential, or has
+        // different chrome (public<->admin) than the current page.
+        if (!newMain || doc.querySelector('.doc.protected') || isAdminChrome(doc) !== isAdminChrome()) {
+          location.href = url; return;
+        }
+        runCleanups();
         main.innerHTML = newMain.innerHTML;
+        main.className = newMain.className;                 // keep admin-content / wide variants
         main.classList.remove('pjax-in'); void main.offsetWidth; main.classList.add('pjax-in');
         document.title = doc.title;
-        // sync sidebar active state
+        runScripts(main);
+        // sync sidebar active state (works for docs + admin nav)
         var newPath = new URL(url, location.origin).pathname;
-        document.querySelectorAll('.side-nav .nav-link').forEach(function (a) {
-          a.classList.toggle('active', a.getAttribute('href') === newPath);
+        document.querySelectorAll('.side-nav .nav-link, .side-nav a').forEach(function (a) {
+          var href = a.getAttribute('href');
+          if (href) a.classList.toggle('active', href === newPath || href === url.replace(location.origin, ''));
         });
         if (push) history.pushState({ pjax: 1 }, '', url);
         window.scrollTo(0, 0);
-        // re-init the swapped content
+        // re-run the shared enhancers over the new content
         if (window.fillTimes) window.fillTimes();
         loadAvatars(main); initTOC();
+        if (window.enhanceInputs) window.enhanceInputs(main);
+        if (window.vcfWireRoblox) window.vcfWireRoblox(main);
         main.classList.remove('pjax-loading');
         busy = false;
       }).catch(function () { location.href = url; });
     }
+
     document.addEventListener('click', function (e) {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      var a = e.target.closest ? e.target.closest('.side-nav a, .pager-link') : null;
-      if (!a || a.target === '_blank') return;
-      if (isProtected()) return; // leaving a confidential page — full load
-      var url = samePageDoc(a.getAttribute('href'));
+      var a = e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a || a.target === '_blank' || a.hasAttribute('download') || a.hasAttribute('data-no-pjax')) return;
+      if (a.getAttribute('href').charAt(0) === '#') return;
+      if (isProtected() || EXCLUDE.test(location.pathname)) return; // leaving a confidential/stateful page — full load
+      var url = candidate(a.getAttribute('href'));
       if (!url) return;
       e.preventDefault();
       // close the mobile sidebar if open
@@ -513,6 +556,8 @@
       var scrim = document.getElementById('scrim'); if (scrim) scrim.classList.remove('show');
       navigate(url, true);
     });
+    // Tag the initial history entry so Back to it restores content via PJAX.
+    if (history.state == null) { try { history.replaceState({ pjax: 1 }, '', location.href); } catch (e) {} }
     window.addEventListener('popstate', function (e) {
       if (!e.state || !e.state.pjax) return;
       navigate(location.href, false);

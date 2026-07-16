@@ -172,8 +172,6 @@
       <% }); %>
     </div>
     <p class="muted small" id="staffEmpty" hidden style="padding:16px">No staff match your filters.</p>
-  </main>
-</div>
 <script>
 (function () {
   var addBtn = document.getElementById('addToggle'), addPanel = document.getElementById('addPanel');
@@ -191,14 +189,16 @@
   });
   // Selecting a rank implies the division — auto-check its checkbox so the
   // rank isn't silently dropped on save (ranks require the division).
-  document.addEventListener('change', function (e) {
+  function onRankChange(e) {
     var sel = e.target;
     if (!sel.name || sel.name.indexOf('rank_') !== 0 || !sel.value) return;
     var div = sel.name.slice(5);
     var form = sel.closest('form'); if (!form) return;
     var chk = form.querySelector('input[name=divisions][value="' + div + '"]');
     if (chk && !chk.checked && !chk.disabled) chk.checked = true;
-  });
+  }
+  document.addEventListener('change', onRankChange);
+  if (window.pjaxRegister) window.pjaxRegister(function () { document.removeEventListener('change', onRankChange); });
   // Active/Past tabs switch instantly client-side (no reload).
   var curGroup = <%- JSON.stringify(tab === 'past' ? 'past' : 'active') %>;
   var staffTabs = document.getElementById('staffTabs');
@@ -223,7 +223,7 @@
     staffTabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t === b); });
     if (addBtn) addBtn.hidden = curGroup === 'past';
     if (pastNote) pastNote.hidden = curGroup !== 'past';
-    history.replaceState(null, '', '/admin/staff' + (curGroup === 'past' ? '?tab=past' : ''));
+    history.replaceState({ pjax: 1 }, '', '/admin/staff' + (curGroup === 'past' ? '?tab=past' : ''));
     applyFilters();
   });
   // custom-enhanced selects dispatch `change`, the text box dispatches `input` — listen to both
@@ -233,4 +233,6 @@
   // (data-rbx-autocomplete on #new-username).
 })();
 </script>
+  </main>
+</div>
 <%- include('../partials/foot') %>

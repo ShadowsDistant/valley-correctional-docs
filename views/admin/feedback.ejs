@@ -81,8 +81,6 @@
       <% }); %>
     </div>
     <div class="fb-empty" id="fbEmpty" hidden><span class="ic ic-message"></span><p>No feedback matches your filters.</p></div>
-  </main>
-</div>
 <script>
 (function () {
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -121,7 +119,7 @@
     if (curStatus) p.set('status', curStatus);
     if (curCat) p.set('category', curCat);
     if (curQ) p.set('q', searchInput.value.trim());
-    history.replaceState(null, '', '/admin/feedback' + (p.toString() ? '?' + p.toString() : ''));
+    history.replaceState({ pjax: 1 }, '', '/admin/feedback' + (p.toString() ? '?' + p.toString() : ''));
   }
   statusTabs.addEventListener('click', function (e) { var b = e.target.closest('[data-status]'); if (b) { curStatus = b.getAttribute('data-status'); apply(); } });
   catFilters.addEventListener('click', function (e) { var b = e.target.closest('[data-category]'); if (b) { curCat = b.getAttribute('data-category'); apply(); } });
@@ -175,7 +173,7 @@
     }).catch(function () {});
   }
   // delete a chat message (kept, shown struck to staff)
-  document.addEventListener('click', function (e) {
+  function onMsgDel(e) {
     var d = e.target.closest('[data-msgdel]'); if (!d) return;
     var msgId = d.getAttribute('data-msgdel');
     var threadId = d.closest('.fb-thread-inline').id.replace('thread-', '');
@@ -186,8 +184,8 @@
         if (res.ok) { sigs[threadId] = ''; loadThread(threadId, false); }
       }).catch(function () {});
     }
-  });
-  document.addEventListener('click', function (e) {
+  }
+  function onThreadToggle(e) {
     var b = e.target.closest('[data-thread]'); if (!b) return;
     var id = b.getAttribute('data-thread');
     var wrap = document.getElementById('thread-' + id);
@@ -198,16 +196,16 @@
       clearInterval(polls[id]); polls[id] = setInterval(function () { loadThread(id); }, 8000);
       var ta = wrap.querySelector('textarea'); if (ta) setTimeout(function () { ta.focus(); }, 50);
     } else { clearInterval(polls[id]); }
-  });
-  document.addEventListener('input', function (e) {
+  }
+  function onComposerInput(e) {
     var ta = e.target.closest('.fb-composer-input'); if (!ta) return;
     ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
-  });
-  document.addEventListener('keydown', function (e) {
+  }
+  function onComposerKey(e) {
     var ta = e.target.closest('.fb-composer-input'); if (!ta) return;
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.closest('form').requestSubmit(); }
-  });
-  document.addEventListener('submit', function (e) {
+  }
+  function onReplySubmit(e) {
     var form = e.target.closest('[data-reply]'); if (!form) return;
     e.preventDefault();
     var id = form.getAttribute('data-reply');
@@ -225,7 +223,23 @@
       ta.value = ''; ta.style.height = 'auto'; ta.focus();
       loadThread(id, true);
     }).catch(function () { ta.disabled = false; err.querySelector('span').textContent = 'Could not send — try again.'; err.hidden = false; });
+  }
+  document.addEventListener('click', onMsgDel);
+  document.addEventListener('click', onThreadToggle);
+  document.addEventListener('input', onComposerInput);
+  document.addEventListener('keydown', onComposerKey);
+  document.addEventListener('submit', onReplySubmit);
+  // tear down on client-side navigation so listeners/pollers don't pile up
+  if (window.pjaxRegister) window.pjaxRegister(function () {
+    document.removeEventListener('click', onMsgDel);
+    document.removeEventListener('click', onThreadToggle);
+    document.removeEventListener('input', onComposerInput);
+    document.removeEventListener('keydown', onComposerKey);
+    document.removeEventListener('submit', onReplySubmit);
+    Object.keys(polls).forEach(function (id) { clearInterval(polls[id]); });
   });
 })();
 </script>
+  </main>
+</div>
 <%- include('../partials/foot') %>

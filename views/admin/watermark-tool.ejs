@@ -49,8 +49,6 @@
         </div>
       </div>
     </div>
-  </main>
-</div>
 <script>
 (function () {
   var drop = document.getElementById('wmDrop'), stage = document.getElementById('wmStage');
@@ -177,10 +175,14 @@
   ['dragover', 'dragenter'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('drag'); }); });
   ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('drag'); }); });
   drop.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
-  window.addEventListener('paste', function (e) {
+  function onPaste(e) {
     var items = (e.clipboardData || {}).items || [];
     for (var i = 0; i < items.length; i++) { if (/^image\//.test(items[i].type)) { handleFile(items[i].getAsFile()); break; } }
-  });
+  }
+  window.addEventListener('paste', onPaste);
+  if (window.pjaxRegister) window.pjaxRegister(function () { window.removeEventListener('paste', onPaste); });
 })();
 </script>
+  </main>
+</div>
 <%- include('../partials/foot') %>
