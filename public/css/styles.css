@@ -1663,6 +1663,37 @@ body.fb-drawer-open { overflow: hidden; }
 /* active range/dashboard tabs get a hint of glow on their label */
 .range-tab.active, .dash-tab.active { text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); }
 
+/* ---------- interaction micro-animations ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* cards lift a touch on hover */
+  .staff-card, .fb-card, .doc-cards .doc-card, .stat-card, .ai-log-item, .pk-item, .sys-pending-list li {
+    transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .16s var(--ease);
+  }
+  .staff-card:hover, .fb-card:hover, .doc-cards .doc-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 26px -14px rgba(0,0,0,.5);
+    border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+  }
+  .stat-card:hover { transform: translateY(-2px); }
+  /* buttons give tactile feedback */
+  .btn { transition: transform .12s var(--ease), background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease), box-shadow .16s var(--ease); }
+  .btn:active { transform: translateY(1px) scale(.985); }
+  .btn-solid:hover, .btn-primary:hover { transform: translateY(-1px); }
+  .icon-btn:active, .top-icon-btn:active, .account-btn:active { transform: scale(.94); }
+  /* nav links slide their icon on hover */
+  .side-nav .nav-link { transition: background .15s var(--ease), color .15s var(--ease); }
+  .side-nav .nav-link .nav-ico { transition: transform .16s var(--ease); }
+  .side-nav .nav-link:hover .nav-ico { transform: translateX(2px); }
+  /* count badges pop when they appear */
+  .tab-count { transition: transform .16s var(--ease), background .16s var(--ease); }
+  .dash-tab:hover .tab-count { transform: scale(1.08); }
+  /* pills / badges get a soft ring on hover where interactive */
+  .range-tab { transition: background .15s var(--ease), color .15s var(--ease), transform .12s var(--ease); }
+  .range-tab:hover { transform: translateY(-1px); }
+  /* toast-like success flashes */
+  .account-ok, .auth-error { animation: popIn .3s var(--ease) both; }
+}
+
 /* The hidden attribute must always win. The UA's `[hidden] { display: none }`
    loses to any author display rule (e.g. `#aiPanel { display: flex }`), which
    has repeatedly caused "element won't close" bugs (auth-error, dash-tabpane,
