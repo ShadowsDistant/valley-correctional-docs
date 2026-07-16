@@ -598,7 +598,13 @@
         var o = parseFloat(getComputedStyle(main.firstElementChild).opacity);
         return o === 0;
       }
-      var onErr = function () { cleanup(); if (seq === navSeq) location.reload(); };
+      var onErr = function (e) {
+        // only OUR scripts count as a broken swap — errors from injected
+        // third-party scripts (Cloudflare Zaraz / Clarity / analytics) must
+        // not trigger a recovery reload.
+        if (e && e.filename && e.filename.indexOf(location.origin + '/') !== 0) return;
+        cleanup(); if (seq === navSeq) location.reload();
+      };
       var cleanup = function () { window.removeEventListener('error', onErr); };
       window.addEventListener('error', onErr);
       setTimeout(function () {

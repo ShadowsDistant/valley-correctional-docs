@@ -90,11 +90,15 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        // Cloudflare injects Zaraz-managed tools at the edge (Microsoft
+        // Clarity session recording + Cloudflare Web Analytics). Zaraz's own
+        // runtime is same-origin (/cdn-cgi/…); the tools it loads are not, so
+        // allow them explicitly — otherwise every page logs CSP violations.
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https://*.clarity.ms', 'https://static.cloudflareinsights.com'],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'https:'],
         fontSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'", 'wss:'].concat(isProd ? [] : ['ws:']),
+        connectSrc: ["'self'", 'wss:', 'https://*.clarity.ms', 'https://cloudflareinsights.com', 'https://static.cloudflareinsights.com'].concat(isProd ? [] : ['ws:']),
         objectSrc: ["'none'"],
         frameAncestors: ["'self'"],
       },
