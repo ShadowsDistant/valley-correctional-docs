@@ -84,7 +84,7 @@
   // Precompute land dots on a fine grid (density scaled by latitude), tagging
   // each as coastal (near an ocean cell) so coastlines can be drawn brighter.
   var landPts = [];
-  var STEP = 1.9;
+  var STEP = 1.65;
   for (var la = -56; la <= 80; la += STEP) {
     var stepLon = Math.max(STEP, STEP / Math.max(0.18, Math.cos(la * Math.PI / 180)));
     for (var lo = -180; lo < 180; lo += stepLon) {
@@ -92,6 +92,17 @@
       var coastal = !isLand(la + STEP, lo) || !isLand(la - STEP, lo) || !isLand(la, lo + stepLon) || !isLand(la, lo - stepLon);
       landPts.push([la, lo, coastal ? 1 : 0]);
     }
+  }
+  // Polar ice caps — Antarctica (a whole continent) and the Arctic sea-ice
+  // sheet, rendered as pale blue-white so the Earth reads correctly top & bottom.
+  var icePts = [];
+  for (var ila = -90; ila <= -64; ila += 2.2) {
+    var isl = Math.max(2.2, 2.2 / Math.max(0.12, Math.cos(ila * Math.PI / 180)));
+    for (var ilo = -180; ilo < 180; ilo += isl) icePts.push([ila, ilo]);
+  }
+  for (var ala = 73; ala <= 90; ala += 2.4) {
+    var asl = Math.max(2.4, 2.4 / Math.max(0.1, Math.cos(ala * Math.PI / 180)));
+    for (var alo = -180; alo < 180; alo += asl) icePts.push([ala, alo]);
   }
 
   var ctx = canvas.getContext('2d');
@@ -220,6 +231,15 @@
       var rr = (coastal ? 1.0 : 0.8) + p.z * 0.8;
       ctx.beginPath(); ctx.arc(p.sx, p.sy, rr, 0, 6.2832);
       ctx.fillStyle = (coastal ? 'rgba(150,225,175,' : 'rgba(104,196,138,') + a.toFixed(3) + ')'; ctx.fill();
+    }
+
+    // polar ice caps — cool white, slightly glowing
+    for (var k = 0; k < icePts.length; k++) {
+      var ip = project(icePts[k][0], icePts[k][1], rot);
+      if (ip.z <= 0.02) continue;
+      var ia = 0.35 + ip.z * 0.55;
+      ctx.beginPath(); ctx.arc(ip.sx, ip.sy, 1.1 + ip.z * 1.0, 0, 6.2832);
+      ctx.fillStyle = 'rgba(232,244,255,' + ia.toFixed(3) + ')'; ctx.fill();
     }
 
     // city lights — warm points, brighter on the dusk (trailing) hemisphere

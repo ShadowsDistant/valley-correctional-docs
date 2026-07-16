@@ -1630,6 +1630,10 @@ body.fb-drawer-open { overflow: hidden; }
 .live-h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 700; margin-bottom: 10px; }
 .live-online, .live-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .live-online li { display: flex; align-items: center; gap: 8px; }
+/* clean, flat presence chips — no translucent-accent blob, plus an online dot */
+.live-online .acct-avatar { position: relative; background: var(--surface-2, rgba(255,255,255,.06)); color: var(--text-2); border: 1px solid var(--border); box-shadow: none; }
+.live-online .acct-avatar::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 2px var(--surface), 0 0 6px #22c55e; }
+.live-online .acct-avatar.has-rbx::after { box-shadow: 0 0 0 2px var(--surface); }
 .acct-avatar.sm { width: 22px; height: 22px; font-size: 11px; }
 .live-feed li { color: var(--text-2); }
 @media (max-width: 760px) { .live-grid { grid-template-columns: 1fr 1fr; } .live-spark { grid-column: 1 / -1; } .live-body { grid-template-columns: 1fr; } }
@@ -1687,7 +1691,13 @@ body.fb-drawer-open { overflow: hidden; }
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 24px 60px -18px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03), 0 8px 40px -20px color-mix(in srgb, var(--accent) 45%, transparent);
 }
-@media (prefers-reduced-motion: no-preference) { #aiPanel:not([hidden]) { animation: cpopUp .2s var(--ease); } }
+#aiPanel { transform-origin: bottom right; }
+@media (prefers-reduced-motion: no-preference) {
+  #aiPanel.opening { animation: aiPanelIn .26s cubic-bezier(.16,1,.3,1); }
+  #aiPanel.closing { animation: aiPanelOut .17s ease-in forwards; pointer-events: none; }
+  @keyframes aiPanelIn  { from { opacity: 0; transform: translateY(14px) scale(.92); } to { opacity: 1; transform: none; } }
+  @keyframes aiPanelOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10px) scale(.95); } }
+}
 
 .ai-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent); }
 .ai-head-ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #241500; background: linear-gradient(135deg, var(--accent), #ffca5f); box-shadow: 0 2px 10px -3px color-mix(in srgb, var(--accent) 70%, transparent); }
@@ -1731,15 +1741,18 @@ body.fb-drawer-open { overflow: hidden; }
 
 /* citation chips — which handbook a block of text came from */
 .ai-cite {
-  display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline;
-  margin: 0 2px; padding: 1.5px 8px 1.5px 6px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; line-height: 1.5; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;
+  margin: 3px 4px 0 0; padding: 2px 9px 2px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1.4; text-decoration: none;
   color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 11%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   transition: background .14s var(--ease), border-color .14s var(--ease), transform .14s var(--ease);
   max-width: 100%;
 }
 .ai-cite span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* give a block room to breathe once citation chips sit at its end */
+.ai-answer p:has(.ai-cite), .ai-answer li:has(.ai-cite) { line-height: 1.7; }
+.ai-answer li .ai-cite { margin-top: 2px; }
 .ai-cite svg { flex: none; opacity: .8; }
 .ai-cite:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); transform: translateY(-1px); text-decoration: none; }
 
@@ -1766,6 +1779,11 @@ body.fb-drawer-open { overflow: hidden; }
 .ai-chat-del:hover { color: #f87171; background: color-mix(in srgb, #ef4444 14%, transparent); }
 
 /* ---------- admin: System page ---------- */
+.sys-live { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; margin-left: 10px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #4ade80; background: color-mix(in srgb, #22c55e 12%, transparent); border: 1px solid color-mix(in srgb, #22c55e 32%, transparent); }
+.sys-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: sysLivePulse 1.8s ease-in-out infinite; }
+@keyframes sysLivePulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 60%, transparent); } 50% { opacity: .5; box-shadow: 0 0 0 4px color-mix(in srgb, #22c55e 0%, transparent); } }
+.sys-live.beat { animation: sysLiveBeat .5s var(--ease); }
+@keyframes sysLiveBeat { 0% { background: color-mix(in srgb, #22c55e 30%, transparent); } 100% { background: color-mix(in srgb, #22c55e 12%, transparent); } }
 .sys-build-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--border-2); border-radius: 999px; background: var(--surface); font-size: 12px; }
 .sys-build-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
 .sys-grid { margin-bottom: 22px; }
@@ -1848,6 +1866,9 @@ body.fb-drawer-open { overflow: hidden; }
 }
 .fb-sort:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
 .fb-sort:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+
+/* activity log: view-more row */
+.log-more-row { display: flex; justify-content: center; padding: 12px; border-top: 1px solid var(--border); }
 @media (max-width: 700px) { .fb-toolbar-right { width: 100%; } .fb-toolbar-right .fb-search { flex: 1; } }
 
 .ai-cursor { display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--accent); animation: aiBlink .9s steps(1) infinite; }

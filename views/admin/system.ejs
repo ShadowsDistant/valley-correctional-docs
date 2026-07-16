@@ -5,8 +5,8 @@
   <main class="content admin-content">
     <div class="admin-titlerow">
       <div>
-        <h1 class="admin-h1">System</h1>
-        <p class="admin-sub">Live health of the server this site runs on, the build that's deployed, and one-click updates.</p>
+        <h1 class="admin-h1">System <span class="sys-live" id="sysLive"><span class="sys-live-dot"></span>live</span></h1>
+        <p class="admin-sub">Live health of the server this site runs on, the build that's deployed, and one-click updates. Refreshes every couple of seconds.</p>
       </div>
       <div class="sys-build-chip" data-tip="The commit currently running" data-tip-pos="left">
         <span class="sys-build-dot"></span>
@@ -190,18 +190,27 @@
     if (window.fillTimes) window.fillTimes();
   }
   function esc(x) { return String(x == null ? '' : x).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+  var liveEl = $('sysLive');
+  function flashLive() { if (!liveEl) return; liveEl.classList.remove('beat'); void liveEl.offsetWidth; liveEl.classList.add('beat'); }
 
   function alive() { var e = $('sysCpu'); return !!e && document.body.contains(e); }
   function tick() {
     if (!alive()) return;
     fetch('/admin/system/stats', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d.ok && alive()) paint(d.stats); })
+      .then(function (d) { if (d.ok && alive()) { paint(d.stats); flashLive(); } })
       .catch(function () { /* the app may be restarting mid-update — keep polling */ });
   }
   paint(<%- JSON.stringify(stats) %>);
-  var iv = setInterval(function () { if (alive()) tick(); }, 4000);
-  if (window.pjaxRegister) window.pjaxRegister(function () { clearInterval(iv); });
+  // near-real-time: poll every 2s, and pause while the tab is hidden so we
+  // don't spend the droplet's CPU on a screen nobody is looking at.
+  var iv = null;
+  function startPoll() { if (!iv) iv = setInterval(function () { if (alive()) tick(); }, 2000); }
+  function stopPoll() { if (iv) { clearInterval(iv); iv = null; } }
+  startPoll();
+  function onVis() { if (document.hidden) stopPoll(); else { tick(); startPoll(); } }
+  document.addEventListener('visibilitychange', onVis);
+  if (window.pjaxRegister) window.pjaxRegister(function () { stopPoll(); document.removeEventListener('visibilitychange', onVis); });
 
   // Submitting the update form should not navigate — queue it via fetch.
   var form = $('sysUpdateForm');

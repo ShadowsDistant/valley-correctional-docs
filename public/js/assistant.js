@@ -106,7 +106,7 @@
       '<textarea id="aiInput" rows="1" placeholder="Ask about any handbook or policy…" maxlength="4000"></textarea>' +
       '<button type="button" id="aiSend" aria-label="Send">' + I.send + '</button>' +
     '</div>' +
-    '<div class="ai-hint"><kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · saved to this server, admins can review</div>';
+    '<div class="ai-hint"><kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline</div>';
 
   document.body.appendChild(fab);
   document.body.appendChild(panel);
@@ -315,13 +315,24 @@
   }
 
   // ---------- wiring ----------
+  var closeTimer = null;
   function setOpen(open) {
-    panel.hidden = !open;
+    clearTimeout(closeTimer);
     fab.classList.toggle('open', open);
     if (open) {
+      panel.classList.remove('closing');
+      panel.hidden = false;
+      void panel.offsetWidth;                 // restart the open animation
+      panel.classList.add('opening');
       if (!loaded) { loaded = true; renderEmpty(); }
-      setTimeout(function () { input.focus(); }, 60);
-    } else showDrawer(false);
+      setTimeout(function () { input.focus(); }, 80);
+    } else {
+      showDrawer(false);
+      panel.classList.remove('opening');
+      panel.classList.add('closing');
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      closeTimer = setTimeout(function () { panel.hidden = true; panel.classList.remove('closing'); }, reduce ? 0 : 170);
+    }
   }
   fab.addEventListener('click', function () { setOpen(panel.hidden); });
   panel.querySelector('#aiClose').addEventListener('click', function () { setOpen(false); });

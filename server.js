@@ -19,6 +19,7 @@ const auth = require('./lib/auth');
 const icons = require('./lib/icons');
 const profanity = require('./lib/profanity');
 const collab = require('./lib/collab');
+const loginThrottle = require('./lib/login-throttle');
 
 seed(); // idempotent: seeds pages + first admin on first boot
 
@@ -391,18 +392,38 @@ app.get('/login', auth.csrfToken, (req, res) => {
 app.post('/login', loginLimiter, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   res.set('Cache-Control', 'no-store');
   const { username, password } = req.body;
+  const uname = (username || '').trim();
+  const ip = req.ip || '';
   // Only allow same-site relative paths (reject protocol-relative //evil.com).
   const reqNext = typeof req.body.next === 'string' && /^\/(?!\/)/.test(req.body.next) ? req.body.next : '';
-  let user = auth.findUserByUsername((username || '').trim());
-  if (!user || !auth.verifyPassword(password || '', user.password)) {
-    audit((username || '').trim() || 'unknown', 'user.login_fail', (username || '').trim(), 'invalid credentials · ' + (req.ip || ''));
-    return res.status(401).render('login', {
-      title: 'Staff Login',
-      next: reqNext || '/admin',
-      error: 'Invalid username or password.',
+
+  // Escalating per-IP lockout — checked BEFORE touching the password so a
+  // locked IP can't even probe validity.
+  const gate = loginThrottle.check(ip);
+  if (gate.locked) {
+    audit(uname || 'unknown', 'user.login_locked', uname, 'IP ' + ip + ' locked ' + loginThrottle.fmt(gate.retryMs) + ' remaining (level ' + gate.level + ')');
+    return res.status(429).render('login', {
+      title: 'Too many attempts', next: reqNext || '/admin',
+      error: 'Too many failed attempts. Try again in ' + loginThrottle.fmt(gate.retryMs) + '.',
       layout: false,
     });
   }
+
+  let user = auth.findUserByUsername(uname);
+  if (!user || !auth.verifyPassword(password || '', user.password)) {
+    const reason = !uname ? 'blank username' : (!user ? 'no such account' : 'wrong password');
+    const t = loginThrottle.fail(ip);
+    audit(uname || 'unknown', 'user.login_fail', uname, reason + ' · IP ' + ip +
+      (t.justLocked ? ' · IP now locked for ' + loginThrottle.fmt(t.retryMs) : ' · ' + Math.max(0, t.remaining) + ' attempt(s) before lockout'));
+    return res.status(t.justLocked ? 429 : 401).render('login', {
+      title: 'Staff Login', next: reqNext || '/admin',
+      error: t.justLocked
+        ? 'Too many failed attempts. This device is locked for ' + loginThrottle.fmt(t.retryMs) + '.'
+        : 'Invalid username or password.' + (t.remaining <= 2 ? ' ' + Math.max(0, t.remaining) + ' attempt(s) left before a temporary lockout.' : ''),
+      layout: false,
+    });
+  }
+  loginThrottle.succeed(ip);
   // A timed suspension that has run out lifts itself at the door.
   if (user.suspended && !user.terminated && clearExpiredSuspension.run(user.id).changes) {
     audit(user.username, 'user.suspension_expired', user.username, 'timed suspension lifted at login');

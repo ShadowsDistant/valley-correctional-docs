@@ -10,6 +10,9 @@
       var ACTION = {
         'user.login': ['Signed in', 'act-login'], 'user.logout': ['Signed out', 'act-neutral'],
         'user.login_fail': ['Failed login', 'act-delete'], 'user.login_blocked': ['Blocked login', 'act-delete'],
+        'user.login_locked': ['Locked out (throttle)', 'act-delete'], 'user.rename': ['Renamed account', 'act-edit'],
+        'system.update_requested': ['Update requested', 'act-neutral'], 'pages.pending_dismissed': ['Reviewed doc update', 'act-neutral'],
+        'passkey.add': ['Added passkey', 'act-create'], 'passkey.remove': ['Removed passkey', 'act-delete'], 'passkey.admin_remove': ['Admin removed passkey', 'act-delete'],
         'page.create': ['Created page', 'act-create'], 'page.update': ['Edited page', 'act-edit'],
         'page.delete': ['Deleted page', 'act-delete'], 'page.restore': ['Restored page', 'act-edit'],
         'user.create': ['Created account', 'act-create'], 'user.role': ['Changed role', 'act-edit'],
@@ -51,8 +54,8 @@
         <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
         <tbody>
           <% if (!events.length) { %><tr><td colspan="5" class="muted" style="padding:18px">No matching activity.</td></tr><% } %>
-          <% events.forEach(function (e) { var a = actionLabel(e.action); %>
-            <tr>
+          <% events.forEach(function (e, i) { var a = actionLabel(e.action); %>
+            <tr class="log-row"<%= i >= 15 ? ' hidden' : '' %>>
               <td class="muted small nowrap"><time data-time="<%= e.ts %>"><%= (e.ts || '').replace('T',' ') %></time></td>
               <td><strong><%= e.actor %></strong></td>
               <td><span class="act-badge <%= a[1] %>"><%= a[0] %></span></td>
@@ -63,7 +66,22 @@
         </tbody>
       </table>
       </div>
+      <% if (events.length > 15) { %>
+        <div class="log-more-row"><button class="btn btn-ghost btn-sm" type="button" id="logMore">View more (<span id="logHidden"><%= events.length - 15 %></span> older)</button></div>
+      <% } %>
     </section>
+<script>
+(function () {
+  var more = document.getElementById('logMore'); if (!more) return;
+  more.addEventListener('click', function () {
+    var hidden = document.querySelectorAll('.log-row[hidden]');
+    for (var i = 0; i < Math.min(25, hidden.length); i++) hidden[i].hidden = false;
+    var left = document.querySelectorAll('.log-row[hidden]').length;
+    if (!left) more.parentNode.remove();
+    else document.getElementById('logHidden').textContent = left;
+  });
+})();
+</script>
   </main>
 </div>
 <%- include('../partials/foot') %>
