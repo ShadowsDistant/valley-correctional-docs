@@ -153,7 +153,7 @@
             <% if (canAdminActions) { %>
             <form method="post" action="/admin/staff/rename" class="rename-form" data-confirm="Rename <%= u.username %>? Every log, punishment, and infraction referencing this name is updated to match." data-confirm-title="Rename account" data-confirm-ok="Rename">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
-              <label class="field field-sm">Rename account<input type="text" name="username" value="<%= u.username %>" pattern="[A-Za-z0-9_]{3,20}" title="3–20 letters, numbers, underscores" required /></label>
+              <label class="field field-sm">Rename account<input type="text" name="username" value="<%= u.username %>" pattern="[A-Za-z0-9_]{3,20}" data-tip="3–20 letters, numbers, underscores" required /></label>
               <button class="btn btn-ghost btn-sm" type="submit"><%- icon('edit') %> Rename</button>
             </form>
             <% } %>

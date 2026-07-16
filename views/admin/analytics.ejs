@@ -113,7 +113,7 @@
         <div class="panel-head"><h2>Views by hour (UTC)</h2></div>
         <% var hmax=1; byHour.forEach(function(h){ if(h.n>hmax)hmax=h.n; }); %>
         <div class="hour-chart">
-          <% byHour.forEach(function(h){ %><div class="hour-bar" title="<%= h.h %>:00 — <%= h.n %> views"><span style="height: <%= Math.round(h.n/hmax*100) %>%"></span></div><% }); %>
+          <% byHour.forEach(function(h){ %><div class="hour-bar" data-tip="<%= h.h %>:00 — <%= h.n %> views" data-tip-pos="top"><span style="height: <%= Math.round(h.n/hmax*100) %>%"></span></div><% }); %>
         </div>
         <div class="hour-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
       </section>

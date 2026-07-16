@@ -17,7 +17,7 @@
         <a class="back-link" href="/admin/staff">← Back to staff</a>
         <h1 class="admin-h1"><span class="staff-avatar sm" data-rbx-avatar="<%= target.username %>"><%= (target.username||'?').slice(0,1).toUpperCase() %></span> <%= target.username %></h1>
         <p class="admin-sub"><span class="badge cap <%= target.role==='admin'?'badge-internal':'' %>"><%= target.role %></span><% (rankLabels||[]).forEach(function(rl){ %> <span class="badge badge-internal"><%= rl %></span><% }); %><% if (target.terminated) { %> <span class="badge badge-danger">Terminated</span><% } else if (target.suspended) { %> <span class="badge badge-danger">Suspended<% if (target.suspended_until) { %> until <time data-time="<%= target.suspended_until %>" data-time-format="datetime"><%= target.suspended_until.slice(0,10) %></time><% } %></span><% } %><% if (target.deleted) { %> <span class="badge badge-danger">Archived</span><% } %>
-          <% if (target.timezone) { %><span class="badge" title="<%= target.timezone %>"><%- icon('clock') %> <span class="ov-localtime" data-tz="<%= target.timezone %>">—</span></span><% } %></p>
+          <% if (target.timezone) { %><span class="badge" data-tip="<%= target.timezone %>"><%- icon('clock') %> <span class="ov-localtime" data-tz="<%= target.timezone %>">—</span></span><% } %></p>
       </div>
     </div>
 

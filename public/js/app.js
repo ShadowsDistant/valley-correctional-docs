@@ -277,7 +277,7 @@
   function fillTime(el) {
     var d = parseUtc(el.getAttribute('data-time'));
     if (!d) return;
-    el.title = d.toLocaleString();
+    el.setAttribute('data-tip', d.toLocaleString()); // exact time in the custom tooltip on hover
     // data-time-format: relative (default) | date | range | datetime — all
     // rendered in the viewer's local timezone.
     var fmt = el.getAttribute('data-time-format');

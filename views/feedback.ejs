@@ -128,7 +128,7 @@
       box.innerHTML = d.items.map(function (f) {
         var unread = f.last_sender === 'staff' && (readMap[f.id] || 0) < f.msgs;
         return '<button type="button" class="fb-item" data-id="' + f.id + '">'
-          + '<div class="fb-item-top">' + catChip(f.category) + (statusPill[f.status] || '') + (unread ? '<span class="fb-unread-dot" title="New staff reply"></span>' : '') + '</div>'
+          + '<div class="fb-item-top">' + catChip(f.category) + (statusPill[f.status] || '') + (unread ? '<span class="fb-unread-dot" data-tip="New staff reply"></span>' : '') + '</div>'
           + '<div class="fb-item-title">' + esc(f.title) + '</div>'
           + '<div class="fb-item-meta muted small"><time data-time="' + esc(f.created_at) + '">' + esc(f.created_at.slice(0, 10)) + '</time>'
           + ' · ' + f.msgs + ' message' + (f.msgs === 1 ? '' : 's')

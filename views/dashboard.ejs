@@ -77,7 +77,7 @@
                 <td class="small"><%= p.reason %><% if (p.evidence) { %> <a href="<%= p.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
                 <td class="small"><%= p.moderator %></td>
                 <td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,16) %></time></td>
-                <td><% if (!p.voided && canVoidPun) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>? A reason is required." data-confirm-title="Void punishment" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (p.voided) { %><span class="badge void-pill" title="<%= p.void_reason || '' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %></td>
+                <td><% if (!p.voided && canVoidPun) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>? A reason is required." data-confirm-title="Void punishment" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (p.voided) { %><span class="badge void-pill" data-tip="<%= p.void_reason || 'Voided' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -135,7 +135,7 @@
                 <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
                 <td class="small"><%= f.issued_by %></td>
                 <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></td>
-                <td><% if (!f.voided && canVoidInf) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>? A reason is required." data-confirm-title="Void infraction" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (f.voided) { %><span class="badge void-pill" title="<%= f.void_reason || '' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %></td>
+                <td><% if (!f.voided && canVoidInf) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>? A reason is required." data-confirm-title="Void infraction" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (f.voided) { %><span class="badge void-pill" data-tip="<%= f.void_reason || 'Voided' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -348,7 +348,7 @@
     return ' <button class="btn btn-ghost btn-sm void-btn" type="button" data-void="' + kind + '" data-id="' + id + '" data-who="' + esc(who) + '">Void</button>';
   }
   function voidMark(r) {
-    return r.voided ? ' <span class="pill pill-grey void-pill" title="' + esc(r.void_reason || '') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span>' : '';
+    return r.voided ? ' <span class="pill pill-grey void-pill" data-tip="' + esc(r.void_reason || 'Voided') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span>' : '';
   }
   function loadFile(name) {
     var out = document.getElementById('file-result'); out.innerHTML = '<p class="muted">Loading…</p>';
@@ -392,7 +392,7 @@
   // ---------- realtime updates ----------
   function timeCell(ts) { return '<time data-time="' + esc(ts) + '">' + esc(String(ts).slice(0, 16)) + '</time>'; }
   function voidFormCell(action, id, msg, allowed, r) {
-    if (r.voided) return '<td><span class="badge void-pill" title="' + esc(r.void_reason || '') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span></td>';
+    if (r.voided) return '<td><span class="badge void-pill" data-tip="' + esc(r.void_reason || 'Voided') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span></td>';
     if (!allowed) return '<td></td>';
     return '<td><form method="post" action="' + action + '" class="inline" data-confirm="' + esc(msg) + ' A reason is required." data-confirm-title="Void" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td>';
   }

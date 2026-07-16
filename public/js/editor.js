@@ -93,6 +93,7 @@
     Array.prototype.forEach.call(el.childNodes, function (n) {
       if (n.nodeType === 3) { if (n.nodeValue.trim()) out.push(n.nodeValue.trim()); return; }
       if (n.nodeType !== 1) return;
+      if (n.classList && n.classList.contains('wz-rt-drag')) return; // gutter grip, never serialized
       var tag = n.tagName.toLowerCase();
       if (/^h[1-4]$/.test(tag)) out.push('#'.repeat(+tag[1]) + ' ' + inlineToMd(n).trim());
       else if (tag === 'p' || tag === 'div') { var t = inlineToMd(n).trim(); if (t) out.push(t); }
@@ -152,6 +153,13 @@
     d.className = 'wz-rt'; d.contentEditable = 'true';
     d.innerHTML = mdToHtml(mdText) || '<p><br></p>';
     d._mdCache = String(mdText).trim();
+    // gutter grip so prose/text can be dragged to reorder like any other block.
+    // contentEditable=false keeps it out of the caret flow; htmlToMd skips it so
+    // it never lands in the serialized markdown.
+    var grip = document.createElement('span');
+    grip.className = 'wz-drag wz-rt-drag'; grip.contentEditable = 'false';
+    grip.setAttribute('draggable', 'true'); grip.setAttribute('data-tip', 'Drag to move'); grip.textContent = '⋮⋮';
+    d.appendChild(grip);
     return d;
   }
 
@@ -709,7 +717,7 @@
   wzEditor.addEventListener('dragstart', function (e) {
     var handle = e.target.closest ? e.target.closest('.wz-drag') : null;
     if (!handle) { e.preventDefault(); return; }
-    dragNode = handle.closest('.wz-block');
+    dragNode = handle.closest('.wz-block, .wz-rt');
     if (dragNode) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'block'); } catch (x) {} dragNode.classList.add('dragging'); }
   });
   wzEditor.addEventListener('dragover', function (e) {

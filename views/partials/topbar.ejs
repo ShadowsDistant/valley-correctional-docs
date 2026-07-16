@@ -3,7 +3,7 @@
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
 
-  <a class="brand" href="/home" title="<%= siteName %>">
+  <a class="brand" href="/home" data-tip="<%= siteName %>" data-tip-pos="bottom" aria-label="<%= siteName %>">
     <img class="brand-logo" src="/assets/logo.png" alt="<%= siteName %>" width="38" height="38" />
   </a>
 
@@ -15,8 +15,6 @@
   </div>
 
   <nav class="top-actions">
-    <a class="top-link doc-tab" href="/home"><%- icon('file') %> Public Documents</a>
-    <% if (user) { %><a class="top-link doc-tab" href="/internal-documents/general-staff-handbook"><%- icon('lock') %> Internal Documents</a><% } %>
     <a class="btn btn-primary discord-cta" href="<%= discord %>" target="_blank" rel="noopener"><%- icon('discord') %> Join our Discord ›</a>
 
     <div class="account-menu" id="accountMenu">

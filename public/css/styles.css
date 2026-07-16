@@ -354,9 +354,38 @@ kbd {
 .vcf-tip.pos-left::after { top: 50%; right: -4.5px; margin-top: -3.5px; border-width: 0 0 1px 1px; }
 .vcf-tip.pos-right::after { top: 50%; left: -4.5px; margin-top: -3.5px; border-width: 1px 1px 0 0; }
 
-/* client-side nav (PJAX) transitions */
+/* client-side nav (PJAX) transitions.
+   The transition and swapped children use a TRANSFORM-ONLY entrance (never an
+   opacity:0 keyframe), so content is always visible even if the animation
+   doesn't advance — CSS animations on innerHTML-inserted nodes and on
+   background/throttled tabs can otherwise leave elements stuck at opacity 0. */
 .content.pjax-loading { opacity: .55; transition: opacity .12s var(--ease); }
-@media (prefers-reduced-motion: no-preference) { .content.pjax-in { animation: fadeInUp .28s var(--ease); } }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes riseIn { from { transform: translateY(10px); } to { transform: none; } }
+  .content.pjax-in { animation: riseIn .28s var(--ease); }
+  /* once content has arrived via PJAX, don't re-run the opacity-fade entrances
+     on the swapped children — the container's rise covers the transition and
+     the children stay at their natural (visible) opacity. Covers every
+     entrance-animated element that can appear inside swapped content. */
+  .content.pjax-in .doc,
+  .content.pjax-in .hero,
+  .content.pjax-in .doc-breadcrumb,
+  .content.pjax-in .admin-titlerow,
+  .content.pjax-in .admin-h1,
+  .content.pjax-in .fb-card,
+  .content.pjax-in .fb-item,
+  .content.pjax-in .doc-card,
+  .content.pjax-in .stat-card,
+  .content.pjax-in .panel,
+  .content.pjax-in .action,
+  .content.pjax-in .clause-row,
+  .content.pjax-in .wm-tool,
+  .content.pjax-in .log-filters,
+  .content.pjax-in .table-scroll,
+  .content.pjax-in .settings-grid,
+  .content.pjax-in .staff-card,
+  .content.pjax-in .policy-editor-grid > * { animation: none; }
+}
 
 .scrim { display: none; }
 
@@ -1030,8 +1059,18 @@ img[data-rbx-avatar], .staff-avatar, .acct-avatar, .profile-avatar { -webkit-use
 .page-settings > summary { cursor: pointer; padding: 12px 22px; font-weight: 600; font-size: 14px; color: var(--text); }
 .page-settings .field-grid { padding: 6px 22px 18px; }
 .wz-editor { min-height: 55vh; }
-.wz-rt { outline: none; }
+.wz-rt { outline: none; position: relative; }
 .wz-rt:empty::before { content: "Start writing, or press Insert to add a block…"; color: var(--faint); }
+/* gutter grip for reordering prose blocks — appears on hover, sits in the margin */
+.wz-editor .wz-rt > .wz-rt-drag {
+  position: absolute; left: -22px; top: 1px; width: 18px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; user-select: none; color: var(--faint); font-size: 11px; letter-spacing: -2px;
+  border-radius: 5px; opacity: 0; transition: opacity .14s var(--ease), background .14s var(--ease), color .14s var(--ease);
+}
+.wz-editor .wz-rt:hover > .wz-rt-drag, .wz-editor .wz-rt > .wz-rt-drag:hover { opacity: 1; }
+.wz-editor .wz-rt > .wz-rt-drag:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.wz-rt.dragging { opacity: .5; }
 #mdPane textarea { width: 100%; min-height: 64vh; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; padding: 14px; }
 
 /* block printing of confidential pages */
@@ -1594,3 +1633,28 @@ body.fb-drawer-open { overflow: hidden; }
 .acct-avatar.sm { width: 22px; height: 22px; font-size: 11px; }
 .live-feed li { color: var(--text-2); }
 @media (max-width: 760px) { .live-grid { grid-template-columns: 1fr 1fr; } .live-spark { grid-column: 1 / -1; } .live-body { grid-template-columns: 1fr; } }
+
+/* ---------- subtle gradient glows ---------- */
+/* soft accent bloom on solid buttons + the Discord CTA */
+.btn-solid, .discord-cta { box-shadow: 0 3px 13px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
+.btn-solid:hover, .discord-cta:hover { box-shadow: 0 6px 20px -6px color-mix(in srgb, var(--accent) 72%, transparent); }
+
+/* stat cards get a corner glow that warms on hover */
+.stat-card::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(150px 100px at 88% -18%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%);
+  opacity: .5; transition: opacity .3s var(--ease);
+}
+.stat-card:hover::after { opacity: 1; }
+
+/* a faint accent aurora behind the traffic globe */
+.globe-panel::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(280px 220px at 26% 26%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 66%),
+    radial-gradient(220px 200px at 82% 84%, color-mix(in srgb, #38bdf8 9%, transparent), transparent 68%);
+}
+.globe-panel > * { position: relative; z-index: 1; }
+
+/* active range/dashboard tabs get a hint of glow on their label */
+.range-tab.active, .dash-tab.active { text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); }

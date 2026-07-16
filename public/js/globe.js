@@ -19,6 +19,18 @@
   };
   var data = (window.GLOBE_DATA || []).filter(function (c) { return COORDS[c.country]; });
 
+  // Major cities — rendered as warm "night-side lights" for extra surface detail.
+  var CITIES = [
+    [40.7, -74], [34, -118.2], [41.9, -87.6], [29.8, -95.4], [19.4, -99.1], [25.8, -80.2],
+    [-23.5, -46.6], [-34.6, -58.4], [4.7, -74.1], [-12, -77], [-33.4, -70.7], [43.7, -79.4], [49.3, -123.1],
+    [51.5, -0.1], [48.9, 2.35], [52.5, 13.4], [40.4, -3.7], [41.9, 12.5], [52.4, 4.9], [59.3, 18], [59.9, 10.7],
+    [55.75, 37.6], [50.1, 14.4], [48.2, 16.4], [41, 28.9], [37.98, 23.7],
+    [28.6, 77.2], [19, 72.8], [23.8, 90.4], [24.9, 67], [39.9, 116.4], [31.2, 121.5], [22.3, 114.2],
+    [35.7, 139.7], [37.5, 127], [1.35, 103.8], [-6.2, 106.8], [13.75, 100.5], [14.6, 121], [21, 105.8],
+    [-33.9, 151.2], [-37.8, 144.9], [-36.85, 174.8],
+    [30, 31.2], [6.5, 3.4], [-26.2, 28], [-1.3, 36.8], [33.6, -7.6], [25.2, 55.3], [24.7, 46.7], [31.8, 35.2]
+  ];
+
   // ---- Coarse continent outlines (lat/lon polygons). Filled into a dot map. ----
   var LAND = [
     // North America (mainland + Canada)
@@ -69,12 +81,16 @@
     for (var i = 0; i < LAND.length; i++) if (pointInPoly(lat, lon, LAND[i])) return true;
     return false;
   }
-  // Precompute land dots on a ~2.4 deg grid (density scaled by latitude).
+  // Precompute land dots on a fine grid (density scaled by latitude), tagging
+  // each as coastal (near an ocean cell) so coastlines can be drawn brighter.
   var landPts = [];
-  for (var la = -56; la <= 78; la += 2.4) {
-    var stepLon = Math.max(2.4, 2.4 / Math.max(0.18, Math.cos(la * Math.PI / 180)));
+  var STEP = 1.9;
+  for (var la = -56; la <= 80; la += STEP) {
+    var stepLon = Math.max(STEP, STEP / Math.max(0.18, Math.cos(la * Math.PI / 180)));
     for (var lo = -180; lo < 180; lo += stepLon) {
-      if (isLand(la, lo)) landPts.push([la, lo]);
+      if (!isLand(la, lo)) continue;
+      var coastal = !isLand(la + STEP, lo) || !isLand(la - STEP, lo) || !isLand(la, lo + stepLon) || !isLand(la, lo - stepLon);
+      landPts.push([la, lo, coastal ? 1 : 0]);
     }
   }
 
@@ -172,20 +188,46 @@
 
     drawGraticule();
 
-    // continents (dotted land)
+    // continents (dotted land); coastal cells render brighter + slightly larger
     for (var i = 0; i < landPts.length; i++) {
       var pt = landPts[i];
       var p = project(pt[0], pt[1], rot);
       if (p.z <= 0.02) continue;
-      var a = 0.14 + p.z * 0.5;
-      var rr = 0.9 + p.z * 0.85;
+      var coastal = pt[2];
+      var a = (coastal ? 0.24 : 0.13) + p.z * (coastal ? 0.55 : 0.42);
+      var rr = (coastal ? 1.0 : 0.8) + p.z * 0.8;
       ctx.beginPath(); ctx.arc(p.sx, p.sy, rr, 0, 6.2832);
-      ctx.fillStyle = 'rgba(120,210,150,' + a.toFixed(3) + ')'; ctx.fill();
+      ctx.fillStyle = (coastal ? 'rgba(150,225,175,' : 'rgba(104,196,138,') + a.toFixed(3) + ')'; ctx.fill();
     }
+
+    // city lights — warm points, brighter on the dusk (trailing) hemisphere
+    for (var ci = 0; ci < CITIES.length; ci++) {
+      var cp = project(CITIES[ci][0], CITIES[ci][1], rot);
+      if (cp.z <= 0.04) continue;
+      var dusk = 0.55 + 0.45 * (1 - cp.z);       // brighter near the terminator
+      var tw = 0.6 + 0.4 * Math.sin(t * 0.05 + ci * 1.7);
+      var ca = (0.20 + cp.z * 0.30) * dusk * tw;
+      var cg = ctx.createRadialGradient(cp.sx, cp.sy, 0, cp.sx, cp.sy, 3.2);
+      cg.addColorStop(0, 'rgba(255,226,150,' + Math.min(0.9, ca * 1.8).toFixed(3) + ')');
+      cg.addColorStop(1, 'rgba(255,190,90,0)');
+      ctx.beginPath(); ctx.arc(cp.sx, cp.sy, 3.2, 0, 6.2832); ctx.fillStyle = cg; ctx.fill();
+      ctx.beginPath(); ctx.arc(cp.sx, cp.sy, 0.7, 0, 6.2832);
+      ctx.fillStyle = 'rgba(255,240,205,' + Math.min(0.95, ca * 2.2).toFixed(3) + ')'; ctx.fill();
+    }
+
+    // specular sun glint on the lit (leading) shoulder of the globe
+    var sunx = cx - R * 0.42, suny = cy - R * 0.46;
+    var sg = ctx.createRadialGradient(sunx, suny, 0, sunx, suny, R * 0.5);
+    sg.addColorStop(0, 'rgba(255,255,240,0.16)');
+    sg.addColorStop(1, 'rgba(255,255,240,0)');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.clip();
+    ctx.beginPath(); ctx.arc(sunx, suny, R * 0.5, 0, 6.2832); ctx.fillStyle = sg; ctx.fill();
+    ctx.restore();
 
     // rim light
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832);
-    ctx.strokeStyle = 'rgba(255,236,200,0.20)'; ctx.lineWidth = 1.1; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,236,200,0.22)'; ctx.lineWidth = 1.1; ctx.stroke();
 
     // traffic markers + arcs to the busiest hub
     var hub = data.length ? COORDS[data[0].country] : null;

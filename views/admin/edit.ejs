@@ -18,7 +18,7 @@
         <button type="button" data-mode="markdown">Markdown</button>
         <button type="button" data-mode="preview">Preview</button>
       </div>
-      <button class="btn btn-ghost btn-sm" type="button" id="settingsToggle" title="Page settings"><%- icon('gear') %> Settings</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="settingsToggle" data-tip-pos="bottom" data-tip="Page settings"><%- icon('gear') %> Settings</button>
       <% if (!isNew) { %><a class="btn btn-ghost btn-sm" href="/<%= page.slug %>" target="_blank">View live ↗</a><% } %>
       <% if (!isNew && !(typeof undeletable !== 'undefined' && undeletable)) { %><button class="btn btn-ghost btn-sm danger" type="button" id="deleteBtn">Delete</button><% } %>
       <button class="btn btn-solid btn-sm" type="button" id="saveBtn">Save changes</button>
@@ -30,25 +30,25 @@
       <!-- WYSIWYG -->
       <div class="wysiwyg-wrap" id="wzPane">
         <div class="wz-toolbar" id="wzToolbar">
-          <button class="wz-btn" data-cmd="undo" title="Undo (Ctrl+Z)" id="undoBtn">↺</button>
-          <button class="wz-btn" data-cmd="redo" title="Redo (Ctrl+Shift+Z)" id="redoBtn">↻</button>
+          <button class="wz-btn" data-cmd="undo" data-tip-pos="bottom" data-tip="Undo (Ctrl+Z)" id="undoBtn">↺</button>
+          <button class="wz-btn" data-cmd="redo" data-tip-pos="bottom" data-tip="Redo (Ctrl+Shift+Z)" id="redoBtn">↻</button>
           <span class="sep"></span>
-          <button class="wz-btn" data-cmd="h2" title="Heading">H2</button>
-          <button class="wz-btn" data-cmd="h3" title="Subheading">H3</button>
+          <button class="wz-btn" data-cmd="h2" data-tip-pos="bottom" data-tip="Heading">H2</button>
+          <button class="wz-btn" data-cmd="h3" data-tip-pos="bottom" data-tip="Subheading">H3</button>
           <span class="sep"></span>
-          <button class="wz-btn" data-cmd="bold" title="Bold (Ctrl+B)"><%- icon('bold') %></button>
-          <button class="wz-btn" data-cmd="italic" title="Italic (Ctrl+I)"><%- icon('italic') %></button>
-          <button class="wz-btn" data-cmd="strike" title="Strikethrough"><%- icon('strike') %></button>
-          <button class="wz-btn" data-cmd="code" title="Inline code"><%- icon('code') %></button>
-          <button class="wz-btn" data-cmd="link" title="Link (Ctrl+K)"><%- icon('link') %></button>
-          <button class="wz-btn" data-cmd="icon" title="Insert icon"><%- icon('star') %></button>
+          <button class="wz-btn" data-cmd="bold" data-tip-pos="bottom" data-tip="Bold (Ctrl+B)"><%- icon('bold') %></button>
+          <button class="wz-btn" data-cmd="italic" data-tip-pos="bottom" data-tip="Italic (Ctrl+I)"><%- icon('italic') %></button>
+          <button class="wz-btn" data-cmd="strike" data-tip-pos="bottom" data-tip="Strikethrough"><%- icon('strike') %></button>
+          <button class="wz-btn" data-cmd="code" data-tip-pos="bottom" data-tip="Inline code"><%- icon('code') %></button>
+          <button class="wz-btn" data-cmd="link" data-tip-pos="bottom" data-tip="Link (Ctrl+K)"><%- icon('link') %></button>
+          <button class="wz-btn" data-cmd="icon" data-tip-pos="bottom" data-tip="Insert icon"><%- icon('star') %></button>
           <span class="sep"></span>
-          <button class="wz-btn" data-cmd="ul" title="Bulleted list"><%- icon('list') %></button>
-          <button class="wz-btn" data-cmd="ol" title="Numbered list">1.</button>
-          <button class="wz-btn" data-cmd="quote" title="Quote"><%- icon('quote') %></button>
-          <button class="wz-btn" data-cmd="hr" title="Divider"><%- icon('divider') %></button>
+          <button class="wz-btn" data-cmd="ul" data-tip-pos="bottom" data-tip="Bulleted list"><%- icon('list') %></button>
+          <button class="wz-btn" data-cmd="ol" data-tip-pos="bottom" data-tip="Numbered list">1.</button>
+          <button class="wz-btn" data-cmd="quote" data-tip-pos="bottom" data-tip="Quote"><%- icon('quote') %></button>
+          <button class="wz-btn" data-cmd="hr" data-tip-pos="bottom" data-tip="Divider"><%- icon('divider') %></button>
           <span class="sep"></span>
-          <button class="wz-btn" data-cmd="insert" title="Insert block"><%- icon('plus') %> Insert</button>
+          <button class="wz-btn" data-cmd="insert" data-tip-pos="bottom" data-tip="Insert block"><%- icon('plus') %> Insert</button>
         </div>
         <div class="wz-editor markdown" id="wzEditor"></div>
       </div>

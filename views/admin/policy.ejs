@@ -27,11 +27,11 @@
           <% clauses.forEach(function (c) { %>
             <div class="clause-row">
               <div class="clause-move">
-                <button type="button" class="clause-btn move-up" title="Move up" aria-label="Move up"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
-                <button type="button" class="clause-btn move-down" title="Move down" aria-label="Move down"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+                <button type="button" class="clause-btn move-up" data-tip="Move up" aria-label="Move up"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
+                <button type="button" class="clause-btn move-down" data-tip="Move down" aria-label="Move down"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
               </div>
               <textarea name="clause" class="clause-input" rows="2" spellcheck="true"><%= c %></textarea>
-              <button type="button" class="clause-btn clause-del" title="Remove clause" aria-label="Remove clause"><%- icon('trash') %></button>
+              <button type="button" class="clause-btn clause-del" data-tip="Remove clause" aria-label="Remove clause"><%- icon('trash') %></button>
             </div>
           <% }); %>
         </div>
@@ -62,11 +62,11 @@
 <template id="clauseTemplate">
   <div class="clause-row">
     <div class="clause-move">
-      <button type="button" class="clause-btn move-up" title="Move up" aria-label="Move up"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
-      <button type="button" class="clause-btn move-down" title="Move down" aria-label="Move down"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button type="button" class="clause-btn move-up" data-tip="Move up" aria-label="Move up"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
+      <button type="button" class="clause-btn move-down" data-tip="Move down" aria-label="Move down"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
     </div>
     <textarea name="clause" class="clause-input" rows="2" spellcheck="true" placeholder="Write a policy clause…"></textarea>
-    <button type="button" class="clause-btn clause-del" title="Remove clause" aria-label="Remove clause"><%- icon('trash') %></button>
+    <button type="button" class="clause-btn clause-del" data-tip="Remove clause" aria-label="Remove clause"><%- icon('trash') %></button>
   </div>
 </template>
 
