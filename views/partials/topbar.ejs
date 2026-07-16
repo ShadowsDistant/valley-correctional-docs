@@ -3,19 +3,24 @@
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
 
-  <a class="brand" href="/home" data-tip="<%= siteName %>" data-tip-pos="bottom" aria-label="<%= siteName %>">
-    <img class="brand-logo" src="/assets/logo.png" alt="<%= siteName %>" width="38" height="38" />
+  <a class="brand" href="/home" aria-label="<%= siteName %> — home">
+    <img class="brand-logo" src="/assets/logo.png" alt="" width="38" height="38" />
+    <span class="brand-text">
+      <span class="brand-title">Valley Correctional</span>
+      <span class="brand-sub"><%= user ? 'Staff Documentation' : 'Documentation' %></span>
+    </span>
   </a>
 
   <div class="search" role="search">
     <svg class="search-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="searchInput" type="text" placeholder="Search the docs..." autocomplete="off" spellcheck="false" />
+    <input id="searchInput" type="text" placeholder="Search the documentation…" autocomplete="off" spellcheck="false" />
     <kbd>/</kbd>
     <div id="searchResults" class="search-results" hidden></div>
   </div>
 
   <nav class="top-actions">
-    <a class="btn btn-primary discord-cta" href="<%= discord %>" target="_blank" rel="noopener"><%- icon('discord') %> Join our Discord ›</a>
+    <a class="top-icon-btn discord-cta" href="<%= discord %>" target="_blank" rel="noopener" data-tip="Join our Discord" data-tip-pos="bottom" aria-label="Join our Discord"><%- icon('discord') %></a>
+    <span class="top-sep" aria-hidden="true"></span>
 
     <div class="account-menu" id="accountMenu">
       <button class="account-btn" id="accountBtn" aria-haspopup="true" aria-expanded="false">

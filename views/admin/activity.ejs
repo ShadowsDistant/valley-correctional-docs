@@ -90,6 +90,32 @@
       <% } %>
     </section>
     <p class="muted small">Time on page is estimated from the gap between consecutive views (capped at 15 minutes); the most recent view has no measured duration.</p>
+
+    <% if (isAdminViewer) { %>
+      <section class="panel ai-log-panel">
+        <div class="panel-head">
+          <h2><%- icon('message') %> Assistant conversations</h2>
+          <span class="badge badge-internal">Admins only</span>
+        </div>
+        <% if (!aiChats || !aiChats.length) { %>
+          <p class="muted small" style="margin:0">This staff member hasn't used the VCF Assistant yet.</p>
+        <% } else { %>
+          <p class="muted small ai-log-note">Every question <strong><%= target.username %></strong> asked the assistant, with the model's reasoning. Staff are told their conversations are saved and reviewable.</p>
+          <ul class="ai-log-list">
+            <% aiChats.forEach(function (c) { %>
+              <li class="ai-log-item" data-ailog="<%= c.id %>">
+                <button type="button" class="ai-log-open">
+                  <span class="ai-log-caret"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span>
+                  <span class="ai-log-title"><%= c.title %></span>
+                  <span class="ai-log-meta"><%= c.n %> msg · <time data-time="<%= c.updated_at %>"><%= c.updated_at %></time></span>
+                </button>
+                <div class="ai-log-body" hidden></div>
+              </li>
+            <% }); %>
+          </ul>
+        <% } %>
+      </section>
+    <% } %>
 <script>
 (function () {
   // "View more" reveals the doc-activity table 25 rows at a time.
@@ -112,6 +138,34 @@
     tick(); var iv = setInterval(tick, 30000);
     if (window.pjaxRegister) window.pjaxRegister(function () { clearInterval(iv); });
   }
+})();
+(function () {
+  // Assistant conversation viewer (admin only) — lazy-loads each thread.
+  var list = document.querySelector('.ai-log-list'); if (!list) return;
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function strip(s) { return esc(s).replace(/\[\[([^\]|]+)\|[^\]]+\]\]/g, '<span class="ai-log-cite">$1</span>'); }
+  list.addEventListener('click', function (e) {
+    var btn = e.target.closest('.ai-log-open'); if (!btn) return;
+    var item = btn.closest('.ai-log-item');
+    var body = item.querySelector('.ai-log-body');
+    if (!body.hidden) { body.hidden = true; item.classList.remove('open'); return; }
+    item.classList.add('open'); body.hidden = false;
+    if (item.dataset.loaded) return;
+    body.innerHTML = '<p class="muted small">Loading…</p>';
+    fetch('/admin/ai-chat?id=' + encodeURIComponent(item.getAttribute('data-ailog')))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { body.innerHTML = '<p class="muted small">Could not load.</p>'; return; }
+        item.dataset.loaded = '1';
+        body.innerHTML = d.messages.map(function (m) {
+          if (m.role === 'user') return '<div class="ai-log-turn is-q"><span class="ai-log-who">Asked</span><div>' + esc(m.content) + '</div></div>';
+          var th = m.thinking
+            ? '<details class="ai-log-think"><summary>Model reasoning</summary><pre>' + esc(m.thinking) + '</pre></details>' : '';
+          return '<div class="ai-log-turn is-a"><span class="ai-log-who">Answered</span><div>' + strip(m.content).replace(/\n/g, '<br>') + '</div>' + th + '</div>';
+        }).join('') || '<p class="muted small">Empty conversation.</p>';
+      })
+      .catch(function () { body.innerHTML = '<p class="muted small">Could not load.</p>'; });
+  });
 })();
 (function () {
   var box = document.getElementById('ovRoblox'); if (!box) return;

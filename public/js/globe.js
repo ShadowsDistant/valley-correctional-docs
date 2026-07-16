@@ -125,6 +125,27 @@
   var max = 1; data.forEach(function (c) { if (c.n > max) max = c.n; });
   var rot = 0, raf = null, t = 0, stopped = false;
 
+  // ---- interaction: drag to spin, hover a marker for its country ----------
+  var drag = null, spin = 0.16, hover = null, mouse = null;
+  function localPt(e) {
+    var r = canvas.getBoundingClientRect();
+    var p = (e.touches && e.touches[0]) || e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  }
+  function onDown(e) { drag = { x: localPt(e).x, rot: rot }; canvas.classList.add('is-drag'); }
+  function onMove(e) {
+    mouse = localPt(e);
+    if (drag) { rot = drag.rot + (mouse.x - drag.x) * 0.55; e.preventDefault && e.preventDefault(); }
+  }
+  function onUp() { drag = null; canvas.classList.remove('is-drag'); }
+  canvas.addEventListener('mousedown', onDown);
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseleave', function () { mouse = null; onUp(); });
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: true });
+  canvas.addEventListener('touchmove', onMove, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+
   function drawGraticule() {
     // meridians + parallels as faint dotted arcs on the near hemisphere
     var lat, lon, p;
@@ -151,7 +172,8 @@
     // self-clean: stop drawing if the canvas has been removed (PJAX away)
     if (!document.body.contains(canvas)) { stopped = true; raf = null; return; }
     t++;
-    rot += 0.16;
+    if (!drag) rot += spin;             // hand on the globe stops the spin
+    var hot = null;                     // marker under the pointer this frame
     ctx.clearRect(0, 0, W, H);
 
     // starfield
@@ -225,6 +247,12 @@
     ctx.beginPath(); ctx.arc(sunx, suny, R * 0.5, 0, 6.2832); ctx.fillStyle = sg; ctx.fill();
     ctx.restore();
 
+    // limb darkening — the edge falls away, so the disc reads as a sphere
+    var limb = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
+    limb.addColorStop(0, 'rgba(0,0,0,0)');
+    limb.addColorStop(1, 'rgba(2,6,16,0.45)');
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fillStyle = limb; ctx.fill();
+
     // rim light
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832);
     ctx.strokeStyle = 'rgba(255,236,200,0.22)'; ctx.lineWidth = 1.1; ctx.stroke();
@@ -249,17 +277,43 @@
         ctx.strokeStyle = 'rgba(255,190,90,' + (0.12 * alpha).toFixed(3) + ')';
         ctx.lineWidth = 1; ctx.stroke();
       }
+      // is the pointer on this marker?
+      var isHot = mouse && Math.hypot(mouse.x - p.sx, mouse.y - p.sy) < Math.max(9, rad + 5);
+      if (isHot) hot = { c: c, p: p, rad: rad };
+      // expanding sonar ring — busiest first, staggered
+      var ringT = (t * 0.012 + idx * 0.22) % 1;
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, rad + ringT * 22, 0, 6.2832);
+      ctx.strokeStyle = 'rgba(255,190,90,' + ((1 - ringT) * 0.28 * alpha).toFixed(3) + ')';
+      ctx.lineWidth = 1.2; ctx.stroke();
       // halo
       var hg = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, rad * 3.4 * pulse);
-      hg.addColorStop(0, 'rgba(255,162,0,' + (0.30 * alpha).toFixed(3) + ')');
+      hg.addColorStop(0, 'rgba(255,162,0,' + ((isHot ? 0.5 : 0.30) * alpha).toFixed(3) + ')');
       hg.addColorStop(1, 'rgba(255,162,0,0)');
       ctx.beginPath(); ctx.arc(p.sx, p.sy, rad * 3.4 * pulse, 0, 6.2832); ctx.fillStyle = hg; ctx.fill();
       // core
-      ctx.beginPath(); ctx.arc(p.sx, p.sy, rad, 0, 6.2832);
-      ctx.fillStyle = 'rgba(255,196,70,' + alpha.toFixed(3) + ')'; ctx.fill();
-      ctx.beginPath(); ctx.arc(p.sx, p.sy, rad, 0, 6.2832);
-      ctx.strokeStyle = 'rgba(255,255,255,' + (0.55 * alpha).toFixed(3) + ')'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, isHot ? rad + 1.5 : rad, 0, 6.2832);
+      ctx.fillStyle = 'rgba(255,' + (isHot ? 225 : 196) + ',' + (isHot ? 140 : 70) + ',' + alpha.toFixed(3) + ')'; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, isHot ? rad + 1.5 : rad, 0, 6.2832);
+      ctx.strokeStyle = 'rgba(255,255,255,' + ((isHot ? 0.95 : 0.55) * alpha).toFixed(3) + ')'; ctx.lineWidth = 1; ctx.stroke();
     });
+
+    // hovered marker gets a floating label with its country + visitor count
+    if (hot) {
+      var name = (COORDS[hot.c.country] && COORDS[hot.c.country][2]) || hot.c.country;
+      var label = name + ' · ' + hot.c.n;
+      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      var tw = ctx.measureText(label).width, pad = 7;
+      var bx = Math.min(Math.max(hot.p.sx - tw / 2 - pad, 4), W - tw - pad * 2 - 4);
+      var by = hot.p.sy - hot.rad - 26;
+      if (by < 4) by = hot.p.sy + hot.rad + 8;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bx, by, tw + pad * 2, 19, 6); else ctx.rect(bx, by, tw + pad * 2, 19);
+      ctx.fillStyle = 'rgba(10,8,4,0.88)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,190,90,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,232,190,0.98)';
+      ctx.fillText(label, bx + pad, by + 13);
+      canvas.style.cursor = 'pointer';
+    } else if (!drag) canvas.style.cursor = 'grab';
 
     raf = requestAnimationFrame(draw);
   }

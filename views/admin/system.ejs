@@ -1,0 +1,213 @@
+<%- include('../partials/head') %>
+<%- include('../partials/topbar') %>
+<div class="layout">
+  <%- include('../partials/admin-side') %>
+  <main class="content admin-content">
+    <div class="admin-titlerow">
+      <div>
+        <h1 class="admin-h1">System</h1>
+        <p class="admin-sub">Live health of the server this site runs on, the build that's deployed, and one-click updates.</p>
+      </div>
+      <div class="sys-build-chip" data-tip="The commit currently running" data-tip-pos="left">
+        <span class="sys-build-dot"></span>
+        <span class="mono" id="sysBuild"><%= stats.build.commit ? stats.build.commit : 'v' + stats.build.version %></span>
+      </div>
+    </div>
+
+    <div class="stat-grid stat-grid-ico sys-grid">
+      <div class="stat-card">
+        <span class="stat-ico"><%- icon('chart') %></span>
+        <span class="stat-num" id="sysCpu">—</span>
+        <span class="stat-label">CPU load · 1 min</span>
+        <div class="sys-meter"><span id="sysCpuBar" style="width:0%"></span></div>
+        <span class="muted small" id="sysCpuSub">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-ico"><%- icon('sitemap') %></span>
+        <span class="stat-num" id="sysMem">—</span>
+        <span class="stat-label">Memory used</span>
+        <div class="sys-meter"><span id="sysMemBar" style="width:0%"></span></div>
+        <span class="muted small" id="sysMemSub">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-ico"><%- icon('cabinet') %></span>
+        <span class="stat-num" id="sysDisk">—</span>
+        <span class="stat-label">Disk used</span>
+        <div class="sys-meter"><span id="sysDiskBar" style="width:0%"></span></div>
+        <span class="muted small" id="sysDiskSub">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-ico"><%- icon('timer') %></span>
+        <span class="stat-num" id="sysUp">—</span>
+        <span class="stat-label">Server uptime</span>
+        <span class="muted small" id="sysUpSub">—</span>
+      </div>
+    </div>
+
+    <div class="admin-cols sys-cols">
+      <section class="panel">
+        <div class="panel-head"><h2><%- icon('building') %> Machine</h2></div>
+        <dl class="sys-dl" id="sysHost">
+          <dt>Host</dt><dd class="mono"><%= stats.host.hostname %></dd>
+          <dt>OS</dt><dd class="mono"><%= stats.host.platform %> <%= stats.host.release %> · <%= stats.host.arch %></dd>
+          <dt>CPU</dt><dd class="mono"><%= stats.cpu.model %></dd>
+          <dt>Cores</dt><dd class="mono"><%= stats.cpu.cores %></dd>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2><%- icon('gear') %> Application</h2></div>
+        <dl class="sys-dl">
+          <dt>Version</dt><dd class="mono">v<%= stats.build.version %></dd>
+          <dt>Commit</dt><dd class="mono"><%= stats.build.commit || '—' %><%= stats.build.branch ? ' (' + stats.build.branch + ')' : '' %></dd>
+          <% if (stats.build.subject) { %><dt>Change</dt><dd><%= stats.build.subject %></dd><% } %>
+          <dt>Built</dt><dd><% if (stats.build.built) { %><time data-time="<%= String(stats.build.built).replace('T',' ').replace(/\..*/,'') %>" data-time-format="datetime"><%= stats.build.built %></time><% } else { %>—<% } %></dd>
+          <dt>Node</dt><dd class="mono"><%= stats.app.node %></dd>
+          <dt>Environment</dt><dd class="mono"><%= stats.app.env %></dd>
+          <dt>App uptime</dt><dd class="mono" id="sysProcUp">—</dd>
+          <dt>App memory</dt><dd class="mono" id="sysRss">—</dd>
+          <dt>Database</dt><dd class="mono" id="sysDb">—</dd>
+        </dl>
+      </section>
+    </div>
+
+    <section class="panel sys-update">
+      <div class="panel-head">
+        <h2><%- icon('download') %> Updates</h2>
+        <span class="sys-updater-pill" id="sysUpdaterPill">checking…</span>
+      </div>
+      <p class="muted small sys-update-copy">
+        Pulls the latest <strong>main</strong> from GitHub and rebuilds the containers on the host.
+        The site restarts for a few seconds while the new build comes up.
+      </p>
+      <div class="sys-update-row">
+        <form method="post" action="/admin/system/update" id="sysUpdateForm">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="btn btn-solid" type="submit" id="sysUpdateBtn"><%- icon('refresh') %> Run update</button>
+        </form>
+        <div class="sys-update-state" id="sysUpdateState"></div>
+      </div>
+      <div class="sys-updater-missing" id="sysUpdaterMissing" hidden>
+        <%- icon('warning') %>
+        <div>
+          <strong>The host updater isn't running.</strong>
+          <p class="muted small">The app is containerised and has no Docker socket (by design — it would be root on the host), so a helper on the host performs updates. Install it once:</p>
+          <pre class="mono"><code>chmod +x /opt/vcf-docs/deploy/update-watcher.sh
+( crontab -l 2>/dev/null; echo '* * * * * /opt/vcf-docs/deploy/update-watcher.sh >> /var/log/vcf-update.log 2>&1' ) | crontab -</code></pre>
+        </div>
+      </div>
+    </section>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function bytes(n) {
+    if (!n && n !== 0) return '—';
+    var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)) + ' ' + u[i];
+  }
+  function dur(s) {
+    s = Math.max(0, Math.round(s));
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    if (d) return d + 'd ' + h + 'h';
+    if (h) return h + 'h ' + m + 'm';
+    return m + 'm';
+  }
+  function meter(el, pct) {
+    el.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    el.className = pct >= 90 ? 'is-crit' : pct >= 70 ? 'is-warn' : '';
+  }
+  function paint(s) {
+    var loadPct = s.cpu.cores ? (s.cpu.load[0] / s.cpu.cores) * 100 : 0;
+    $('sysCpu').textContent = s.cpu.load[0].toFixed(2);
+    $('sysCpuSub').textContent = Math.round(loadPct) + '% of ' + s.cpu.cores + ' core' + (s.cpu.cores === 1 ? '' : 's') + ' · 5m ' + s.cpu.load[1].toFixed(2);
+    meter($('sysCpuBar'), loadPct);
+
+    var memPct = s.memory.total ? (s.memory.used / s.memory.total) * 100 : 0;
+    $('sysMem').textContent = Math.round(memPct) + '%';
+    $('sysMemSub').textContent = bytes(s.memory.used) + ' of ' + bytes(s.memory.total);
+    meter($('sysMemBar'), memPct);
+
+    if (s.disk && s.disk.total) {
+      var used = s.disk.total - s.disk.free, dPct = (used / s.disk.total) * 100;
+      $('sysDisk').textContent = Math.round(dPct) + '%';
+      $('sysDiskSub').textContent = bytes(used) + ' of ' + bytes(s.disk.total) + ' · ' + bytes(s.disk.free) + ' free';
+      meter($('sysDiskBar'), dPct);
+    } else { $('sysDisk').textContent = 'n/a'; $('sysDiskSub').textContent = 'not reported'; }
+
+    $('sysUp').textContent = dur(s.host.uptime);
+    $('sysUpSub').textContent = 'app running ' + dur(s.app.uptime);
+    $('sysProcUp').textContent = dur(s.app.uptime);
+    $('sysRss').textContent = bytes(s.app.rss) + ' RSS · ' + bytes(s.app.heapUsed) + ' heap';
+    $('sysDb').textContent = bytes(s.db.bytes);
+
+    var pill = $('sysUpdaterPill');
+    pill.textContent = s.updater.installed ? 'updater online' : 'updater offline';
+    pill.className = 'sys-updater-pill ' + (s.updater.installed ? 'is-on' : 'is-off');
+    $('sysUpdaterMissing').hidden = !!s.updater.installed;
+    $('sysUpdateBtn').disabled = !s.updater.installed || s.updater.pending;
+
+    var st = s.updater.status, box = $('sysUpdateState');
+    if (s.updater.pending || (st && st.state === 'queued')) {
+      box.className = 'sys-update-state is-run';
+      box.innerHTML = '<span class="sys-spin"></span> Update queued — the host picks it up within a minute…';
+    } else if (st && st.state === 'running') {
+      box.className = 'sys-update-state is-run';
+      box.innerHTML = '<span class="sys-spin"></span> ' + esc(st.detail || 'Updating…');
+    } else if (st && st.state === 'ok') {
+      box.className = 'sys-update-state is-ok';
+      box.textContent = '✓ ' + (st.detail || 'Up to date');
+    } else if (st && st.state === 'error') {
+      box.className = 'sys-update-state is-err';
+      box.textContent = '✗ ' + (st.detail || 'Update failed');
+    } else { box.className = 'sys-update-state'; box.textContent = ''; }
+    if (s.build && (s.build.commit || s.build.version)) $('sysBuild').textContent = s.build.commit || ('v' + s.build.version);
+    if (window.fillTimes) window.fillTimes();
+  }
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+
+  function alive() { var e = $('sysCpu'); return !!e && document.body.contains(e); }
+  function tick() {
+    if (!alive()) return;
+    fetch('/admin/system/stats', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.ok && alive()) paint(d.stats); })
+      .catch(function () { /* the app may be restarting mid-update — keep polling */ });
+  }
+  paint(<%- JSON.stringify(stats) %>);
+  var iv = setInterval(function () { if (alive()) tick(); }, 4000);
+  if (window.pjaxRegister) window.pjaxRegister(function () { clearInterval(iv); });
+
+  // Submitting the update form should not navigate — queue it via fetch.
+  var form = $('sysUpdateForm');
+  function run() {
+    var btn = $('sysUpdateBtn'); btn.disabled = true;
+    var box = $('sysUpdateState');
+    box.className = 'sys-update-state is-run';
+    box.innerHTML = '<span class="sys-spin"></span> Queueing…';
+    fetch('/admin/system/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _csrf: form.querySelector('[name=_csrf]').value }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { box.className = 'sys-update-state is-err'; box.textContent = '✗ ' + (d.error || 'Could not queue.'); btn.disabled = false; return; }
+      tick();
+    }).catch(function () { box.className = 'sys-update-state is-err'; box.textContent = '✗ Could not reach the server.'; btn.disabled = false; });
+  }
+  // NB: no data-confirm here — that helper calls form.submit(), which would
+  // bypass this handler and hard-navigate. Confirm inline instead.
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (window.vcfConfirm) {
+      window.vcfConfirm({
+        title: 'Run update',
+        message: 'Pull the latest code from main and rebuild on the host? The site restarts for a few seconds while the new build comes up.',
+        okLabel: 'Update now', danger: false,
+      }, run);
+    } else if (confirm('Pull the latest code and rebuild?')) run();
+  });
+})();
+</script>
+  </main>
+</div>
+<%- include('../partials/foot') %>

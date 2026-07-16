@@ -23,10 +23,19 @@
         <button type="button" class="dash-tab" data-status="approved">Approved <span class="tab-count"><%= counts.approved %></span></button>
         <button type="button" class="dash-tab" data-status="rejected">Rejected <span class="tab-count"><%= counts.rejected %></span></button>
       </div>
-      <div class="fb-search">
-        <%- icon('search') %>
-        <input type="text" id="fbSearch" value="<%= q %>" placeholder="Search feedback…" autocomplete="off" />
-        <button type="button" class="fb-search-clear" id="fbSearchClear" aria-label="Clear search" hidden><%- icon('x') %></button>
+      <div class="fb-toolbar-right">
+        <div class="fb-search">
+          <%- icon('search') %>
+          <input type="text" id="fbSearch" value="<%= q %>" placeholder="Search feedback…" autocomplete="off" />
+          <button type="button" class="fb-search-clear" id="fbSearchClear" aria-label="Clear search" hidden><%- icon('x') %></button>
+        </div>
+        <select id="fbSort" class="fb-sort" data-no-enhance aria-label="Sort feedback">
+          <option value="flagged">Needs reply first</option>
+          <option value="new">Newest first</option>
+          <option value="old">Oldest first</option>
+          <option value="active">Recently active</option>
+          <option value="busy">Most messages</option>
+        </select>
       </div>
     </div>
 
@@ -40,7 +49,7 @@
 
     <div id="fbList">
       <% items.forEach(function (f) { var m = catMeta(f.category); var needsReply = f.last_sender === 'submitter'; %>
-        <section class="panel fb-card <%= needsReply ? 'fb-card-flag' : '' %>" data-id="<%= f.id %>" data-status="<%= f.status %>" data-category="<%= f.category %>" data-text="<%= searchText(f) %>">
+        <section class="panel fb-card <%= needsReply ? 'fb-card-flag' : '' %>" data-id="<%= f.id %>" data-status="<%= f.status %>" data-category="<%= f.category %>" data-text="<%= searchText(f) %>" data-created="<%= f.created_at %>" data-active="<%= f.last_msg_at || f.created_at %>" data-msgs="<%= f.msgs %>" data-flagged="<%= needsReply ? 1 : 0 %>">
           <div class="fb-card-head">
             <span class="fb-card-avatar" <% if (f.roblox_user) { %>data-rbx-avatar="<%= f.roblox_user %>"<% } %> style="--h:<%= (f.submitted_by || f.roblox_user || 'anon').split('').reduce(function(a,c){return (a*31+c.charCodeAt(0))%360;},0) %>"><%= (f.submitted_by || f.roblox_user || '?').slice(0,1).toUpperCase() %></span>
             <div class="fb-card-headmain">
@@ -101,6 +110,21 @@
   function markActive(container, attr, val) {
     container.querySelectorAll('[' + attr + ']').forEach(function (b) { b.classList.toggle('active', b.getAttribute(attr) === val); });
   }
+  // Sorting is client-side over the already-rendered cards.
+  var sortSel = document.getElementById('fbSort');
+  var listBox = document.getElementById('fbList');
+  var ts = function (c, a) { return Date.parse(String(c.getAttribute(a) || '').replace(' ', 'T') + 'Z') || 0; };
+  var SORTS = {
+    flagged: function (a, b) { return (+b.getAttribute('data-flagged') - +a.getAttribute('data-flagged')) || (ts(b, 'data-active') - ts(a, 'data-active')); },
+    new: function (a, b) { return ts(b, 'data-created') - ts(a, 'data-created'); },
+    old: function (a, b) { return ts(a, 'data-created') - ts(b, 'data-created'); },
+    active: function (a, b) { return ts(b, 'data-active') - ts(a, 'data-active'); },
+    busy: function (a, b) { return (+b.getAttribute('data-msgs') || 0) - (+a.getAttribute('data-msgs') || 0); },
+  };
+  function applySort() {
+    var fn = SORTS[sortSel.value] || SORTS.flagged;
+    cards.slice().sort(fn).forEach(function (c) { listBox.appendChild(c); }); // reorder in place
+  }
   function apply() {
     var shown = 0;
     cards.forEach(function (c) {
@@ -126,6 +150,9 @@
   var st;
   searchInput.addEventListener('input', function () { clearTimeout(st); st = setTimeout(function () { curQ = searchInput.value.trim().toLowerCase(); apply(); }, 120); });
   searchClear.addEventListener('click', function () { searchInput.value = ''; curQ = ''; apply(); searchInput.focus(); });
+  searchInput.addEventListener('keydown', function (e) { if (e.key === 'Escape') { searchInput.value = ''; curQ = ''; apply(); } });
+  sortSel.addEventListener('change', function () { applySort(); apply(); });
+  applySort();
   apply();
 
   // ---------- chat ----------
