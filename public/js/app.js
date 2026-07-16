@@ -498,11 +498,18 @@
     function runScripts(scope) {
       var scripts = scope.querySelectorAll('script');
       Array.prototype.forEach.call(scripts, function (old) {
+        var t = (old.getAttribute('type') || '').toLowerCase();
+        // Cloudflare Rocket Loader (and similar optimizers) neuter scripts by
+        // prefixing the type (e.g. "abc123-text/javascript") and only its own
+        // runtime re-enables them — which never happens for swapped-in
+        // content, leaving pages without their scripts. Recreate anything
+        // that is (possibly neutered) JavaScript as a clean executable
+        // script; leave real data blocks (application/ld+json etc.) inert.
+        var executable = !t || t === 'module' || /(^|-)(text|application)\/(java|ecma)script$/.test(t);
+        if (!executable) return;
         var s = document.createElement('script');
-        for (var i = 0; i < old.attributes.length; i++) {
-          s.setAttribute(old.attributes[i].name, old.attributes[i].value);
-        }
-        if (old.src) s.async = false;              // preserve execution order for external scripts
+        if (t === 'module') s.type = 'module';
+        if (old.src) { s.src = old.src; s.async = false; } // keep execution order
         else s.textContent = old.textContent;
         old.parentNode.replaceChild(s, old);
       });
