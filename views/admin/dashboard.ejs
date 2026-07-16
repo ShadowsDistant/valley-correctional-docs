@@ -3,8 +3,16 @@
 <div class="layout">
   <%- include('../partials/admin-side') %>
   <main class="content admin-content">
-    <h1 class="admin-h1">Dashboard</h1>
-    <p class="admin-sub">Welcome back, <%= user.username %>. Here's how your documentation is doing.</p>
+    <h1 class="admin-h1" id="dashGreeting" data-user="<%= user.username %>">Welcome back, <%= user.username %></h1>
+    <p class="admin-sub">Here's how your documentation is doing.</p>
+    <script>
+    (function () {
+      var el = document.getElementById('dashGreeting'); if (!el) return;
+      var h = new Date().getHours();
+      var g = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Working late';
+      el.textContent = g + ', ' + el.getAttribute('data-user');
+    })();
+    </script>
 
     <div class="stat-grid">
       <div class="stat-card"><span class="stat-num"><%= stats.pageCount %></span><span class="stat-label">Published pages</span></div>

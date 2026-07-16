@@ -10,14 +10,29 @@
       </div>
     </div>
 
-    <div class="stat-grid">
-      <div class="stat-card"><span class="stat-num"><%= totals.viewsToday %></span><span class="stat-label">Views today</span></div>
-      <div class="stat-card"><span class="stat-num"><%= totals.viewsRange %></span><span class="stat-label">Views · <%= totals.days %>d</span></div>
-      <div class="stat-card"><span class="stat-num"><%= totals.visitorsRange %></span><span class="stat-label">Unique visitors · <%= totals.days %>d</span></div>
-      <div class="stat-card"><span class="stat-num"><%= totals.avgPerDay %></span><span class="stat-label">Avg views / day</span></div>
-      <div class="stat-card"><span class="stat-num"><%= totals.busiestViews %></span><span class="stat-label">Busiest day (<%= totals.busiestDay.slice(5) %>)</span></div>
-      <div class="stat-card"><span class="stat-num"><%= totals.views %></span><span class="stat-label">All-time views</span></div>
+    <div class="stat-grid stat-grid-ico">
+      <% [
+        { n: totals.viewsToday, l: 'Views today', ic: 'chart' },
+        { n: totals.viewsRange, l: 'Views · ' + totals.days + 'd', ic: 'files' },
+        { n: totals.visitorsRange, l: 'Unique visitors · ' + totals.days + 'd', ic: 'users' },
+        { n: totals.avgPerDay, l: 'Avg views / day', ic: 'chart' },
+        { n: totals.busiestViews, l: 'Busiest day (' + totals.busiestDay.slice(5) + ')', ic: 'calendar' },
+        { n: totals.views, l: 'All-time views', ic: 'eye' }
+      ].forEach(function (s) { %>
+        <div class="stat-card"><span class="stat-ico"><%- icon(s.ic) %></span><span class="stat-num"><%= s.n %></span><span class="stat-label"><%= s.l %></span></div>
+      <% }); %>
     </div>
+
+    <section class="panel globe-panel">
+      <div class="panel-head"><h2><%- icon('external') %> Where your traffic comes from</h2><span class="muted small"><%= countryTotal %> located visitor<%= countryTotal===1?'':'s' %> · <%= totals.days %>d</span></div>
+      <div class="globe-layout">
+        <div class="globe-stage"><canvas id="trafficGlobe" width="380" height="380" aria-label="Rotating globe of traffic origin"></canvas></div>
+        <div class="globe-side">
+          <div class="globe-side-h">Top countries</div>
+          <ul class="globe-list" id="globeList"><li class="muted small">Loading…</li></ul>
+        </div>
+      </div>
+    </section>
 
     <section class="panel live-panel" id="livePanel">
       <div class="panel-head"><h2><span class="live-dot"></span> Live &mdash; last 5 minutes</h2><span class="muted small" id="liveClock"></span></div>
@@ -149,4 +164,6 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
 })();
 </script>
+<script>window.GLOBE_DATA = <%- JSON.stringify(countries || []) %>;</script>
+<script src="/assets/js/globe.js?v=<%= assetVersion %>"></script>
 <%- include('../partials/foot') %>

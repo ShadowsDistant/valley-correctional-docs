@@ -167,7 +167,7 @@
   var chat = document.getElementById('fbChat');
   var openId = null, pollT = null, lastSig = '';
   function chatSig(id, d) {
-    return id + '|' + d.feedback.status + '|' + d.feedback.title + '|' + d.messages.map(function (m) { return m.created_at + m.sender + m.body; }).join('~');
+    return id + '|' + d.feedback.status + '|' + d.feedback.title + '|' + d.messages.map(function (m) { return m.created_at + m.sender + m.body + (m.deleted ? 'D' : ''); }).join('~');
   }
 
   function renderChat(d) {
@@ -183,7 +183,7 @@
       html += grouped ? '<span class="fb-av-spacer"></span>' : avatar(name, !mine);
       html += '<div class="fb-bubble-col">';
       if (!grouped) html += '<div class="fb-bubble-name">' + esc(name) + (mine ? '' : ' <span class="fb-staff-tag">Staff</span>') + '</div>';
-      html += '<div class="fb-bubble' + (m._first ? ' fb-bubble-first' : '') + '">' + esc(m.body) + '</div>';
+      html += '<div class="fb-bubble' + (m._first ? ' fb-bubble-first' : '') + (m.deleted ? ' is-deleted' : '') + '">' + esc(m.body) + '</div>';
       html += '<div class="fb-bubble-time muted"><time data-time="' + esc(m.created_at) + '">' + esc((m.created_at || '').slice(0, 16)) + '</time></div>';
       html += '</div></div>';
       prevSender = m.sender;

@@ -49,6 +49,7 @@
                 <span class="pill pill-<%= f.status==='open'?'amber':(f.status==='rejected'?'red':'green') %>" data-statuspill><%= f.status %></span>
                 <% if (needsReply) { %><span class="fb-flag" data-flag><%- icon('message') %> Awaiting reply</span><% } %>
               </div>
+              <% if (f.status_reason) { %><div class="fb-status-reason muted small"><strong><%= f.status %>:</strong> <%= f.status_reason %></div><% } %>
               <div class="fb-card-title"><%= f.title %></div>
               <div class="muted small fb-card-by">
                 by <strong><%= f.submitted_by || 'anonymous' %></strong><% if (f.roblox_user) { %> · Roblox <strong><%= f.roblox_user %></strong><% } %>
@@ -59,7 +60,7 @@
             </div>
             <div class="fb-card-actions">
               <% ['approved','rejected','open'].forEach(function (s) { if (f.status !== s) { %>
-                <form method="post" action="/admin/feedback/status" class="inline">
+                <form method="post" action="/admin/feedback/status" class="inline"<% if (s !== 'open') { %> data-confirm="<%= s==='approved' ? 'Approve this feedback? Your reason is shared with the submitter.' : 'Reject this feedback? Your reason is shared with the submitter.' %>" data-confirm-title="<%= s==='approved' ? 'Approve feedback' : 'Reject feedback' %>" data-confirm-ok="<%= s==='approved' ? 'Approve' : 'Reject' %>" data-confirm-variant="<%= s==='rejected' ? '' : 'safe' %>" data-confirm-input="Reason (shared with the submitter)"<% } %>>
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= f.id %>" /><input type="hidden" name="status" value="<%= s %>" />
                   <button class="btn btn-ghost btn-sm <%= s==='rejected'?'danger':(s==='approved'?'ok':'') %>" type="submit"><%= s==='open' ? 'Reopen' : (s==='approved' ? 'Approve' : 'Reject') %></button>
                 </form>
@@ -131,7 +132,7 @@
 
   // ---------- chat ----------
   var polls = {}, sigs = {};
-  function chatSig(id, d) { return id + '|' + d.feedback.status + '|' + d.messages.map(function (m) { return m.created_at + m.sender + m.body; }).join('~'); }
+  function chatSig(id, d) { return id + '|' + d.feedback.status + '|' + d.messages.map(function (m) { return m.created_at + m.sender + m.body + (m.deleted ? 'D' : ''); }).join('~'); }
   function renderChat(box, d) {
     var msgs = [{ sender: 'submitter', body: d.feedback.body, created_at: d.feedback.created_at, _first: true, sender_name: d.feedback.submitted_by || 'Submitter' }].concat(d.messages);
     var html = '', lastDay = '', prevSender = null;
@@ -141,12 +142,13 @@
       var mine = m.sender === 'staff';
       var name = mine ? (m.sender_name || 'You') : (m.sender_name || 'Submitter');
       var grouped = m.sender === prevSender && !m._first;
-      html += '<div class="fb-bubble-row ' + (mine ? 'mine' : 'theirs') + (grouped ? ' grouped' : '') + '">';
+      html += '<div class="fb-bubble-row ' + (mine ? 'mine' : 'theirs') + (grouped ? ' grouped' : '') + (m.deleted ? ' is-deleted' : '') + '">';
       html += grouped ? '<span class="fb-av-spacer"></span>' : avatar(name, mine);
       html += '<div class="fb-bubble-col">';
       if (!grouped) html += '<div class="fb-bubble-name">' + esc(name) + (mine ? ' <span class="fb-staff-tag">Staff</span>' : '') + '</div>';
-      html += '<div class="fb-bubble' + (m._first ? ' fb-bubble-first' : '') + '">' + esc(m.body) + '</div>';
-      html += '<div class="fb-bubble-time muted"><time data-time="' + esc(m.created_at) + '">' + esc((m.created_at || '').slice(0, 16)) + '</time></div>';
+      html += '<div class="fb-bubble">' + (m.deleted ? '<span class="fb-deleted-tag">deleted' + (m.deleted_by ? ' by ' + esc(m.deleted_by) : '') + '</span> ' : '') + esc(m.body) + '</div>';
+      html += '<div class="fb-bubble-time muted"><time data-time="' + esc(m.created_at) + '">' + esc((m.created_at || '').slice(0, 16)) + '</time>'
+        + (!m._first && !m.deleted && m.id ? ' · <button type="button" class="fb-msg-del" data-msgdel="' + m.id + '">delete</button>' : '') + '</div>';
       html += '</div></div>';
       prevSender = m.sender;
     });
@@ -172,6 +174,19 @@
       if (scroll || atBottom) box.scrollTop = box.scrollHeight;
     }).catch(function () {});
   }
+  // delete a chat message (kept, shown struck to staff)
+  document.addEventListener('click', function (e) {
+    var d = e.target.closest('[data-msgdel]'); if (!d) return;
+    var msgId = d.getAttribute('data-msgdel');
+    var threadId = d.closest('.fb-thread-inline').id.replace('thread-', '');
+    if (window.vcfConfirm) window.vcfConfirm({ title: 'Delete message', message: 'Delete this message? It stays visible to staff but is hidden from the submitter.', okLabel: 'Delete' }, doDel);
+    else if (confirm('Delete this message?')) doDel();
+    function doDel() {
+      fetch('/api/feedback/message/' + msgId + '/delete', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (res) {
+        if (res.ok) { sigs[threadId] = ''; loadThread(threadId, false); }
+      }).catch(function () {});
+    }
+  });
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-thread]'); if (!b) return;
     var id = b.getAttribute('data-thread');

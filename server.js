@@ -321,9 +321,12 @@ function recordViewRow(req, { slug, area }) {
     const visitor = crypto.createHash('sha256').update(ip + '|' + ua).digest('hex').slice(0, 16);
     const day = new Date().toISOString().slice(0, 10);
     const u = req.session && req.session.user;
+    // Cloudflare supplies the visitor's country; only ISO-3166 alpha-2 kept.
+    const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
+    const country = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' && cc !== 'T1' ? cc : '';
     db.prepare(
-      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username, area)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO page_views (path, slug, day, visitor, referrer, ua, authed, username, area, country)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       req.path,
       slug || null,
@@ -333,7 +336,8 @@ function recordViewRow(req, { slug, area }) {
       ua,
       u ? 1 : 0,
       u ? u.username : null,
-      area || 'docs'
+      area || 'docs',
+      country
     );
   } catch (e) {
     // analytics must never break a page render
@@ -918,10 +922,18 @@ adminRouter.get('/analytics', auth.requireAdmin, (req, res) => {
     `SELECT slug, ts, authed, username FROM page_views WHERE area='docs' ORDER BY id DESC LIMIT 12`
   ).all().map((r) => { const p = getPageAny.get(r.slug); return { title: p ? p.title : r.slug, slug: r.slug, ts: r.ts, authed: r.authed, username: r.username }; });
 
+  // Traffic origin by country (for the globe) — visitors, not raw hits.
+  const countries = db.prepare(
+    `SELECT country, COUNT(DISTINCT visitor) AS n FROM page_views
+     WHERE area='docs' AND country != '' AND day >= date('now', ?)
+     GROUP BY country ORDER BY n DESC LIMIT 60`
+  ).all(since);
+  const countryTotal = countries.reduce((a, c) => a + c.n, 0);
+
   res.render('admin/analytics', {
     title: 'Admin · Analytics', section: 'analytics',
     series, totals, topPages, referrers, authed, scope, byHour,
-    browsers: toArr(brow), oses: toArr(os), recent,
+    browsers: toArr(brow), oses: toArr(os), recent, countries, countryTotal,
   });
 });
 
@@ -974,13 +986,14 @@ adminRouter.get('/staff', requireStaffMgr, (req, res) => {
     if (u.rankMgmt) u.rankLabels.push(auth.rankLabel(u.rankMgmt));
     if (u.rankOSC) u.rankLabels.push(auth.rankLabel(u.rankOSC));
   });
-  const isPast = (u) => u.deleted || u.terminated;
-  const users = all.filter((u) => (tab === 'past' ? isPast(u) : !isPast(u)));
-  const pastCount = all.filter(isPast).length;
+  // Both groups are rendered; the Active/Past tabs toggle them client-side (no reload).
+  all.forEach((u) => { u.isPast = !!(u.deleted || u.terminated); });
+  const pastCount = all.filter((u) => u.isPast).length;
+  const activeCount = all.length - pastCount;
   const ranksByDiv = { moderation: [], sid: [], management: [], osc: [] };
   Object.keys(auth.RANKS).forEach((k) => { const r = auth.RANKS[k]; if (ranksByDiv[r.division]) ranksByDiv[r.division].push({ key: k, label: r.label }); });
   res.render('admin/staff', {
-    title: 'Admin · Staff', section: 'staff', users, tab, pastCount, divisions: auth.DIVISIONS, ranksByDiv,
+    title: 'Admin · Staff', section: 'staff', users: all, tab, pastCount, activeCount, divisions: auth.DIVISIONS, ranksByDiv,
     governed: auth.governedDivisions(actor), canGrantEditor: auth.canGrantEditor(actor),
     canAdminActions: auth.canAdminStaffActions(actor), isAdmin: actor.role === 'admin',
     filter: { division: String(req.query.division || ''), rank: String(req.query.rank || ''), q: String(req.query.q || '') },
@@ -1313,8 +1326,26 @@ app.get('/api/feedback/:id/messages', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const row = db.prepare('SELECT * FROM feedback WHERE id = ?').get(Number(req.params.id));
   if (!feedbackAccess(req, row)) return res.status(403).json({ ok: false });
-  const messages = db.prepare('SELECT sender, sender_name, body, created_at FROM feedback_messages WHERE feedback_id = ? ORDER BY id LIMIT 200').all(row.id);
-  res.json({ ok: true, feedback: { id: row.id, title: row.title, body: row.body, roblox_user: row.roblox_user, category: row.category, status: row.status, created_at: row.created_at, submitted_by: row.submitted_by }, messages });
+  const u = req.session && req.session.user;
+  const isStaff = !!(u && auth.canFeedbackStaff(u));
+  const rows = db.prepare('SELECT id, sender, sender_name, body, created_at, deleted, deleted_by FROM feedback_messages WHERE feedback_id = ? ORDER BY id LIMIT 200').all(row.id);
+  // Deleted messages stay visible (struck) to staff; submitters just see a tombstone.
+  const messages = rows.filter((m) => isStaff || true).map((m) => {
+    if (m.deleted && !isStaff) return { id: m.id, sender: m.sender, sender_name: m.sender_name, body: 'This message was removed by staff.', created_at: m.created_at, deleted: 1, tombstone: 1 };
+    return m;
+  });
+  res.json({ ok: true, staff: isStaff, feedback: { id: row.id, title: row.title, body: row.body, roblox_user: row.roblox_user, category: row.category, status: row.status, status_reason: row.status_reason, status_by: row.status_by, created_at: row.created_at, submitted_by: row.submitted_by }, messages });
+});
+
+// Staff soft-delete a chat message (kept for the record).
+app.post('/api/feedback/message/:id/delete', requireFeedbackStaff, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const id = Number(req.params.id);
+  const m = db.prepare('SELECT id, feedback_id FROM feedback_messages WHERE id = ?').get(id);
+  if (!m) return res.status(404).json({ ok: false });
+  db.prepare('UPDATE feedback_messages SET deleted = 1, deleted_by = ? WHERE id = ?').run(req.session.user.username, id);
+  audit(req.session.user.username, 'feedback.msg_delete', '#' + m.feedback_id, 'message ' + id);
+  res.json({ ok: true });
 });
 
 app.post('/api/feedback/:id/message', feedbackChatLimiter, (req, res) => {
@@ -1373,10 +1404,21 @@ app.get('/admin/feedback', requireFeedbackStaff, auth.csrfToken, viewRecorder('a
 app.post('/admin/feedback/status', requireFeedbackStaff, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   const id = Number(req.body.id);
   const status = ['open', 'approved', 'rejected'].includes(req.body.status) ? req.body.status : 'open';
+  const reason = String(req.body.reason || '').trim().slice(0, 400);
+  // Approving or rejecting needs a reason (reopening does not).
+  if ((status === 'approved' || status === 'rejected') && !reason) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'Please give a reason when approving or rejecting feedback.' });
+  }
   const row = db.prepare('SELECT title FROM feedback WHERE id = ?').get(id);
   if (row) {
-    db.prepare("UPDATE feedback SET status = ?, status_by = ?, status_at = datetime('now') WHERE id = ?").run(status, req.session.user.username, id);
-    audit(req.session.user.username, 'feedback.status', '#' + id, status + ' · ' + row.title.slice(0, 60));
+    db.prepare("UPDATE feedback SET status = ?, status_by = ?, status_at = datetime('now'), status_reason = ? WHERE id = ?").run(status, req.session.user.username, reason, id);
+    // Post the decision + reason into the thread so the submitter sees it.
+    if (reason) {
+      db.prepare("INSERT INTO feedback_messages (feedback_id, sender, sender_name, body) VALUES (?, 'staff', ?, ?)")
+        .run(id, req.session.user.username, 'Marked ' + status + ': ' + reason);
+      db.prepare("UPDATE feedback SET last_msg_at = datetime('now') WHERE id = ?").run(id);
+    }
+    audit(req.session.user.username, 'feedback.status', '#' + id, status + ' · ' + row.title.slice(0, 60) + (reason ? ' · ' + reason.slice(0, 60) : ''));
   }
   res.redirect('/admin/feedback');
 });

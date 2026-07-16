@@ -18,18 +18,13 @@
   var acctBtn = document.getElementById('accountBtn');
   var acctDrop = document.getElementById('accountDropdown');
   if (acctBtn && acctDrop) {
-    acctBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var open = acctDrop.hidden;
-      acctDrop.hidden = !open;
-      acctBtn.setAttribute('aria-expanded', String(open));
-    });
+    var acctMenu = acctBtn.closest('.account-menu');
+    function setOpen(open) { acctDrop.hidden = !open; acctBtn.setAttribute('aria-expanded', String(open)); if (acctMenu) acctMenu.classList.toggle('open', open); }
+    acctBtn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(acctDrop.hidden); });
     document.addEventListener('click', function (e) {
-      if (!acctDrop.hidden && !acctDrop.contains(e.target) && e.target !== acctBtn) {
-        acctDrop.hidden = true; acctBtn.setAttribute('aria-expanded', 'false');
-      }
+      if (!acctDrop.hidden && !acctDrop.contains(e.target) && e.target !== acctBtn) setOpen(false);
     });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { acctDrop.hidden = true; acctBtn.setAttribute('aria-expanded', 'false'); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
   }
 
   // ---------- search ----------
@@ -313,11 +308,9 @@
   // ---------- roblox headshot avatars ----------
   // Any [data-rbx-avatar="username"] element gets the user's Roblox headshot as
   // a background image (falls back to the existing initial). Batched in one call.
-  (function () {
-    var els = Array.prototype.slice.call(document.querySelectorAll('[data-rbx-avatar]'));
+  function loadAvatars(root) {
+    var els = Array.prototype.slice.call((root || document).querySelectorAll('[data-rbx-avatar]'));
     if (!els.length) return;
-    // Session cache: headshot URLs rarely change, so we avoid refetching them on
-    // every page navigation within the same tab.
     var CK = 'rbxAv', cache = {};
     try { cache = JSON.parse(sessionStorage.getItem(CK) || '{}') || {}; } catch (e) { cache = {}; }
     function paint(el, url) { if (url) { el.style.backgroundImage = 'url("' + url + '")'; el.style.backgroundSize = 'cover'; el.style.backgroundPosition = 'center'; el.classList.add('has-rbx'); } }
@@ -336,6 +329,37 @@
         try { sessionStorage.setItem(CK, JSON.stringify(cache)); } catch (e) {}
         els.forEach(function (el) { paint(el, d.avatars[(el.getAttribute('data-rbx-avatar') || '').toLowerCase()]); });
       }).catch(function () {});
+  }
+  window.vcfLoadAvatars = loadAvatars;
+  loadAvatars();
+
+  // ---------- custom tooltips ----------
+  // Any element with data-tip="…" gets a styled tooltip on hover/focus.
+  // Optional data-tip-pos = top | bottom | left | right (default top).
+  (function () {
+    var tip = null, showT = null, curEl = null;
+    function make() { if (!tip) { tip = document.createElement('div'); tip.className = 'vcf-tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); } return tip; }
+    function place(el) {
+      var t = make(); t.textContent = el.getAttribute('data-tip');
+      var pos = el.getAttribute('data-tip-pos') || 'top';
+      t.className = 'vcf-tip pos-' + pos + ' show';
+      var r = el.getBoundingClientRect(), tr = t.getBoundingClientRect(), gap = 8;
+      var x, y;
+      if (pos === 'bottom') { x = r.left + r.width / 2 - tr.width / 2; y = r.bottom + gap; }
+      else if (pos === 'left') { x = r.left - tr.width - gap; y = r.top + r.height / 2 - tr.height / 2; }
+      else if (pos === 'right') { x = r.right + gap; y = r.top + r.height / 2 - tr.height / 2; }
+      else { x = r.left + r.width / 2 - tr.width / 2; y = r.top - tr.height - gap; }
+      x = Math.max(6, Math.min(x, window.innerWidth - tr.width - 6));
+      y = Math.max(6, Math.min(y, window.innerHeight - tr.height - 6));
+      t.style.left = x + 'px'; t.style.top = y + 'px';
+    }
+    function show(el) { clearTimeout(showT); curEl = el; showT = setTimeout(function () { if (curEl === el && el.getAttribute('data-tip')) place(el); }, 320); }
+    function hide() { clearTimeout(showT); curEl = null; if (tip) tip.classList.remove('show'); }
+    document.addEventListener('mouseover', function (e) { var el = e.target.closest && e.target.closest('[data-tip]'); if (el) show(el); });
+    document.addEventListener('mouseout', function (e) { var el = e.target.closest && e.target.closest('[data-tip]'); if (el && (!e.relatedTarget || !el.contains(e.relatedTarget))) hide(); });
+    document.addEventListener('focusin', function (e) { var el = e.target.closest && e.target.closest('[data-tip]'); if (el) { curEl = el; place(el); } });
+    document.addEventListener('focusout', hide);
+    window.addEventListener('scroll', hide, true);
   })();
 
   // ---------- shared Roblox username autocomplete ----------
@@ -407,12 +431,15 @@
   });
 
   // ---------- TOC scrollspy ----------
-  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
-  if (tocLinks.length && 'IntersectionObserver' in window) {
+  var tocObs = null;
+  function initTOC() {
+    if (tocObs) { tocObs.disconnect(); tocObs = null; }
+    var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+    if (!tocLinks.length || !('IntersectionObserver' in window)) return;
     var map = {};
     tocLinks.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
     var headings = Object.keys(map).map(function (id) { return document.getElementById(id); }).filter(Boolean);
-    var obs = new IntersectionObserver(function (entries) {
+    tocObs = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
         if (en.isIntersecting) {
           tocLinks.forEach(function (l) { l.classList.remove('active'); });
@@ -421,6 +448,74 @@
         }
       });
     }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
-    headings.forEach(function (h) { obs.observe(h); });
+    headings.forEach(function (h) { tocObs.observe(h); });
   }
+  window.vcfInitTOC = initTOC;
+  initTOC();
+
+  // ---------- client-side navigation (PJAX) for the docs sidebar ----------
+  // Clicking a public doc in the sidebar swaps the content in place instead of
+  // a full reload. Internal (protected) pages always full-load so protect.js
+  // and the access guard run. Modifier-clicks and cross-origin links pass through.
+  (function () {
+    if (!window.history || !window.fetch || !document.querySelector('main.content')) return;
+    var main = document.querySelector('main.content');
+    var isProtected = function () { return !!document.querySelector('.doc.protected'); };
+    function samePageDoc(href) {
+      var a = document.createElement('a'); a.href = href;
+      if (a.origin !== location.origin) return null;
+      var path = a.pathname;
+      // only public docs: not admin/dashboard/account/api/internal, not files
+      if (/^\/(admin|dashboard|account|login|feedback|api|assets|uploads)\b/.test(path)) return null;
+      if (/^\/internal-documents\b/.test(path)) return null;
+      if (/\.[a-z0-9]+$/i.test(path)) return null;
+      return a.href;
+    }
+    var busy = false;
+    function navigate(url, push) {
+      if (busy) return; busy = true;
+      main.classList.add('pjax-loading');
+      fetch(url, { headers: { 'X-Requested-With': 'fetch' } }).then(function (r) {
+        if (!r.ok || !/text\/html/.test(r.headers.get('content-type') || '')) throw 0;
+        return r.text();
+      }).then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var newMain = doc.querySelector('main.content');
+        // if the target isn't a normal doc layout, hard-navigate instead
+        if (!newMain || doc.querySelector('.doc.protected')) { location.href = url; return; }
+        main.innerHTML = newMain.innerHTML;
+        main.classList.remove('pjax-in'); void main.offsetWidth; main.classList.add('pjax-in');
+        document.title = doc.title;
+        // sync sidebar active state
+        var newPath = new URL(url, location.origin).pathname;
+        document.querySelectorAll('.side-nav .nav-link').forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === newPath);
+        });
+        if (push) history.pushState({ pjax: 1 }, '', url);
+        window.scrollTo(0, 0);
+        // re-init the swapped content
+        if (window.fillTimes) window.fillTimes();
+        loadAvatars(main); initTOC();
+        main.classList.remove('pjax-loading');
+        busy = false;
+      }).catch(function () { location.href = url; });
+    }
+    document.addEventListener('click', function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest ? e.target.closest('.side-nav a, .pager-link') : null;
+      if (!a || a.target === '_blank') return;
+      if (isProtected()) return; // leaving a confidential page — full load
+      var url = samePageDoc(a.getAttribute('href'));
+      if (!url) return;
+      e.preventDefault();
+      // close the mobile sidebar if open
+      var sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('open');
+      var scrim = document.getElementById('scrim'); if (scrim) scrim.classList.remove('show');
+      navigate(url, true);
+    });
+    window.addEventListener('popstate', function (e) {
+      if (!e.state || !e.state.pjax) return;
+      navigate(location.href, false);
+    });
+  })();
 })();

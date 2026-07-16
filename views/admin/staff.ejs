@@ -13,14 +13,14 @@
         <h1 class="admin-h1">Staff accounts</h1>
         <p class="admin-sub">The staff directory — every team member's role, divisional ranks, and account status in one place.<% if (!isAdmin) { %> Scoped to your divisions: <strong><%= governed.map(function(d){return divLabel[d]||d;}).join(', ') || 'your division' %></strong>.<% } %></p>
       </div>
-      <% if (tab !== 'past') { %><button class="btn btn-solid" type="button" id="addToggle"><%- icon('plus') %> Add account</button><% } %>
+      <button class="btn btn-solid" type="button" id="addToggle"<%= tab === 'past' ? ' hidden' : '' %>><%- icon('plus') %> Add account</button>
     </div>
 
-    <div class="dash-tabs staff-tabs">
-      <a class="dash-tab <%= tab !== 'past' ? 'active' : '' %>" href="/admin/staff"><%- icon('users') %> Active staff</a>
-      <a class="dash-tab <%= tab === 'past' ? 'active' : '' %>" href="/admin/staff?tab=past"><%- icon('cabinet') %> Past staff <% if (pastCount) { %><span class="tab-count"><%= pastCount %></span><% } %></a>
+    <div class="dash-tabs staff-tabs" id="staffTabs">
+      <button type="button" class="dash-tab <%= tab !== 'past' ? 'active' : '' %>" data-group="active"><%- icon('users') %> Active staff <span class="tab-count"><%= activeCount %></span></button>
+      <button type="button" class="dash-tab <%= tab === 'past' ? 'active' : '' %>" data-group="past"><%- icon('cabinet') %> Past staff <% if (pastCount) { %><span class="tab-count"><%= pastCount %></span><% } %></button>
     </div>
-    <% if (tab === 'past') { %><p class="muted small" style="margin:-6px 0 14px">Terminated and archived accounts. All their logs, punishments, and infractions are retained.</p><% } %>
+    <p class="muted small staff-past-note" id="staffPastNote" style="margin:-6px 0 14px" <%= tab === 'past' ? '' : 'hidden' %>>Terminated and archived accounts. All their logs, punishments, and infractions are retained.</p>
 
     <section class="add-panel" id="addPanel" hidden>
       <div class="panel">
@@ -74,7 +74,7 @@
 
     <div class="staff-list" id="staffList">
       <% users.forEach(function (u) { var have=(u.divisions||'').split(',').filter(Boolean); %>
-        <div class="staff-card <%= u.suspended ? 'is-suspended' : '' %>" data-divs="<%= (u.role==='admin'?'management,moderation,sid,osc':have.join(',')) %>" data-ranks="<%= (u.rankLabels||[]).join('|') %>" data-name="<%= u.username.toLowerCase() %>">
+        <div class="staff-card <%= u.suspended ? 'is-suspended' : '' %>" data-group="<%= u.isPast ? 'past' : 'active' %>" data-divs="<%= (u.role==='admin'?'management,moderation,sid,osc':have.join(',')) %>" data-ranks="<%= (u.rankLabels||[]).join('|') %>" data-name="<%= u.username.toLowerCase() %>"<%= (u.isPast) === (tab === 'past') ? '' : ' hidden' %>>
           <div class="staff-head">
             <div class="staff-avatar" aria-hidden="true" data-rbx-avatar="<%= u.username %>"><%= (u.username||'?').slice(0,1).toUpperCase() %></div>
             <div class="staff-id">
@@ -95,7 +95,7 @@
 
           <div class="staff-actions">
             <a class="btn btn-ghost btn-sm" href="/admin/staff/overview?id=<%= u.id %>"><%- icon('users') %> Overview</a>
-            <% if (tab === 'past') { %>
+            <% if (u.isPast) { %>
               <% if (canAdminActions && u.id !== user.id) { %>
                 <form method="post" action="/admin/staff/reinstate" class="inline" data-confirm="Reinstate <%= u.username %> as active staff? Their suspension/termination is cleared." data-confirm-title="Reinstate account" data-confirm-ok="Reinstate" data-confirm-variant="safe">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
@@ -199,19 +199,33 @@
     var chk = form.querySelector('input[name=divisions][value="' + div + '"]');
     if (chk && !chk.checked && !chk.disabled) chk.checked = true;
   });
+  // Active/Past tabs switch instantly client-side (no reload).
+  var curGroup = <%- JSON.stringify(tab === 'past' ? 'past' : 'active') %>;
+  var staffTabs = document.getElementById('staffTabs');
+  var pastNote = document.getElementById('staffPastNote');
   // filters
   var fd = document.getElementById('f-division'), fr = document.getElementById('f-rank'), fq = document.getElementById('f-q');
   function applyFilters() {
     var d = fd.value, rk = fr.value, q = (fq.value || '').toLowerCase().trim(), shown = 0;
     document.querySelectorAll('#staffList .staff-card').forEach(function (c) {
-      var ok = (!d || (c.getAttribute('data-divs') || '').split(',').indexOf(d) !== -1)
+      var ok = c.getAttribute('data-group') === curGroup
+        && (!d || (c.getAttribute('data-divs') || '').split(',').indexOf(d) !== -1)
         && (!rk || (c.getAttribute('data-ranks') || '').split('|').indexOf(rk) !== -1)
         && (!q || (c.getAttribute('data-name') || '').indexOf(q) !== -1);
-      c.style.display = ok ? '' : 'none'; if (ok) shown++;
+      c.hidden = !ok; if (ok) shown++;
     });
     document.getElementById('staffCount').textContent = shown + ' shown';
     document.getElementById('staffEmpty').hidden = shown > 0;
   }
+  if (staffTabs) staffTabs.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-group]'); if (!b) return;
+    curGroup = b.getAttribute('data-group');
+    staffTabs.querySelectorAll('.dash-tab').forEach(function (t) { t.classList.toggle('active', t === b); });
+    if (addBtn) addBtn.hidden = curGroup === 'past';
+    if (pastNote) pastNote.hidden = curGroup !== 'past';
+    history.replaceState(null, '', '/admin/staff' + (curGroup === 'past' ? '?tab=past' : ''));
+    applyFilters();
+  });
   // custom-enhanced selects dispatch `change`, the text box dispatches `input` — listen to both
   [fd, fr, fq].forEach(function (el) { if (el) { el.addEventListener('input', applyFilters); el.addEventListener('change', applyFilters); } });
   applyFilters();
