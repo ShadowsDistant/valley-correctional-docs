@@ -564,10 +564,32 @@
         if (window.vcfWireRoblox) window.vcfWireRoblox(main);
         try { window.dispatchEvent(new CustomEvent('pjax:load', { detail: { url: url } })); } catch (e) {}
         main.classList.remove('pjax-loading');
+        watchdog(seq);
       }).catch(function (err) {
         if (seq !== navSeq || (err && (err.stale || err.name === 'AbortError'))) return; // superseded — newest wins
         location.href = url; // genuine failure: fall back to a real navigation
       });
+    }
+
+    // Self-healing: if a swapped page ends up visibly broken anyway — blank,
+    // collapsed, or with its content stuck invisible — recover with ONE real
+    // reload (a full load never has these problems, so no loop is possible).
+    // Also treat an uncaught script error right after the swap as broken.
+    function watchdog(seq) {
+      function broken() {
+        if (!main.firstElementChild) return true;
+        if (main.offsetHeight < 40) return true;
+        var o = parseFloat(getComputedStyle(main.firstElementChild).opacity);
+        return o === 0;
+      }
+      var onErr = function () { cleanup(); if (seq === navSeq) location.reload(); };
+      var cleanup = function () { window.removeEventListener('error', onErr); };
+      window.addEventListener('error', onErr);
+      setTimeout(function () {
+        cleanup();
+        if (seq !== navSeq) return;
+        if (broken()) location.reload();
+      }, 400);
     }
 
     document.addEventListener('click', function (e) {

@@ -1646,6 +1646,12 @@ body.fb-drawer-open { overflow: hidden; }
 /* active range/dashboard tabs get a hint of glow on their label */
 .range-tab.active, .dash-tab.active { text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); }
 
+/* The hidden attribute must always win. The UA's `[hidden] { display: none }`
+   loses to any author display rule (e.g. `#aiPanel { display: flex }`), which
+   has repeatedly caused "element won't close" bugs (auth-error, dash-tabpane,
+   rbx-card — and the assistant panel). One global rule ends the class of bug. */
+[hidden] { display: none !important; }
+
 /* ---------- VCF Assistant (AI) ---------- */
 #aiFab {
   position: fixed; right: 22px; bottom: 22px; z-index: 220;
