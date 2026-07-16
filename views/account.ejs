@@ -36,6 +36,8 @@
     <% } %>
 
     <div class="profile-grid">
+      <div class="profile-col">
+      <div class="profile-col-label"><%- icon('scale') %> Record</div>
       <!-- Disciplinary record -->
       <section class="panel account-panel account-record">
         <div class="panel-head"><h2>Disciplinary record</h2><span class="badge <%= (typeof myPoints!=='undefined'&&myPoints>=3)?'badge-danger':'' %>"><%= infr.length %> active</span></div>
@@ -57,7 +59,10 @@
           </table></div>
         <% } %>
       </section>
+      </div>
 
+      <div class="profile-col">
+      <div class="profile-col-label"><%- icon('shield') %> Security</div>
       <!-- Change password -->
       <section class="panel account-panel">
         <div class="panel-head"><h2>Change password</h2></div>
@@ -102,6 +107,7 @@
         </div>
         <div class="pk-msg" id="pkAddMsg"></div>
       </section>
+      </div>
     </div>
   </div>
 </div>

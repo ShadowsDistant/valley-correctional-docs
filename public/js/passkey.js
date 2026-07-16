@@ -41,15 +41,13 @@
       })
       .then(function (cred) {
         var resp = cred.response;
-        // getPublicKey() gives us SPKI DER directly — no CBOR needed server-side.
-        var spki = resp.getPublicKey ? resp.getPublicKey() : null;
-        if (!spki) throw new Error('Your browser can\'t export this passkey. Try a different device.');
+        // Send the raw attestationObject — the server parses the public key out
+        // of it, so this works with authenticators (Bitwarden, Windows Hello)
+        // that don't implement the getPublicKey() convenience method.
         return fetch('/account/passkey/register/verify', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
           body: JSON.stringify({
-            credentialId: bufToB64url(cred.rawId),
-            publicKeySpki: bufToB64url(spki),
-            algorithm: resp.getPublicKeyAlgorithm ? resp.getPublicKeyAlgorithm() : -7,
+            attestationObject: bufToB64url(resp.attestationObject),
             clientDataJSON: bufToB64url(resp.clientDataJSON),
             name: name || '',
           }),

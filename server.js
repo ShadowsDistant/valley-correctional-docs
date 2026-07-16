@@ -872,8 +872,8 @@ app.post('/account/passkey/register/verify', auth.requireAuth, express.json(), (
     return res.status(409).json({ ok: false, error: 'That passkey is already registered.' });
   }
   const name = String((req.body && req.body.name) || '').trim().slice(0, 40) || ('Passkey ' + (listPasskeys(u.id).length + 1));
-  db.prepare('INSERT INTO passkeys (user_id, cred_id, public_key, alg, name) VALUES (?, ?, ?, ?, ?)')
-    .run(u.id, v.credentialId, v.publicKeySpki, v.algorithm, name);
+  db.prepare('INSERT INTO passkeys (user_id, cred_id, public_key, alg, counter, name) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(u.id, v.credentialId, v.publicKeySpki, v.algorithm, v.counter || 0, name);
   audit(u.username, 'passkey.add', u.username, name);
   res.json({ ok: true, passkeys: listPasskeys(u.id) });
 });

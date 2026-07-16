@@ -590,25 +590,28 @@ html.pjaxed main.content * { animation-duration: 0s !important; animation-delay:
 .auth-foot { font-size: 11.5px; color: var(--faint); letter-spacing: .02em; }
 
 /* account / self-service password — centered card */
-.account-wrap { max-width: 900px; margin: 0 auto; padding: 48px 24px 90px; }
+.account-wrap { max-width: 940px; margin: 0 auto; padding: 44px 24px 90px; }
 .account-card { text-align: left; }
 /* Profile hero */
-.profile-hero { display: flex; align-items: center; gap: 20px; padding: 22px 24px; margin-bottom: 22px;
-  border: 1px solid var(--border); border-radius: var(--r-xl); background: linear-gradient(135deg, var(--surface), var(--surface-2));
-  position: relative; overflow: hidden; }
-.profile-hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 140% at 100% 0, var(--accent-soft), transparent 55%); pointer-events: none; }
-.profile-avatar { width: 76px; height: 76px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 30px; color: var(--accent-strong); background: var(--accent-soft); border: 2px solid var(--border-2); box-shadow: var(--shadow-md); }
+.profile-hero { display: flex; align-items: center; gap: 22px; padding: 26px 28px; margin-bottom: 24px;
+  border: 1px solid var(--border-2); border-radius: var(--r-xl); background: linear-gradient(135deg, var(--surface), var(--surface-2));
+  position: relative; overflow: hidden; box-shadow: 0 10px 34px -22px rgba(0,0,0,.6); }
+.profile-hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 150% at 100% 0, var(--accent-soft), transparent 52%); pointer-events: none; }
+.profile-avatar { width: 82px; height: 82px; border-radius: 22px; flex: none; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 32px; color: var(--accent-strong); background: var(--accent-soft); border: 2px solid color-mix(in srgb, var(--accent) 30%, var(--border-2)); box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--accent) 45%, transparent); }
 .profile-avatar.has-rbx { color: transparent; text-shadow: none; }
 .profile-id { flex: 1; min-width: 0; position: relative; }
-.profile-name { font-size: 24px; font-weight: 800; line-height: 1.1; }
-.profile-sub { margin: 3px 0 9px; }
+.profile-name { font-size: 25px; font-weight: 800; line-height: 1.1; }
+.profile-sub { margin: 4px 0 10px; }
 .profile-sub a { color: var(--accent-strong); }
 .profile-badges { display: flex; flex-wrap: wrap; gap: 6px; }
-.profile-points { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; flex: none; position: relative; }
-.profile-points .pill { font-size: 20px; min-width: 44px; padding: 6px 12px; }
-.profile-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; align-items: start; }
-@media (max-width: 720px) { .profile-grid { grid-template-columns: 1fr; } .profile-hero { flex-wrap: wrap; } }
+.profile-points { display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; flex: none; position: relative; padding: 10px 16px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface) 60%, transparent); border: 1px solid var(--border); }
+.profile-points .pill { font-size: 22px; min-width: 46px; padding: 4px 12px; }
+.profile-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 20px; align-items: start; }
+.profile-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.profile-col-label { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); padding: 0 2px; }
+.profile-col-label .ic, .profile-col-label svg { width: 14px; height: 14px; }
+@media (max-width: 760px) { .profile-grid { grid-template-columns: 1fr; } .profile-hero { flex-wrap: wrap; } }
 .record-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 12px; color: var(--muted); text-align: center; }
 .record-empty svg, .record-empty .ic { width: 30px; height: 30px; color: #22c55e; }
 .record-empty p { margin: 0; font-size: 13.5px; }
@@ -1651,14 +1654,8 @@ body.fb-drawer-open { overflow: hidden; }
 }
 .stat-card:hover::after { opacity: 1; }
 
-/* a faint accent aurora behind the traffic globe */
-.globe-panel::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    radial-gradient(280px 220px at 26% 26%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 66%),
-    radial-gradient(220px 200px at 82% 84%, color-mix(in srgb, #38bdf8 9%, transparent), transparent 68%);
-}
-.globe-panel > * { position: relative; z-index: 1; }
+/* (removed the CSS aurora behind the globe — the canvas draws its own
+   atmosphere, and the extra radial read as a stray glow near the panel.) */
 
 /* active range/dashboard tabs get a hint of glow on their label */
 .range-tab.active, .dash-tab.active { text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); }
