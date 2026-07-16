@@ -5,20 +5,24 @@
 #   The app runs in a container with no Docker socket mounted (deliberately —
 #   the socket is root-equivalent on the host, so exposing it to a web app is a
 #   privilege-escalation risk). The container therefore cannot rebuild itself.
-#   Instead, Admin → System writes a request file into the mounted ./data
-#   volume; this script runs on the HOST, performs the real update, and writes
-#   the result back so the admin page can report it.
+#   Admin → System writes a request file into the mounted ./data volume; this
+#   script runs on the HOST, performs the real update, and writes the result
+#   back so the admin page can report it.
 #
-# INSTALL (one time, as root on the droplet):
-#   chmod +x /opt/vcf-docs/deploy/update-watcher.sh
-#   ( crontab -l 2>/dev/null; echo '* * * * * /opt/vcf-docs/deploy/update-watcher.sh >> /var/log/vcf-update.log 2>&1' ) | crontab -
+# USAGE
+#   sudo ./deploy/update-watcher.sh install    # set it up (systemd timer, or cron)
+#   sudo ./deploy/update-watcher.sh status     # show what's configured + why not
+#   sudo ./deploy/update-watcher.sh tick       # one pass (what the timer runs)
+#   sudo ./deploy/update-watcher.sh uninstall
 #
-# It also touches a heartbeat every run; if the heartbeat is missing/stale the
-# admin page says the updater isn't installed instead of pretending to work.
+# Running with no arguments does a tick and prints what it did.
 set -uo pipefail
 
-APP_DIR="${APP_DIR:-/opt/vcf-docs}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.cloudflare.yml}"
+# Resolve the app directory from THIS script's location (…/deploy/x.sh -> …),
+# so it works wherever the repo lives — not just /opt/vcf-docs.
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+SELF_DIR="$(dirname "$SELF")"
+APP_DIR="${APP_DIR:-$(dirname "$SELF_DIR")}"
 BRANCH="${BRANCH:-main}"
 
 DATA="$APP_DIR/data"
@@ -28,46 +32,161 @@ BUILD="$DATA/build.json"
 BEAT="$DATA/updater-alive"
 LOCK="$DATA/.update.lock"
 
-mkdir -p "$DATA"
-touch "$BEAT"                 # heartbeat — proves the watcher is installed
-[ -f "$REQ" ] || exit 0       # nothing queued
+SVC=/etc/systemd/system/vcf-update.service
+TMR=/etc/systemd/system/vcf-update.timer
 
-# Never run two updates at once.
-exec 9>"$LOCK"
-flock -n 9 || exit 0
+say() { printf '%s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# Pick the compose file that actually exists (Cloudflare stack or plain).
+compose_file() {
+  if [ -n "${COMPOSE_FILE:-}" ]; then printf '%s' "$COMPOSE_FILE"; return; fi
+  for f in docker-compose.cloudflare.yml docker-compose.yml; do
+    [ -f "$APP_DIR/$f" ] && { printf '%s' "$f"; return; }
+  done
+  printf '%s' 'docker-compose.yml'
+}
 
 esc() { printf '%s' "$1" | tr -d '\r' | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g' | cut -c1-600; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 sha() { git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown; }
-
-write_status() { # $1=state  $2=detail
+write_status() { # $1=state $2=detail
   printf '{"state":"%s","at":"%s","detail":"%s","commit":"%s"}\n' \
     "$1" "$(now)" "$(esc "$2")" "$(sha)" > "$STATUS"
 }
 
-# Consume the request first so a failing update can't loop forever.
-rm -f "$REQ"
-write_status running "Pulling $BRANCH…"
+# ---------------------------------------------------------------- tick ------
+tick() {
+  local verbose="${1:-}"
+  mkdir -p "$DATA" || die "cannot create $DATA"
+  touch "$BEAT"                # heartbeat — the admin page reads this
+  [ -n "$verbose" ] && say "heartbeat: $BEAT"
 
-cd "$APP_DIR" || { write_status error "APP_DIR $APP_DIR not found"; exit 1; }
+  if [ ! -f "$REQ" ]; then
+    [ -n "$verbose" ] && say "no update queued — nothing to do (this is normal)"
+    return 0
+  fi
 
-out=$(git fetch --all 2>&1 && git reset --hard "origin/$BRANCH" 2>&1)
-if [ $? -ne 0 ]; then
-  write_status error "git failed: $out"
-  exit 1
-fi
+  exec 9>"$LOCK"
+  flock -n 9 || { [ -n "$verbose" ] && say "another update is already running"; return 0; }
 
-# Record what we just deployed so the admin page can show the real build.
-printf '{"commit":"%s","branch":"%s","subject":"%s","time":"%s"}\n' \
-  "$(sha)" "$(esc "$BRANCH")" \
-  "$(esc "$(git -C "$APP_DIR" log -1 --pretty=%s 2>/dev/null || echo '')")" \
-  "$(now)" > "$BUILD"
+  rm -f "$REQ"                 # consume first: a failure must not loop forever
+  say "update requested — starting"
+  write_status running "Pulling $BRANCH…"
 
-write_status running "Rebuilding containers…"
-out=$(docker compose -f "$COMPOSE_FILE" up -d --build 2>&1)
-if [ $? -ne 0 ]; then
-  write_status error "docker compose failed: $out"
-  exit 1
-fi
+  cd "$APP_DIR" || { write_status error "APP_DIR $APP_DIR not found"; die "APP_DIR missing"; }
+  have git || { write_status error "git is not installed on the host"; die "git missing"; }
+  git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1 || {
+    write_status error "$APP_DIR is not a git checkout — deploy with git clone to use this button"
+    die "not a git repo"
+  }
 
-write_status ok "Updated to $(sha) — $(git -C "$APP_DIR" log -1 --pretty=%s 2>/dev/null)"
+  local out
+  out=$(git -C "$APP_DIR" fetch --all 2>&1) || { write_status error "git fetch failed: $out"; die "git fetch failed"; }
+  out=$(git -C "$APP_DIR" reset --hard "origin/$BRANCH" 2>&1) || { write_status error "git reset failed: $out"; die "git reset failed"; }
+  say "pulled: $(sha)"
+
+  # Record the deployed build so Admin → System shows the real commit.
+  printf '{"commit":"%s","branch":"%s","subject":"%s","time":"%s"}\n' \
+    "$(sha)" "$(esc "$BRANCH")" \
+    "$(esc "$(git -C "$APP_DIR" log -1 --pretty=%s 2>/dev/null || echo '')")" \
+    "$(now)" > "$BUILD"
+
+  have docker || { write_status error "docker is not installed on the host"; die "docker missing"; }
+  write_status running "Rebuilding containers…"
+  local cf; cf="$(compose_file)"
+  say "rebuilding with $cf"
+  out=$(docker compose -f "$cf" up -d --build 2>&1) || { write_status error "docker compose failed: $out"; die "compose failed"; }
+
+  write_status ok "Updated to $(sha) — $(git -C "$APP_DIR" log -1 --pretty=%s 2>/dev/null)"
+  say "done: $(sha)"
+}
+
+# ------------------------------------------------------------- install ------
+install_systemd() {
+  cat > "$SVC" <<EOF
+[Unit]
+Description=VCF docs update watcher
+[Service]
+Type=oneshot
+ExecStart=$SELF tick
+EOF
+  cat > "$TMR" <<EOF
+[Unit]
+Description=Run the VCF docs update watcher every minute
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=10
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload || return 1
+  systemctl enable --now vcf-update.timer || return 1
+  return 0
+}
+install_cron() {
+  local line="* * * * * $SELF tick >> /var/log/vcf-update.log 2>&1"
+  ( crontab -l 2>/dev/null | grep -Fv "$SELF"; printf '%s\n' "$line" ) | crontab - || return 1
+  have systemctl && systemctl enable --now cron >/dev/null 2>&1
+  return 0
+}
+do_install() {
+  [ "$(id -u)" -eq 0 ] || die "run as root:  sudo $SELF install"
+  chmod +x "$SELF"
+  mkdir -p "$DATA"
+  say "app directory: $APP_DIR"
+  say "compose file : $(compose_file)"
+
+  if have systemctl && install_systemd; then
+    say "installed: systemd timer vcf-update.timer (runs every minute)"
+  elif have crontab && install_cron; then
+    say "installed: cron entry (runs every minute) — systemd unavailable"
+  else
+    die "could not install: neither systemctl nor crontab worked. Run '$SELF tick' from your own scheduler."
+  fi
+
+  tick verbose                 # prove it works immediately
+  say ""
+  say "Done. Admin → System should show 'updater online' within a few seconds."
+  do_status
+}
+do_uninstall() {
+  [ "$(id -u)" -eq 0 ] || die "run as root:  sudo $SELF uninstall"
+  if have systemctl; then systemctl disable --now vcf-update.timer >/dev/null 2>&1; rm -f "$SVC" "$TMR"; systemctl daemon-reload; fi
+  have crontab && ( crontab -l 2>/dev/null | grep -Fv "$SELF" ) | crontab -
+  rm -f "$BEAT"
+  say "uninstalled."
+}
+
+# -------------------------------------------------------------- status ------
+do_status() {
+  say "app dir      : $APP_DIR"
+  say "data dir     : $DATA $([ -d "$DATA" ] && echo '(ok)' || echo '(MISSING)')"
+  say "git checkout : $(git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1 && echo "yes ($(sha))" || echo 'NO — the update button needs a git clone')"
+  say "docker       : $(have docker && echo yes || echo 'NO')"
+  say "compose file : $(compose_file)"
+  if have systemctl && systemctl list-unit-files 2>/dev/null | grep -q '^vcf-update.timer'; then
+    say "schedule     : systemd timer — $(systemctl is-active vcf-update.timer 2>/dev/null)"
+    systemctl list-timers vcf-update.timer --no-pager 2>/dev/null | sed -n '2p'
+  elif have crontab && crontab -l 2>/dev/null | grep -Fq "$SELF"; then
+    say "schedule     : cron — $(crontab -l 2>/dev/null | grep -F "$SELF")"
+  else
+    say "schedule     : NOT INSTALLED — run: sudo $SELF install"
+  fi
+  if [ -f "$BEAT" ]; then
+    say "heartbeat    : $(date -u -r "$BEAT" +%Y-%m-%dT%H:%M:%SZ) (admin page shows 'online' if < 5 min old)"
+  else
+    say "heartbeat    : none yet"
+  fi
+  [ -f "$STATUS" ] && say "last result  : $(cat "$STATUS")"
+}
+
+case "${1:-tick}" in
+  install)   do_install ;;
+  uninstall) do_uninstall ;;
+  status)    do_status ;;
+  tick)      tick "${2:-}" ;;
+  *)         tick verbose ;;
+esac

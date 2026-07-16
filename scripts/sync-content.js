@@ -1,9 +1,15 @@
 'use strict';
-// Force every seeded page back to its content file (title, group, content, etc.).
-// WARNING: this overwrites any edits made through the admin editor. Use it to
-// re-import updated content files in dev/demo. For production, prefer editing
-// in the app so revisions are preserved.
+// Push seeded pages back to their content files (title, group, content, etc.).
+//
+// Locally-edited pages are SKIPPED by default, so this can never silently
+// destroy staff work. Pass --force to overwrite them too (that discards those
+// edits — edit in the admin editor instead, where revisions are kept).
+//
+//   npm run sync-content             # safe: stock pages only
+//   npm run sync-content -- --force  # destructive: also overwrite edited pages
 require('dotenv').config();
 const { syncPages } = require('../lib/seed');
-syncPages();
+const force = process.argv.includes('--force');
+if (force) console.log('[sync] --force given: locally-edited pages WILL be overwritten.');
+syncPages(force);
 console.log('Content sync complete.');

@@ -1761,8 +1761,31 @@ function systemStats() {
   };
 }
 
+// Content updates that shipped but were withheld because the page has local
+// edits — deploys never overwrite staff work, so surface them for review.
+function pendingContent() {
+  let list = [];
+  try { list = JSON.parse(setting('pages.pendingContent', '[]')) || []; } catch (e) { list = []; }
+  return list.filter((x) => x && x.slug).map((x) => {
+    const p = getPageAny.get(x.slug);
+    return { slug: x.slug, title: p ? p.title : x.slug, editedBy: x.editedBy || '', why: x.why || '', at: x.at || '' };
+  });
+}
 adminRouter.get('/system', auth.requireAdmin, (req, res) => {
-  res.render('admin/system', { title: 'System', section: 'system', stats: systemStats() });
+  res.render('admin/system', {
+    title: 'System', section: 'system',
+    stats: systemStats(), pending: pendingContent(),
+  });
+});
+// Dismiss a withheld content update once the admin has reviewed/merged it.
+adminRouter.post('/system/pending/dismiss', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const slug = String((req.body && req.body.slug) || '');
+  let list = [];
+  try { list = JSON.parse(setting('pages.pendingContent', '[]')) || []; } catch (e) { list = []; }
+  setSetting('pages.pendingContent', JSON.stringify(list.filter((x) => x.slug !== slug)));
+  audit(req.session.user.username, 'pages.pending_dismissed', slug, '');
+  res.json({ ok: true });
 });
 adminRouter.get('/system/stats', auth.requireAdmin, (req, res) => {
   res.set('Cache-Control', 'no-store');

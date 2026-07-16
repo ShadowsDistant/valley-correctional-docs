@@ -1794,6 +1794,14 @@ body.fb-drawer-open { overflow: hidden; }
 .sys-updater-missing p { margin: 5px 0 8px; }
 .sys-updater-missing pre { margin: 0; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,.35); border: 1px solid var(--border); overflow-x: auto; font-size: 11.5px; line-height: 1.6; }
 .sys-update button[disabled] { opacity: .5; cursor: not-allowed; }
+/* withheld document updates — a deploy shipped new wording but the page is edited */
+.sys-pending { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); margin-bottom: 22px; }
+.sys-pending-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sys-pending-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.sys-pending-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sys-pending-title { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; }
+.sys-pending-title:hover { color: var(--accent-strong); }
+.sys-pending-title .ic { width: 14px; height: 14px; }
 
 /* ---------- admin: assistant conversation logs (staff overview) ---------- */
 .ai-log-panel .panel-head { gap: 10px; }

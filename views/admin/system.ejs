@@ -71,6 +71,30 @@
       </section>
     </div>
 
+    <% if (pending && pending.length) { %>
+      <section class="panel sys-pending">
+        <div class="panel-head">
+          <h2><%- icon('shield') %> Withheld document updates</h2>
+          <span class="badge badge-internal"><%= pending.length %></span>
+        </div>
+        <p class="muted small sys-update-copy">
+          A deploy shipped new wording for these documents, but your copies have <strong>local edits</strong>, so they were
+          <strong>not overwritten</strong> — updates never destroy staff work. Review each one and merge anything you want by hand.
+        </p>
+        <ul class="sys-pending-list">
+          <% pending.forEach(function (p) { %>
+            <li data-slug="<%= p.slug %>">
+              <div class="sys-pending-main">
+                <a class="sys-pending-title" href="/admin/edit?slug=<%= encodeURIComponent(p.slug) %>"><%- icon('edit') %> <%= p.title %></a>
+                <span class="muted small">edited by <strong><%= p.editedBy %></strong><% if (p.why) { %> · shipped change: <%= p.why %><% } %></span>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" data-dismiss="<%= p.slug %>">Reviewed</button>
+            </li>
+          <% }); %>
+        </ul>
+      </section>
+    <% } %>
+
     <section class="panel sys-update">
       <div class="panel-head">
         <h2><%- icon('download') %> Updates</h2>
@@ -194,6 +218,22 @@
       tick();
     }).catch(function () { box.className = 'sys-update-state is-err'; box.textContent = '✗ Could not reach the server.'; btn.disabled = false; });
   }
+  // "Reviewed" clears a withheld doc update from the list.
+  var pend = document.querySelector('.sys-pending-list');
+  if (pend) pend.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-dismiss]'); if (!b) return;
+    var slug = b.getAttribute('data-dismiss');
+    b.disabled = true;
+    fetch('/admin/system/pending/dismiss', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _csrf: form.querySelector('[name=_csrf]').value, slug: slug }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) { b.disabled = false; return; }
+      var li = b.closest('li'); li.remove();
+      if (!pend.children.length) pend.closest('.sys-pending').remove();
+    }).catch(function () { b.disabled = false; });
+  });
+
   // NB: no data-confirm here — that helper calls form.submit(), which would
   // bypass this handler and hard-navigate. Confirm inline instead.
   form.addEventListener('submit', function (e) {
