@@ -31,7 +31,7 @@
             <div class="field">Roblox / staff username
               <div class="rbx-search"><input type="text" name="username" id="new-username" data-rbx-autocomplete required autocomplete="off" placeholder="Start typing a Roblox name…" /><div class="rbx-suggest" hidden></div></div>
             </div>
-            <label class="field">Password<input type="password" name="password" minlength="6" required autocomplete="new-password" /></label>
+            <label class="field">Password<input type="password" name="password" minlength="8" required autocomplete="new-password" /></label>
             <label class="field">Role
               <select name="role" id="roleSelect">
                 <option value="staff">Staff — read-only</option>
@@ -163,7 +163,7 @@
           <div class="staff-panel" id="pw-<%= u.id %>" hidden>
             <form method="post" action="/admin/staff/password" class="pw-form">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>" /><input type="hidden" name="id" value="<%= u.id %>" />
-              <label class="field field-sm">New password<input type="password" name="password" placeholder="At least 6 characters" minlength="6" required /></label>
+              <label class="field field-sm">New password<input type="password" name="password" placeholder="At least 8 characters" minlength="8" required /></label>
               <button class="btn btn-solid btn-sm" type="submit">Set password</button>
             </form>
           </div>

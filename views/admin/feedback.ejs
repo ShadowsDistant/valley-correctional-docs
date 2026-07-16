@@ -29,13 +29,15 @@
           <input type="text" id="fbSearch" value="<%= q %>" placeholder="Search feedback…" autocomplete="off" />
           <button type="button" class="fb-search-clear" id="fbSearchClear" aria-label="Clear search" hidden><%- icon('x') %></button>
         </div>
-        <select id="fbSort" class="fb-sort" data-no-enhance aria-label="Sort feedback">
-          <option value="flagged">Needs reply first</option>
-          <option value="new">Newest first</option>
-          <option value="old">Oldest first</option>
-          <option value="active">Recently active</option>
-          <option value="busy">Most messages</option>
-        </select>
+        <label class="fb-sort-field"><span class="fb-sort-label">Sort</span>
+          <select id="fbSort" class="fb-sort" aria-label="Sort feedback">
+            <option value="flagged">Needs reply first</option>
+            <option value="new">Newest first</option>
+            <option value="old">Oldest first</option>
+            <option value="active">Recently active</option>
+            <option value="busy">Most messages</option>
+          </select>
+        </label>
       </div>
     </div>
 

@@ -316,24 +316,47 @@
   });
   document.addEventListener('click', function (e) { var v = e.target.closest('.view-file'); if (v) { e.preventDefault(); openFile(v.getAttribute('data-user')); } });
 
-  // evidence upload
+  // Compress a screenshot/photo in the browser before upload: cap the long
+  // edge at 2000px and re-encode as WebP (high quality). Screenshots — the bulk
+  // of evidence — shrink 60–90% with no visible loss, saving VM disk. GIFs
+  // (animation) and PDFs are left untouched.
+  function readAsDataUrl(f) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(f); }); }
+  function compressImage(f) {
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) return readAsDataUrl(f).then(function (d) { return { data: d, type: f.type }; });
+    return readAsDataUrl(f).then(function (dataUrl) {
+      return new Promise(function (resolve) {
+        var img = new Image();
+        img.onload = function () {
+          var max = 2000, w = img.naturalWidth, h = img.naturalHeight, scale = Math.min(1, max / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+          var ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, cw, ch);
+          var webp = cv.toDataURL('image/webp', 0.86);
+          // fall back to the original if WebP is unsupported or somehow bigger
+          if (webp.indexOf('data:image/webp') === 0 && webp.length < dataUrl.length) resolve({ data: webp, type: 'image/webp' });
+          else resolve({ data: dataUrl, type: f.type });
+        };
+        img.onerror = function () { resolve({ data: dataUrl, type: f.type }); };
+        img.src = dataUrl;
+      });
+    });
+  }
   document.querySelectorAll('.ev-upload').forEach(function (wrap) {
     var file = wrap.querySelector('.ev-file'), btn = wrap.querySelector('.ev-attach'), status = wrap.querySelector('.ev-status');
     var input = wrap.closest('.evidence-row').querySelector('.ev-input');
     btn.addEventListener('click', function () { file.click(); });
     file.addEventListener('change', function () {
       var f = file.files[0]; if (!f) return;
-      if (f.size > 4 * 1024 * 1024) { status.textContent = 'Too large (max 4 MB)'; return; }
-      status.textContent = 'Uploading…';
-      var reader = new FileReader();
-      reader.onload = function () {
-        fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: f.type, data: reader.result }) })
-          .then(function (r) { return r.json(); }).then(function (d) {
-            if (d.ok) { input.value = d.url; status.innerHTML = '<span style="color:#22c55e">Attached</span>'; }
-            else status.textContent = d.error || 'Upload failed';
-          }).catch(function () { status.textContent = 'Upload failed'; });
-      };
-      reader.readAsDataURL(f);
+      if (f.size > 12 * 1024 * 1024) { status.textContent = 'Too large (max 12 MB before compression)'; return; }
+      status.textContent = 'Processing…';
+      compressImage(f).then(function (out) {
+        var approxKb = Math.round(out.data.length * 0.75 / 1024);
+        status.textContent = 'Uploading (' + approxKb + ' KB)…';
+        return fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: out.type, data: out.data }) });
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) { input.value = d.url; status.innerHTML = '<span style="color:#22c55e">Attached</span>'; }
+        else status.textContent = d.error || 'Upload failed';
+      }).catch(function () { status.textContent = 'Upload failed'; });
     });
   });
 

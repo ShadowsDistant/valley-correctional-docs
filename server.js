@@ -82,6 +82,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
+// Refuse to run in production with a guessable session secret — forgeable
+// sessions would let anyone mint an admin cookie. Fail loud at boot instead.
+if (isProd && (!process.env.SESSION_SECRET || /change-me|dev-insecure/i.test(process.env.SESSION_SECRET) || process.env.SESSION_SECRET.length < 24)) {
+  console.error('\n[FATAL] Set a strong SESSION_SECRET in .env before running in production.\n' +
+    '        Generate one:  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"\n');
+  process.exit(1);
+}
+
 app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -803,7 +811,7 @@ app.post('/account/password', auth.requireAuth, auth.csrfToken, auth.verifyCsrf,
   const current = req.body.current || '', next_ = req.body.new || '', confirm = req.body.confirm || '';
   let error = null;
   if (!u || !auth.verifyPassword(current, u.password)) error = 'Your current password is incorrect.';
-  else if (next_.length < 6) error = 'New password must be at least 6 characters.';
+  else if (next_.length < 8) error = 'New password must be at least 8 characters.';
   else if (next_ !== confirm) error = 'New passwords do not match.';
   if (error) return res.status(400).render('account', Object.assign({ title: 'Your account', done: false, error }, accountData(req)));
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(auth.hashPassword(next_), u.id);
@@ -1329,8 +1337,8 @@ adminRouter.post('/staff/create', requireStaffMgr, auth.verifyCsrf, (req, res) =
   const divisions = usesDivisions(role) ? scopedDivisions(actor, req.body) : '';
   const ranks = scopedRanks(actor, req.body, divisions);
   const password = req.body.password || '';
-  if (!username || password.length < 6) {
-    return res.status(400).render('error', { title: 'Invalid', heading: 'Could not create staff member', message: 'Username is required and password must be at least 6 characters.' });
+  if (!username || password.length < 8) {
+    return res.status(400).render('error', { title: 'Invalid', heading: 'Could not create staff member', message: 'Username is required and password must be at least 8 characters.' });
   }
   try {
     db.prepare('INSERT INTO users (username, password, role, divisions, ranks) VALUES (?, ?, ?, ?, ?)')
@@ -1398,9 +1406,9 @@ adminRouter.post('/staff/suspend', auth.requireAdmin, auth.verifyCsrf, (req, res
 adminRouter.post('/staff/password', auth.requireAdmin, auth.verifyCsrf, (req, res) => {
   const id = Number(req.body.id);
   const password = req.body.password || '';
-  if (password.length < 6) {
+  if (password.length < 8) {
     return res.status(400).render('error', {
-      title: 'Invalid', heading: 'Password too short', message: 'Password must be at least 6 characters.',
+      title: 'Invalid', heading: 'Password too short', message: 'Password must be at least 8 characters.',
     });
   }
   const pwTarget = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
