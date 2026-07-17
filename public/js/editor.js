@@ -141,6 +141,14 @@
         flush(); var tb = [line]; i++; while (i < lines.length && /\|/.test(lines[i])) { tb.push(lines[i]); i++; }
         segs.push({ type: 'block', kind: 'table', md: tb.join('\n') }); continue;
       }
+      // A heading of any level starts a new prose section, so each text block
+      // runs from one header to the next and can be dragged around as a unit.
+      // Fenced code is consumed above, so a '#' comment inside it never lands here.
+      if (/^\s{0,3}#{1,6}\s+/.test(line)) {
+        flush();                 // no-op when the heading is already at the top
+        rt.push(line); i++;
+        continue;
+      }
       rt.push(line); i++;
     }
     flush();
