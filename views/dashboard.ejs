@@ -77,7 +77,7 @@
                 <td class="small"><%= p.reason %><% if (p.evidence) { %> <a href="<%= p.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
                 <td class="small"><%= p.moderator %></td>
                 <td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,16) %></time></td>
-                <td class="row-actions"><% if (!p.voided && canVoidPun) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>? A reason is required." data-confirm-title="Void punishment" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (p.voided) { %><span class="badge void-pill" data-tip="<%= p.void_reason || 'Voided' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %><% if (isAdmin) { %><form method="post" action="/dashboard/punishment/delete" class="inline" data-confirm="Permanently delete this punishment against <%= p.roblox_user %>? This erases the record and its evidence from the database — it cannot be undone. Void it instead if you only want it struck from the active list." data-confirm-title="Delete permanently" data-confirm-ok="Delete forever" data-confirm-input="Why is this being deleted?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm danger row-del" type="submit" data-tip="Permanently delete" data-tip-pos="left"><%- icon('trash') %></button></form><% } %></td>
+                <td class="row-actions"><% if (!p.voided && canVoidPun) { %><button type="button" class="btn btn-ghost btn-sm" data-act="void" data-kind="pun" data-id="<%= p.id %>" data-msg="Void this punishment against <%= p.roblox_user %>? A reason is required.">Void</button><% } else if (p.voided) { %><span class="badge void-pill" data-tip="<%= p.void_reason || 'Voided' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %><% if (isAdmin) { %><button type="button" class="btn btn-ghost btn-sm danger row-del" data-act="delete" data-kind="pun" data-id="<%= p.id %>" data-msg="Permanently delete this punishment against <%= p.roblox_user %>? This erases the record and its evidence from the database — it cannot be undone. Void it instead if you only want it struck from the active list." data-tip="Permanently delete" data-tip-pos="left"><%- icon('trash') %></button><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -135,7 +135,7 @@
                 <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
                 <td class="small"><%= f.issued_by %></td>
                 <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></td>
-                <td class="row-actions"><% if (!f.voided && canVoidInf) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>? A reason is required." data-confirm-title="Void infraction" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (f.voided) { %><span class="badge void-pill" data-tip="<%= f.void_reason || 'Voided' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %><% if (isAdmin) { %><form method="post" action="/dashboard/infraction/delete" class="inline" data-confirm="Permanently delete this <%= f.points %>-point infraction against <%= f.staff_user %>? This erases the record and its evidence from the database and removes its points from their total — it cannot be undone. Void it instead if you only want it struck from the active list." data-confirm-title="Delete permanently" data-confirm-ok="Delete forever" data-confirm-input="Why is this being deleted?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm danger row-del" type="submit" data-tip="Permanently delete" data-tip-pos="left"><%- icon('trash') %></button></form><% } %></td>
+                <td class="row-actions"><% if (!f.voided && canVoidInf) { %><button type="button" class="btn btn-ghost btn-sm" data-act="void" data-kind="inf" data-id="<%= f.id %>" data-msg="Void this infraction against <%= f.staff_user %>? A reason is required.">Void</button><% } else if (f.voided) { %><span class="badge void-pill" data-tip="<%= f.void_reason || 'Voided' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %><% if (isAdmin) { %><button type="button" class="btn btn-ghost btn-sm danger row-del" data-act="delete" data-kind="inf" data-id="<%= f.id %>" data-msg="Permanently delete this <%= f.points %>-point infraction against <%= f.staff_user %>? This erases the record and its evidence from the database and removes its points from their total — it cannot be undone." data-tip="Permanently delete" data-tip-pos="left"><%- icon('trash') %></button><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -264,46 +264,19 @@
     document.getElementById('inf-mandatory').value = opt.getAttribute('data-mandatory') || '0';
   });
 
-  // Roblox autocomplete: race token, per-query cache (softens the rate limit),
-  // exact-username fallback, and it never blanks the list on a transient error.
-  var RBX_CACHE = {};
+  // Roblox autocomplete comes from app.js (window.robloxAutocomplete) — the
+  // dashboard used to carry a second copy of it, which meant the same bug had to
+  // be fixed twice. app.js is loaded in the page footer, i.e. after this script
+  // runs, so wiring waits for DOMContentLoaded rather than firing into undefined.
   function attachRoblox(input, suggest, onPick) {
-    var t, token = 0, lastQ = '';
-    function hide() { suggest.hidden = true; }
-    function render(data) {
-      if (!data || !data.length) { hide(); return; }
-      suggest.innerHTML = data.map(function (u) { return '<div class="rbx-opt" data-name="' + esc(u.name) + '">' + (u.avatar ? '<img class="rbx-opt-av" src="' + esc(u.avatar) + '" alt="" width="26" height="26" loading="lazy" />' : '<span class="rbx-opt-av ph"></span>') + '<span class="rbx-opt-txt"><strong>' + esc(u.name) + '</strong> <span class="muted">' + esc(u.displayName || '') + '</span></span></div>'; }).join('');
-      suggest.hidden = false;
-    }
-    function run(q) {
-      var key = q.toLowerCase();
-      if (RBX_CACHE[key]) { render(RBX_CACHE[key]); return; }
-      var my = ++token;
-      fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
-        if (my !== token || input.value.trim() !== q) return; // stale
-        var data = (d && d.data) || [];
-        if (data.length) { RBX_CACHE[key] = data; render(data); return; }
-        // fallback: exact lookup (search hides some moderated names)
-        fetch('/api/roblox/' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (ex) {
-          if (my !== token) return;
-          var d2 = (ex && ex.ok) ? [{ name: ex.name, displayName: ex.displayName, avatar: ex.avatar }] : [];
-          RBX_CACHE[key] = d2; render(d2);
-        }).catch(function () {});
-      }).catch(function () { /* transient — keep current results */ });
-    }
-    input.addEventListener('input', function () {
-      clearTimeout(t); var q = input.value.trim();
-      if (q === lastQ) return; lastQ = q;
-      if (q.length < 2) { hide(); return; }
-      t = setTimeout(function () { run(q); }, 200);
-    });
-    input.addEventListener('focus', function () { var q = input.value.trim(); if (q.length >= 2 && RBX_CACHE[q.toLowerCase()]) render(RBX_CACHE[q.toLowerCase()]); });
-    suggest.addEventListener('mousedown', function (e) { var o = e.target.closest('.rbx-opt'); if (o) { e.preventDefault(); input.value = o.getAttribute('data-name'); hide(); onPick(o.getAttribute('data-name')); } });
-    input.addEventListener('blur', function () { setTimeout(hide, 160); });
-    document.addEventListener('click', function (e) { if (!e.target.closest('.rbx-search') || (!suggest.contains(e.target) && e.target !== input)) hide(); });
+    if (!input || !suggest) return;
+    var go = function () { if (window.robloxAutocomplete) window.robloxAutocomplete(input, suggest, onPick); };
+    if (window.robloxAutocomplete) go();
+    else document.addEventListener('DOMContentLoaded', go);
   }
 
   var rbxName = document.getElementById('rbx-name');
+
   if (rbxName) attachRoblox(rbxName, rbxName.parentNode.querySelector('.rbx-suggest'), function (name) {
     fetch('/api/roblox/' + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (d) {
       var card = document.getElementById('rbx-card');
@@ -368,9 +341,20 @@
     var inp = document.getElementById('file-input'); if (inp) inp.value = name;
     loadFile(name);
   }
-  function voidCell(kind, id, who) {
-    if (!(kind === 'pun' ? CAN_VOID_PUN : CAN_VOID_INF)) return '';
-    return ' <button class="btn btn-ghost btn-sm void-btn" type="button" data-void="' + kind + '" data-id="' + id + '" data-who="' + esc(who) + '">Void</button>';
+  // User File row actions — same void/delete pair as the main tables.
+  function voidCell(kind, id, who, rec) {
+    var out = '';
+    if (kind === 'pun' ? CAN_VOID_PUN : CAN_VOID_INF) {
+      out += ' <button class="btn btn-ghost btn-sm void-btn" type="button" data-void="' + kind + '" data-id="' + id + '" data-who="' + esc(who) + '">Void</button>';
+    }
+    if (IS_ADMIN) {
+      var noun = kind === 'pun' ? 'punishment' : 'infraction';
+      out += ' <button type="button" class="btn btn-ghost btn-sm danger row-del" data-act="delete" data-kind="' + kind + '" data-id="' + id + '"'
+        + ' data-msg="Permanently delete this ' + noun + ' against ' + esc(who) + '? This erases the record and its evidence from the database'
+        + (kind === 'inf' ? ' and removes its points from their total' : '') + ' — it cannot be undone."'
+        + ' data-tip="Permanently delete" data-tip-pos="left">' + TRASH_SVG + '</button>';
+    }
+    return out;
   }
   function voidMark(r) {
     return r.voided ? ' <span class="pill pill-grey void-pill" data-tip="' + esc(r.void_reason || 'Voided') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span>' : '';
@@ -383,11 +367,11 @@
       html += '<div class="file-head"><strong>' + esc(d.user) + '</strong>' + (d.points != null ? ' · <span class="pill pill-' + (d.points >= 3 ? 'red' : 'grey') + '">' + d.points + ' pts (6mo)</span>' : '') + '</div>';
       if (d.punishments) {
         html += '<h3 class="file-h">Punishments (' + d.punishments.length + ')</h3>';
-        html += d.punishments.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span>' + voidMark(p) + '</td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td><td class="num">' + (p.voided ? '' : voidCell('pun', p.id, d.user)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+        html += d.punishments.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.punishments.map(function (p) { return '<tr class="' + (p.voided ? 'row-void' : '') + '"><td><span class="pill pill-' + (/ban/i.test(p.type) ? 'red' : 'amber') + '">' + esc(p.type) + '</span>' + voidMark(p) + '</td><td class="small">' + esc(p.reason) + '</td><td class="small muted">' + esc(p.moderator) + '</td><td class="small muted nowrap">' + esc(p.created_at.slice(0, 10)) + '</td><td class="num row-actions">' + voidCell('pun', p.id, d.user, p) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
       }
       if (d.infractions) {
         html += '<h3 class="file-h">Infractions (' + d.infractions.length + ')</h3>';
-        html += d.infractions.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + voidMark(f) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td><td class="num">' + (f.voided ? '' : voidCell('inf', f.id, d.user)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
+        html += d.infractions.length ? '<div class="table-scroll"><table class="table"><tbody>' + d.infractions.map(function (f) { return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small">' + esc(f.type) + voidMark(f) + '</td><td class="num mono">' + f.points + 'pt</td><td class="small">' + esc(f.reason) + '</td><td class="small">' + (f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '') + '</td><td class="small muted nowrap">' + esc(f.created_at.slice(0, 10)) + '</td><td class="num row-actions">' + voidCell('inf', f.id, d.user, f) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted small">None.</p>';
       }
       out.innerHTML = html;
       // Roblox account details for the file's subject (hidden until data lands)
@@ -417,20 +401,19 @@
   // ---------- realtime updates ----------
   function timeCell(ts) { return '<time data-time="' + esc(ts) + '">' + esc(String(ts).slice(0, 16)) + '</time>'; }
   // Row actions: Void (rank-gated, keeps the record) and — for admins only —
-  // permanent deletion, which is offered even on already-voided rows.
+  // permanent deletion, which is offered even on already-voided rows. These are
+  // buttons rather than data-confirm forms because that helper calls
+  // form.submit(), which hard-navigates; see the delegated handler below.
   function voidFormCell(action, id, msg, allowed, r, delMsg) {
+    var kind = action.indexOf('punishment') !== -1 ? 'pun' : 'inf';
     var out = '<td class="row-actions">';
     if (r.voided) {
       out += '<span class="badge void-pill" data-tip="' + esc(r.void_reason || 'Voided') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span>';
     } else if (allowed) {
-      out += '<form method="post" action="' + action + '" class="inline" data-confirm="' + esc(msg) + ' A reason is required." data-confirm-title="Void" data-confirm-ok="Void" data-confirm-input="Why is this being voided?">'
-        + '<input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/>'
-        + '<button class="btn btn-ghost btn-sm" type="submit">Void</button></form>';
+      out += '<button type="button" class="btn btn-ghost btn-sm" data-act="void" data-kind="' + kind + '" data-id="' + id + '" data-msg="' + esc(msg) + ' A reason is required.">Void</button>';
     }
     if (IS_ADMIN) {
-      out += '<form method="post" action="' + action.replace('/void', '/delete') + '" class="inline" data-confirm="' + esc(delMsg) + '" data-confirm-title="Delete permanently" data-confirm-ok="Delete forever" data-confirm-input="Why is this being deleted?">'
-        + '<input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/>'
-        + '<button class="btn btn-ghost btn-sm danger row-del" type="submit" data-tip="Permanently delete" data-tip-pos="left">' + TRASH_SVG + '</button></form>';
+      out += '<button type="button" class="btn btn-ghost btn-sm danger row-del" data-act="delete" data-kind="' + kind + '" data-id="' + id + '" data-msg="' + esc(delMsg) + '" data-tip="Permanently delete" data-tip-pos="left">' + TRASH_SVG + '</button>';
     }
     return out + '</td>';
   }
@@ -449,21 +432,58 @@
       + voidFormCell('/dashboard/infraction/void', f.id, 'Void this infraction against ' + esc(f.staff_user) + '?', CAN_VOID_INF, f,
           'Permanently delete this ' + f.points + '-point infraction against ' + esc(f.staff_user) + '? This erases the record and its evidence from the database and removes its points from their total — it cannot be undone. Void it instead if you only want it struck from the active list.') + '</tr>';
   }
-  // Void from the User File: reason modal, then POST via a synthesized form.
+  // One handler for void/delete everywhere: the Moderation and SID tables and the
+  // User File. Posts with fetch and updates the DOM in place, so a deleted record
+  // disappears immediately instead of needing a reload.
+  function postAction(kind, act, id) {
+    var url = '/dashboard/' + (kind === 'pun' ? 'punishment' : 'infraction') + '/' + act;
+    return function (reason) {
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+        body: new URLSearchParams({ _csrf: CSRF, id: id, reason: reason || '' }),
+      }).then(function (r) { return r.json().catch(function () { return { ok: r.ok }; }); });
+    };
+  }
+  function afterAction(id, kind, act, res) {
+    if (!res || !res.ok) { alert((res && res.error) || 'Action failed.'); return; }
+    // drop or grey the row wherever it is currently shown
+    var sel = '[data-act][data-kind="' + kind + '"][data-id="' + id + '"], .void-btn[data-void="' + kind + '"][data-id="' + id + '"]';
+    document.querySelectorAll(sel).forEach(function (btn) {
+      var row = btn.closest('tr, .file-rec');
+      if (!row) return;
+      if (act === 'delete') {
+        row.style.transition = 'opacity .2s'; row.style.opacity = '0';
+        setTimeout(function () { row.remove(); }, 200);
+      } else {
+        row.classList.add('row-void');
+        btn.closest('.row-actions, td') && (btn.disabled = true);
+      }
+    });
+    sig = '';        // force the next poll to repaint even if ids look unchanged
+    pollLive();
+    var fileInput = document.getElementById('file-input');
+    if (fileInput && fileInput.value && document.getElementById('file-result')) loadFile(fileInput.value);
+  }
   document.addEventListener('click', function (e) {
-    var b = e.target.closest && e.target.closest('.void-btn'); if (!b) return;
-    var kind = b.getAttribute('data-void'), id = b.getAttribute('data-id'), who = b.getAttribute('data-who');
-    if (!window.vcfConfirm) return;
+    var b = e.target.closest && e.target.closest('[data-act="void"], [data-act="delete"], .void-btn');
+    if (!b || !window.vcfConfirm) return;
+    var isLegacy = b.classList.contains('void-btn');       // User File buttons
+    var act = isLegacy ? 'void' : b.getAttribute('data-act');
+    var kind = isLegacy ? b.getAttribute('data-void') : b.getAttribute('data-kind');
+    var id = b.getAttribute('data-id');
+    var noun = kind === 'pun' ? 'punishment' : 'infraction';
+    var msg = b.getAttribute('data-msg')
+      || ('Void this ' + noun + ' against ' + (b.getAttribute('data-who') || 'this user') + '? A reason is required.');
     window.vcfConfirm({
-      title: 'Void ' + (kind === 'pun' ? 'punishment' : 'infraction'),
-      message: 'Void this ' + (kind === 'pun' ? 'punishment' : 'infraction') + ' against ' + who + '? A reason is required.',
-      okLabel: 'Void', input: true, inputPlaceholder: 'Why is this being voided?'
+      title: act === 'delete' ? 'Delete permanently' : 'Void ' + noun,
+      message: msg,
+      okLabel: act === 'delete' ? 'Delete forever' : 'Void',
+      danger: act === 'delete',
+      input: true,
+      inputPlaceholder: act === 'delete' ? 'Why is this being deleted?' : 'Why is this being voided?'
     }, function (reason) {
-      var f = document.createElement('form');
-      f.method = 'post'; f.action = kind === 'pun' ? '/dashboard/punishment/void' : '/dashboard/infraction/void';
-      f.innerHTML = '<input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + esc(id) + '"/><input type="hidden" name="reason"/>';
-      f.querySelector('input[name=reason]').value = reason || '';
-      document.body.appendChild(f); f.submit();
+      postAction(kind, act, id)(reason).then(function (res) { afterAction(id, kind, act, res); });
     });
   });
   var sig = '';

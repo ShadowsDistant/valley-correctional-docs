@@ -88,16 +88,30 @@ tick() {
     die "not a git repo"
   }
 
-  local out
+  local out prev
+  prev="$(sha)"                # remember where we were, to list what this update brings
   out=$(git -C "$APP_DIR" fetch --all 2>&1) || { write_status error "git fetch failed: $out"; die "git fetch failed"; }
   out=$(git -C "$APP_DIR" reset --hard "origin/$BRANCH" 2>&1) || { write_status error "git reset failed: $out"; die "git reset failed"; }
-  say "pulled: $(sha)"
+  say "pulled: $prev -> $(sha)"
+
+  # Every commit subject between the old and new HEAD, as a JSON array — this is
+  # the changelog Admin → System shows for the update.
+  local changes
+  changes=$(git -C "$APP_DIR" log --no-merges --pretty=%s "$prev..HEAD" 2>/dev/null \
+    | head -40 \
+    | while IFS= read -r line; do printf '"%s",' "$(esc "$line")"; done)
+  changes="[${changes%,}]"
 
   # Record the deployed build so Admin → System shows the real commit.
-  printf '{"commit":"%s","branch":"%s","subject":"%s","time":"%s"}\n' \
+  # `released` is the commit's own date (when the change was authored/pushed);
+  # `time` is when this host actually applied it — they are not the same thing.
+  printf '{"commit":"%s","branch":"%s","subject":"%s","time":"%s","released":"%s","previous":"%s","changes":%s}\n' \
     "$(sha)" "$(esc "$BRANCH")" \
     "$(esc "$(git -C "$APP_DIR" log -1 --pretty=%s 2>/dev/null || echo '')")" \
-    "$(now)" > "$BUILD"
+    "$(now)" \
+    "$(git -C "$APP_DIR" log -1 --pretty=%cI 2>/dev/null || echo '')" \
+    "$prev" \
+    "$changes" > "$BUILD"
 
   have docker || { write_status error "docker is not installed on the host"; die "docker missing"; }
   write_status running "Rebuilding containers…"

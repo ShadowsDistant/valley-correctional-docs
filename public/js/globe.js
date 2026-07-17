@@ -73,20 +73,15 @@
     return out;
   }
 
-  // Rough arid regions, so deserts read tan instead of green.
-  function isDesert(lat, lon) {
-    if (lat > 12 && lat < 33 && lon > -12 && lon < 52) return true;    // Sahara + Arabia
-    if (lat > 25 && lat < 42 && lon > 55 && lon < 78) return true;     // Iran / Central Asia
-    if (lat > -30 && lat < -19 && lon > 118 && lon < 141) return true; // Australian outback
-    if (lat > 30 && lat < 42 && lon > -116 && lon < -104) return true; // US Southwest
-    if (lat > -27 && lat < -16 && lon > -71 && lon < -64) return true; // Atacama
-    return false;
-  }
+  // Land is drawn in one colour. Biome/terrain tinting (green vs tan deserts)
+  // was guesswork from coarse lat/lon bands and read as data the globe doesn't
+  // actually have, so it's gone; only the coastal/inland distinction remains,
+  // which comes from the real land raster.
   function noise(lat, lon) {
     var s = Math.sin(lat * 12.9898 + lon * 78.233) * 43758.5453;
     return s - Math.floor(s);
   }
-  var BIOME = { g: [104, 196, 138], t: [86, 200, 120], b: [120, 176, 150], d: [206, 186, 120] };
+  var LAND_RGB = [104, 196, 138];
 
   // Sample the mask into drawable dots at a given spacing. Coarser when zoomed
   // out (fewer, larger dots), finer as you zoom in — so detail scales with the
@@ -101,12 +96,7 @@
         if (!maskAt(la, lo)) continue;
         var coastal = !maskAt(la + step, lo) || !maskAt(la - step, lo)
           || !maskAt(la, lo + stepLon) || !maskAt(la, lo - stepLon);
-        var alat = Math.abs(la), biome;
-        if (isDesert(la, lo)) biome = 'd';
-        else if (alat > 58) biome = 'b';
-        else if (alat < 23) biome = 't';
-        else biome = 'g';
-        pts.push([la, lo, coastal ? 1 : 0, biome, noise(la, lo)]);
+        pts.push([la, lo, coastal ? 1 : 0, noise(la, lo)]);
       }
     }
     lodCache[key] = pts;
@@ -335,13 +325,13 @@
         var pt = pts[i];
         var p = project(pt[0], pt[1], rot);
         if (p.z <= 0.02) continue;
-        var coastal = pt[2], col = BIOME[pt[3]] || BIOME.g, mott = 0.82 + pt[4] * 0.36;
+        var coastal = pt[2], mott = 0.86 + pt[3] * 0.28;   // slight mottle keeps it from looking printed
         var a = (coastal ? 0.26 : 0.15) + p.z * (coastal ? 0.55 : 0.44);
         var rr = ((coastal ? 1.0 : 0.82) + p.z * 0.8) * dotScale;
         ctx.beginPath(); ctx.arc(p.sx, p.sy, rr, 0, 6.2832);
-        ctx.fillStyle = 'rgba(' + Math.min(255, Math.round(col[0] * (coastal ? 1.28 : mott)))
-          + ',' + Math.min(255, Math.round(col[1] * (coastal ? 1.12 : mott)))
-          + ',' + Math.min(255, Math.round(col[2] * (coastal ? 1.18 : mott)))
+        ctx.fillStyle = 'rgba(' + Math.min(255, Math.round(LAND_RGB[0] * (coastal ? 1.28 : mott)))
+          + ',' + Math.min(255, Math.round(LAND_RGB[1] * (coastal ? 1.12 : mott)))
+          + ',' + Math.min(255, Math.round(LAND_RGB[2] * (coastal ? 1.18 : mott)))
           + ',' + a.toFixed(3) + ')';
         ctx.fill();
       }

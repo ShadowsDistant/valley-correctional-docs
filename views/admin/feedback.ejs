@@ -61,13 +61,19 @@
                 <span class="pill pill-<%= f.status==='open'?'amber':(f.status==='rejected'?'red':'green') %>" data-statuspill><%= f.status %></span>
                 <% if (needsReply) { %><span class="fb-flag" data-flag><%- icon('message') %> Awaiting reply</span><% } %>
               </div>
-              <% if (f.status_reason) { %><div class="fb-status-reason muted small"><strong><%= f.status %>:</strong> <%= f.status_reason %></div><% } %>
+              <%# One status line. The pill already says open/approved/rejected, so
+                  repeating it here and again in the by-line below said the same
+                  thing three times — this carries only the who and the why. %>
+              <% if (f.status !== 'open' && f.status_by) { %>
+                <div class="fb-status-reason muted small"><strong class="cap"><%= f.status %> by <%= f.status_by %></strong><% if (f.status_reason) { %> — <%= f.status_reason %><% } %></div>
+              <% } else if (f.status_reason) { %>
+                <div class="fb-status-reason muted small"><%= f.status_reason %></div>
+              <% } %>
               <div class="fb-card-title"><%= f.title %></div>
               <div class="muted small fb-card-by">
                 by <strong><%= f.submitted_by || 'anonymous' %></strong><% if (f.roblox_user) { %> · Roblox <strong><%= f.roblox_user %></strong><% } %>
                 · <time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time>
                 · <%= f.msgs %> message<%= f.msgs===1?'':'s' %>
-                <% if (f.status !== 'open' && f.status_by) { %> · <%= f.status %> by <%= f.status_by %><% } %>
               </div>
             </div>
             <div class="fb-card-actions">

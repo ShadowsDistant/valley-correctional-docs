@@ -1928,7 +1928,30 @@ function buildInfo() {
     subject: b.subject || '',
     branch: b.branch || '',
     built,
+    released: b.released || null,             // when the commit was authored
+    changes: Array.isArray(b.changes) ? b.changes : [],
   };
+}
+
+// Write one update_log row per commit we boot on. Runs at startup rather than at
+// update time because the update replaces this very process — by the time the new
+// build is live, the request that triggered it is long gone. Doing it here also
+// captures deploys done by hand on the host, not just the button.
+function recordBuild() {
+  try {
+    const b = buildInfo();
+    if (!b.commit) return;                    // dev/local: nothing meaningful to log
+    const seen = db.prepare('SELECT 1 FROM update_log WHERE commit_sha = ?').get(b.commit);
+    if (seen) return;
+    // Whoever pressed the button stashed their name before the restart.
+    const by = setting('update.requestedBy', '') || 'system';
+    db.prepare(`INSERT INTO update_log (version, commit_sha, branch, subject, changes, released_at, applied_at, applied_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(b.version, b.commit, b.branch || '', b.subject || '', JSON.stringify(b.changes || []),
+           b.released || null, (b.built || new Date().toISOString()).replace('T', ' ').replace(/\..*/, ''), by);
+    setSetting('update.requestedBy', '');     // consumed
+    console.log(`[update] recorded build ${b.commit} (v${b.version}) applied by ${by}`);
+  } catch (e) { /* logging a build must never stop the app booting */ }
 }
 // Rolling usage history for the System page charts. Sampled on the server (not
 // in the browser) so the graph is continuous across page loads and shows real
@@ -1973,7 +1996,39 @@ function systemStats() {
     docs: count('SELECT COUNT(*) n FROM pages'),
     staff: count('SELECT COUNT(*) n FROM users WHERE deleted=0'),
     sessions: count("SELECT COUNT(*) n FROM sessions WHERE expire > strftime('%s','now')*1000"),
+    pastStaff: count('SELECT COUNT(*) n FROM users WHERE deleted=1 OR terminated=1'),
+    revisions: count('SELECT COUNT(*) n FROM page_revisions'),
+    views: count('SELECT COUNT(*) n FROM page_views'),
+    auditRows: count('SELECT COUNT(*) n FROM audit_log'),
+    punishments: count('SELECT COUNT(*) n FROM punishments'),
+    infractions: count('SELECT COUNT(*) n FROM infractions'),
+    feedback: count('SELECT COUNT(*) n FROM feedback'),
+    aiChats: count('SELECT COUNT(*) n FROM ai_chats'),
   };
+  // Row counts per table, biggest first — shows what is actually filling the DB.
+  let tables = [];
+  try {
+    tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()
+      .map((t) => ({ name: t.name, rows: count('SELECT COUNT(*) n FROM "' + t.name + '"') }))
+      .filter((t) => t.rows)
+      .sort((a, b) => b.rows - a.rows)
+      .slice(0, 10);
+  } catch (e) { tables = []; }
+  // Evidence files on disk: count, mean size, and the oldest, so an admin can see
+  // whether the cap is being approached by many small files or a few large ones.
+  let files = { n: 0, largest: 0, oldest: null };
+  try {
+    const names = fs.readdirSync(UPLOAD_DIR);
+    let largest = 0, oldest = null;
+    for (const f of names) {
+      try {
+        const st = fs.statSync(path.join(UPLOAD_DIR, f));
+        if (st.size > largest) largest = st.size;
+        if (!oldest || st.mtimeMs < oldest) oldest = st.mtimeMs;
+      } catch (e) {}
+    }
+    files = { n: names.length, largest, oldest: oldest ? new Date(oldest).toISOString() : null };
+  } catch (e) {}
   const mem = process.memoryUsage();
   const beat = (() => { try { return fs.statSync(UPDATER_BEAT).mtimeMs; } catch (e) { return 0; } })();
   return {
@@ -1992,6 +2047,7 @@ function systemStats() {
     storage: {
       dbMain, dbWal, dbShm, dbTotal: dbBytes,
       evidence, evidenceCap: UPLOAD_CAP,
+      files, tables,
     },
     counts,
     app: {
@@ -2023,9 +2079,16 @@ function pendingContent() {
   });
 }
 adminRouter.get('/system', auth.requireAdmin, (req, res) => {
+  const updates = db.prepare(
+    'SELECT version, commit_sha, branch, subject, changes, released_at, applied_at, applied_by FROM update_log ORDER BY id DESC LIMIT 40'
+  ).all().map((u) => {
+    let changes = [];
+    try { changes = JSON.parse(u.changes) || []; } catch (e) { changes = []; }
+    return Object.assign({}, u, { changes });
+  });
   res.render('admin/system', {
     title: 'System', section: 'system',
-    stats: systemStats(), pending: pendingContent(),
+    stats: systemStats(), pending: pendingContent(), updates,
   });
 });
 // Dismiss a withheld content update once the admin has reviewed/merged it.
@@ -2053,6 +2116,9 @@ adminRouter.post('/system/update', auth.requireAdmin, auth.verifyCsrf, updateLim
       requestedAt: new Date().toISOString(),
     }, null, 2));
     fs.writeFileSync(UPDATE_STATUS, JSON.stringify({ state: 'queued', at: new Date().toISOString() }, null, 2));
+    // The update restarts this process, so remember who asked; recordBuild() picks
+    // it up on the way back and attributes the new version to them.
+    setSetting('update.requestedBy', req.session.user.username);
     audit(req.session.user.username, 'system.update_requested', 'host', '');
     res.json({ ok: true });
   } catch (e) {
@@ -2184,12 +2250,25 @@ app.get('/api/roblox/:username', auth.requireAuth, async (req, res) => {
 // Autocomplete fires per keystroke (debounced) — a low cap made the dropdown
 // go quiet mid-typing. Higher cap; the client caches per query to stay well under it.
 const robloxSearchLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
+// Short-lived shared cache of upstream results. Everyone typing the same prefixes
+// hits this instead of Roblox, which is what keeps us under their rate limit.
+const rbxSearchCache = new Map();
+const RBX_CACHE_TTL = 5 * 60 * 1000;
 app.get('/api/roblox-search', robloxSearchLimiter, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json({ ok: true, data: [] });
+  const key = q.toLowerCase();
+  const hit = rbxSearchCache.get(key);
+  if (hit && Date.now() - hit.at < RBX_CACHE_TTL) return res.json({ ok: true, data: hit.data, cached: true });
   try {
     const r = await fetch('https://users.roblox.com/v1/users/search?keyword=' + encodeURIComponent(q) + '&limit=10');
+    // Roblox rate-limits this endpoint hard. Its 429 has no `data`, which used to
+    // fall through as an empty result — indistinguishable from "no such user", so
+    // the dropdown silently went blank mid-typing. Report it honestly instead and
+    // let the client keep showing what it already has.
+    if (r.status === 429) return res.json({ ok: false, error: 'busy', data: [] });
+    if (!r.ok) return res.json({ ok: false, error: 'upstream', data: [] });
     const j = await r.json();
     const data = (j && j.data ? j.data : []).map((usr) => ({ id: usr.id, name: usr.name, displayName: usr.displayName, avatar: null }));
     // One batch thumbnails call fills in the suggestion avatars.
@@ -2201,8 +2280,14 @@ app.get('/api/roblox-search', robloxSearchLimiter, async (req, res) => {
         data.forEach((d) => { d.avatar = byId.get(d.id) || null; });
       } catch (e) { /* avatars optional */ }
     }
+    // Cache even empty results: typing a long name walks through many prefixes and
+    // re-asking upstream for each one is what triggers the 429 in the first place.
+    rbxSearchCache.set(key, { at: Date.now(), data });
+    if (rbxSearchCache.size > 500) {
+      for (const k of rbxSearchCache.keys()) { rbxSearchCache.delete(k); if (rbxSearchCache.size <= 400) break; }
+    }
     res.json({ ok: true, data });
-  } catch (e) { res.json({ ok: false, data: [] }); }
+  } catch (e) { res.json({ ok: false, error: 'upstream', data: [] }); }
 });
 
 // Batch Roblox headshots by username (staff usernames == Roblox usernames).
@@ -2302,15 +2387,15 @@ app.post('/dashboard/punishment', requireDashboard, auth.csrfToken, auth.verifyC
 app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   const u = req.session.user;
   if (!auth.canVoidPunishment(u)) {
-    return res.status(403).render('error', { title: 'Forbidden', heading: 'Insufficient rank', message: 'Punishments may only be voided by a Senior Moderator, Internal Operations Manager, Assistant Internal Operations Manager, Assistant Community Manager, Community Manager, or Lead Overseer.' });
+    return actionFail(req, res, 403, 'Insufficient rank', 'Punishments may only be voided by a Senior Moderator, Internal Operations Manager, Assistant Internal Operations Manager, Assistant Community Manager, Community Manager, or Lead Overseer.');
   }
   const reason = String(req.body.reason || '').trim().slice(0, 300);
-  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to void a punishment.' });
+  if (!reason) return actionFail(req, res, 400, 'Reason required', 'A reason is required to void a punishment.');
   const p = db.prepare('SELECT roblox_user FROM punishments WHERE id = ?').get(Number(req.body.id));
   // Voids are kept, never deleted — marked with who voided and why.
   db.prepare('UPDATE punishments SET voided = 1, void_reason = ?, voided_by = ? WHERE id = ?').run(reason, u.username, Number(req.body.id));
-  if (p) audit(u.username, 'punish.void', p.roblox_user, reason);
-  res.redirect('/dashboard');
+  if (p) audit(u.username, 'punish.void', p.roblox_user, 'Reason: ' + reason);
+  actionDone(req, res);
 });
 
 // --- permanent deletion (admins only) ---------------------------------------
@@ -2319,6 +2404,18 @@ app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.ve
 // their (unguessable, but still live) /uploads URL and still counting against
 // the storage cap. The audit_log entry is deliberately kept: the record of who
 // destroyed what is the whole accountability trail for an irreversible action.
+// The dashboard posts these actions with fetch so the row can disappear without
+// a reload; a plain form post (no JS) still gets the old redirect.
+function wantsJson(req) { return req.headers['x-requested-with'] === 'fetch'; }
+function actionDone(req, res) {
+  if (wantsJson(req)) return res.json({ ok: true });
+  return res.redirect('/dashboard');
+}
+function actionFail(req, res, code, heading, message) {
+  if (wantsJson(req)) return res.status(code).json({ ok: false, error: message });
+  return res.status(code).render('error', { title: 'Error', heading: heading, message: message });
+}
+
 function deleteEvidenceFiles(evidence) {
   const names = String(evidence || '').match(/\/uploads\/[A-Za-z0-9._-]+/g) || [];
   let freed = 0;
@@ -2341,27 +2438,33 @@ app.post('/dashboard/punishment/delete', requireDashboard, auth.requireAdmin, au
   const u = req.session.user;
   const id = Number(req.body.id);
   const reason = String(req.body.reason || '').trim().slice(0, 300);
-  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to permanently delete a punishment.' });
-  const p = db.prepare('SELECT roblox_user, type, evidence FROM punishments WHERE id = ?').get(id);
-  if (!p) return res.redirect('/dashboard');
+  if (!reason) return actionFail(req, res, 400, 'Reason required', 'A reason is required to permanently delete a punishment.');
+  const p = db.prepare('SELECT roblox_user, type, reason AS why, evidence FROM punishments WHERE id = ?').get(id);
+  if (!p) return actionDone(req, res);
   const files = deleteEvidenceFiles(p.evidence);
   db.prepare('DELETE FROM punishments WHERE id = ?').run(id);
-  audit(u.username, 'punish.delete', p.roblox_user, p.type + ' · ' + reason + (files ? ' · ' + files + ' evidence file(s) removed' : ''));
-  res.redirect('/dashboard');
+  // The row is gone, so this entry is the only surviving record of it — lead with
+  // the deletion reason, then snapshot what was destroyed.
+  audit(u.username, 'punish.delete', p.roblox_user,
+    'Reason: ' + reason + ' — deleted ' + p.type + ' (' + (p.why || 'no reason given') + ')'
+    + (files ? ' · ' + files + ' evidence file(s) removed' : ''));
+  actionDone(req, res);
 });
 
 app.post('/dashboard/infraction/delete', requireDashboard, auth.requireAdmin, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   const u = req.session.user;
   const id = Number(req.body.id);
   const reason = String(req.body.reason || '').trim().slice(0, 300);
-  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to permanently delete an infraction.' });
-  const inf = db.prepare('SELECT staff_user, type, points, evidence FROM infractions WHERE id = ?').get(id);
-  if (!inf) return res.redirect('/dashboard');
+  if (!reason) return actionFail(req, res, 400, 'Reason required', 'A reason is required to permanently delete an infraction.');
+  const inf = db.prepare('SELECT staff_user, type, points, reason AS why, evidence FROM infractions WHERE id = ?').get(id);
+  if (!inf) return actionDone(req, res);
   const files = deleteEvidenceFiles(inf.evidence);
   db.prepare('DELETE FROM infractions WHERE id = ?').run(id);
   // the staff member's point total is derived from this table, so it drops here
-  audit(u.username, 'infraction.delete', inf.staff_user, inf.type + ' · ' + inf.points + 'pt · ' + reason + (files ? ' · ' + files + ' evidence file(s) removed' : ''));
-  res.redirect('/dashboard');
+  audit(u.username, 'infraction.delete', inf.staff_user,
+    'Reason: ' + reason + ' — deleted ' + inf.type + ' (' + inf.points + 'pt, ' + (inf.why || 'no reason given') + ')'
+    + (files ? ' · ' + files + ' evidence file(s) removed' : ''));
+  actionDone(req, res);
 });
 
 app.post('/dashboard/punishment/review', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -2404,14 +2507,14 @@ app.post('/dashboard/infraction', requireDashboard, auth.csrfToken, auth.verifyC
 app.post('/dashboard/infraction/void', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
   const u = req.session.user;
   if (!auth.canVoidInfraction(u)) {
-    return res.status(403).render('error', { title: 'Forbidden', heading: 'Insufficient rank', message: 'Infractions may only be voided by the Lead Investigator, Community Manager, or Lead Overseer.' });
+    return actionFail(req, res, 403, 'Insufficient rank', 'Infractions may only be voided by the Lead Investigator, Community Manager, or Lead Overseer.');
   }
   const reason = String(req.body.reason || '').trim().slice(0, 300);
-  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to void an infraction.' });
+  if (!reason) return actionFail(req, res, 400, 'Reason required', 'A reason is required to void an infraction.');
   const inf = db.prepare('SELECT staff_user FROM infractions WHERE id = ?').get(Number(req.body.id));
   db.prepare('UPDATE infractions SET voided = 1, void_reason = ?, voided_by = ? WHERE id = ?').run(reason, u.username, Number(req.body.id));
-  if (inf) audit(u.username, 'infraction.void', inf.staff_user, reason);
-  res.redirect('/dashboard');
+  if (inf) audit(u.username, 'infraction.void', inf.staff_user, 'Reason: ' + reason);
+  actionDone(req, res);
 });
 
 app.post('/dashboard/infraction/review', requireDashboard, auth.csrfToken, auth.verifyCsrf, (req, res) => {
@@ -2510,6 +2613,8 @@ app.use((err, req, res, next) => {
     message: isProd ? 'An unexpected error occurred.' : String(err && err.stack ? err.stack : err),
   });
 });
+
+recordBuild();   // log the commit this process is running, if it's new
 
 const server = app.listen(PORT, () => {
   console.log(`Valley Correctional Facility docs running on http://localhost:${PORT}`);

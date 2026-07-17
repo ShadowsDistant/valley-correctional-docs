@@ -64,7 +64,14 @@
     </div>
   </nav>
   <div class="side-foot">
-    Signed in as <strong><%= user.username %></strong><br /><span class="role-badge"><%= user.role %></span>
+    <a class="side-user" href="/account" data-tip="Your profile" data-tip-pos="top">
+      <span class="side-user-av" data-rbx-avatar="<%= user.username %>"><%= (user.username || '?').slice(0,1).toUpperCase() %></span>
+      <span class="side-user-meta">
+        <strong class="side-user-name"><%= user.username %></strong>
+        <span class="side-user-role"><%= user.role %></span>
+      </span>
+      <span class="side-user-go"><%- icon('external') %></span>
+    </a>
   </div>
 </aside>
 <div class="scrim" id="scrim"></div>

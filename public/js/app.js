@@ -184,11 +184,15 @@
     back.className = 'confirm-back';
     var danger = opts.danger !== false;
     // opts.input: show a required textarea and pass its value to onOk(value)
+    // opts.html: render the message as markup instead of text. Only ever pass
+    // literals the page itself authored (e.g. a warning list) — never anything
+    // that came from a user, a URL, or the database.
+    var msg = opts.html ? String(opts.message || '') : '<p>' + esc(opts.message || '') + '</p>';
     back.innerHTML =
       '<div class="confirm-card" role="alertdialog" aria-modal="true">'
       + '<div class="confirm-ico' + (danger ? ' danger' : '') + '">' + WARN_SVG + '</div>'
       + '<h3>' + esc(opts.title || 'Are you sure?') + '</h3>'
-      + '<p>' + esc(opts.message || '') + '</p>'
+      + (opts.html ? '<div class="confirm-body">' + msg + '</div>' : msg)
       + (opts.input ? '<textarea class="confirm-input" rows="3" placeholder="' + esc(opts.inputPlaceholder || 'Reason…') + '"></textarea>' : '')
       + '<div class="confirm-actions">'
       + '<button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
@@ -373,7 +377,7 @@
     if (!input || !box || input._rbxWired) return;
     input._rbxWired = true;
     var authed = document.body.hasAttribute('data-authed');
-    var timer, token = 0, lastQ = '';
+    var timer, token = 0, lastQ = '', inflight = null;
 
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function hide() { box.hidden = true; box.innerHTML = ''; }
@@ -399,19 +403,36 @@
       var key = q.toLowerCase();
       if (RBX_CACHE[key]) { render(RBX_CACHE[key]); return; }
       var my = ++token;
-      fetch('/api/roblox-search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (d) {
-        if (my !== token || input.value.trim() !== q) return; // stale
-        var data = (d && d.data) || [];
-        if (data.length) { RBX_CACHE[key] = data; render(data); }
-        else exactFallback(q, my);
-      }).catch(function () { /* transient error — leave current results, retry next keystroke */ });
+      if (inflight) inflight.abort();               // a newer keystroke wins
+      inflight = ('AbortController' in window) ? new AbortController() : null;
+      box.classList.add('is-loading');
+      fetch('/api/roblox-search?q=' + encodeURIComponent(q), inflight ? { signal: inflight.signal } : undefined)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (my !== token || input.value.trim() !== q) return; // stale
+          box.classList.remove('is-loading');
+          // Upstream was busy or errored — that is not "no such user", so keep
+          // whatever is on screen rather than blanking the dropdown mid-typing.
+          if (d && d.ok === false) return;
+          var data = (d && d.data) || [];
+          RBX_CACHE[key] = data;                    // cache empties too: fewer upstream calls
+          if (data.length) render(data);
+          else exactFallback(q, my);
+        })
+        .catch(function (e) {
+          if (e && e.name === 'AbortError') return;
+          if (my === token) box.classList.remove('is-loading');
+          /* transient error — leave current results, retry next keystroke */
+        });
     }
     input.addEventListener('input', function () {
       clearTimeout(timer);
       var q = input.value.trim();
       if (q === lastQ) return; lastQ = q;
       if (q.length < 2) { hide(); return; }
-      timer = setTimeout(function () { search(q); }, 200);
+      // A cached prefix can paint immediately; only a real lookup is debounced.
+      if (RBX_CACHE[q.toLowerCase()]) { render(RBX_CACHE[q.toLowerCase()]); return; }
+      timer = setTimeout(function () { search(q); }, 130);
     });
     input.addEventListener('focus', function () { var q = input.value.trim(); if (q.length >= 2 && RBX_CACHE[q.toLowerCase()]) render(RBX_CACHE[q.toLowerCase()]); });
     box.addEventListener('mousedown', function (e) {

@@ -103,13 +103,32 @@
           <div class="sys-store-top"><span class="sys-store-label">Evidence uploads</span><span class="mono" id="sysStEv">—</span></div>
           <div class="sys-meter sys-store-meter"><span id="sysStEvBar" style="width:0%"></span></div>
           <span class="muted small" id="sysStEvSub">—</span>
+          <dl class="sys-dl sys-store-dl">
+            <dt>Files</dt><dd class="mono" id="sysStEvN">—</dd>
+            <dt>Largest file</dt><dd class="mono" id="sysStEvMax">—</dd>
+            <dt>Oldest upload</dt><dd class="mono" id="sysStEvOld">—</dd>
+          </dl>
         </div>
       </div>
+
       <div class="sys-count-row">
         <div class="sys-count"><span class="sys-count-n" id="sysCntDocs">—</span><span class="sys-count-l">Documents</span></div>
         <div class="sys-count"><span class="sys-count-n" id="sysCntStaff">—</span><span class="sys-count-l">Staff accounts</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntPast">—</span><span class="sys-count-l">Past staff</span></div>
         <div class="sys-count"><span class="sys-count-n" id="sysCntSess">—</span><span class="sys-count-l">Active sessions</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntRev">—</span><span class="sys-count-l">Page revisions</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntViews">—</span><span class="sys-count-l">Page views</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntAudit">—</span><span class="sys-count-l">Audit entries</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntPun">—</span><span class="sys-count-l">Punishments</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntInf">—</span><span class="sys-count-l">Infractions</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntFb">—</span><span class="sys-count-l">Feedback</span></div>
+        <div class="sys-count"><span class="sys-count-n" id="sysCntAi">—</span><span class="sys-count-l">AI chats</span></div>
       </div>
+
+      <details class="sys-tables">
+        <summary>Largest tables by row count</summary>
+        <div class="table-scroll"><table class="table sys-tables-t"><thead><tr><th>Table</th><th class="num">Rows</th><th>Share</th></tr></thead><tbody id="sysTablesBody"></tbody></table></div>
+      </details>
     </section>
 
     <% if (pending && pending.length) { %>
@@ -152,6 +171,53 @@
         </form>
         <div class="sys-update-state" id="sysUpdateState"></div>
       </div>
+      <div class="sys-progress" id="sysProgress" hidden>
+        <div class="sys-progress-head">
+          <span class="sys-progress-step" id="sysProgressStep">Queued</span>
+          <span class="sys-progress-pct mono" id="sysProgressPct">0%</span>
+        </div>
+        <div class="sys-progress-track"><span class="sys-progress-bar" id="sysProgressBar" style="width:0%"></span></div>
+        <ol class="sys-progress-steps" id="sysProgressSteps">
+          <li data-step="queued">Queued</li>
+          <li data-step="pull">Pulling code</li>
+          <li data-step="build">Rebuilding</li>
+          <li data-step="restart">Restarting</li>
+          <li data-step="done">Live</li>
+        </ol>
+      </div>
+      <% if (updates && updates.length) { %>
+        <div class="sys-hist-sep"></div>
+        <div class="panel-head sys-log-head"><h2><%- icon('scroll') %> Update history</h2><span class="muted small"><%= updates.length %> recorded</span></div>
+        <p class="muted small sys-update-copy">Every build this site has booted on — from the button above or a deploy done by hand on the host.</p>
+        <ol class="sys-log">
+          <% updates.forEach(function (u, i) { %>
+            <li class="sys-log-item<%= i === 0 ? ' is-current' : '' %>">
+              <div class="sys-log-dot"></div>
+              <div class="sys-log-main">
+                <div class="sys-log-top">
+                  <span class="sys-log-ver">v<%= u.version %></span>
+                  <span class="mono sys-log-sha"><%= u.commit_sha %></span>
+                  <% if (u.branch) { %><span class="sys-log-branch mono"><%= u.branch %></span><% } %>
+                  <% if (i === 0) { %><span class="badge badge-internal">running now</span><% } %>
+                </div>
+                <% if (u.subject) { %><div class="sys-log-subject"><%= u.subject %></div><% } %>
+                <div class="muted small sys-log-meta">
+                  Applied <time data-time="<%= u.applied_at %>" data-time-format="datetime"><%= u.applied_at %></time>
+                  by <strong><%= u.applied_by %></strong>
+                  <% if (u.released_at) { %> · released <time data-time="<%= String(u.released_at).replace('T',' ').replace(/[+Z].*$/,'') %>" data-time-format="datetime"><%= u.released_at %></time><% } %>
+                </div>
+                <% if (u.changes && u.changes.length) { %>
+                  <details class="sys-log-changes">
+                    <summary><%= u.changes.length %> change<%= u.changes.length === 1 ? '' : 's' %> in this update</summary>
+                    <ul><% u.changes.forEach(function (c) { %><li><%= c %></li><% }); %></ul>
+                  </details>
+                <% } %>
+              </div>
+            </li>
+          <% }); %>
+        </ol>
+      <% } %>
+
       <div class="sys-updater-missing" id="sysUpdaterMissing" hidden>
         <%- icon('warning') %>
         <div>
@@ -252,6 +318,46 @@
   }
   function drawAllHist() { drawHist('cpu'); drawHist('mem'); }
 
+  // ---- update progress -------------------------------------------------------
+  // The host watcher reports a state + a free-text detail rather than a percentage,
+  // so map its phases onto a bar. Percentages are indicative, not measured: the
+  // rebuild dominates and has no progress signal to read.
+  var PHASES = [
+    { key: 'queued', label: 'Queued', pct: 8 },
+    { key: 'pull', label: 'Pulling code', pct: 25 },
+    { key: 'build', label: 'Rebuilding', pct: 60 },
+    { key: 'restart', label: 'Restarting', pct: 85 },
+    { key: 'done', label: 'Live', pct: 100 },
+  ];
+  function phaseOf(detail) {
+    var d = String(detail || '').toLowerCase();
+    if (d.indexOf('pull') !== -1 || d.indexOf('fetch') !== -1) return 'pull';
+    if (d.indexOf('rebuild') !== -1 || d.indexOf('build') !== -1) return 'build';
+    if (d.indexOf('restart') !== -1 || d.indexOf('start') !== -1 || d.indexOf('up ') !== -1) return 'restart';
+    return 'build';
+  }
+  function setProgress(key, detail) {
+    var box = $('sysProgress'); if (!box) return;
+    var i = PHASES.findIndex(function (p) { return p.key === key; });
+    if (i < 0) i = 0;
+    box.hidden = false;
+    box.classList.remove('is-err');
+    $('sysProgressBar').style.width = PHASES[i].pct + '%';
+    $('sysProgressPct').textContent = PHASES[i].pct + '%';
+    $('sysProgressStep').textContent = detail || PHASES[i].label;
+    Array.prototype.forEach.call($('sysProgressSteps').children, function (li, n) {
+      li.classList.toggle('is-done', n < i);
+      li.classList.toggle('is-now', n === i && key !== 'done');
+    });
+    if (key === 'done') setTimeout(function () { if (!box.classList.contains('is-err')) box.hidden = true; }, 6000);
+  }
+  function failProgress(detail) {
+    var box = $('sysProgress'); if (!box) return;
+    box.hidden = false; box.classList.add('is-err');
+    $('sysProgressStep').textContent = detail;
+    $('sysProgressPct').textContent = 'failed';
+  }
+
   // hover: map pointer x back to a sample index and show its value + time
   Object.keys(HIST).forEach(function (metric) {
     var c = $(HIST[metric].canvas); if (!c) return;
@@ -320,12 +426,27 @@
       var evPct = s.storage.evidenceCap ? (s.storage.evidence / s.storage.evidenceCap) * 100 : 0;
       meter($('sysStEvBar'), evPct);
       $('sysStEvSub').textContent = Math.round(evPct) + '% of ' + bytes(s.storage.evidenceCap) + ' cap · ' + bytes(Math.max(0, s.storage.evidenceCap - s.storage.evidence)) + ' free';
+      var f = s.storage.files || {};
+      $('sysStEvN').textContent = (f.n || 0) + (f.n === 1 ? ' file' : ' files');
+      $('sysStEvMax').textContent = f.largest ? bytes(f.largest) : '—';
+      $('sysStEvOld').textContent = f.oldest ? String(f.oldest).slice(0, 10) : '—';
+      // largest tables, with a share bar so the dominant one is obvious
+      var body = $('sysTablesBody'), tabs = s.storage.tables || [];
+      if (body && tabs.length) {
+        var top = tabs[0].rows || 1;
+        body.innerHTML = tabs.map(function (t) {
+          var pct = Math.round((t.rows / top) * 100);
+          return '<tr><td class="mono small">' + esc(t.name) + '</td><td class="num mono">' + t.rows.toLocaleString() + '</td>'
+            + '<td><span class="globe-bar" style="display:block"><span style="width:' + pct + '%"></span></span></td></tr>';
+        }).join('');
+      }
     }
     if (s.counts) {
-      var fmt = function (n) { return n == null ? 'n/a' : String(n); };
-      $('sysCntDocs').textContent = fmt(s.counts.docs);
-      $('sysCntStaff').textContent = fmt(s.counts.staff);
-      $('sysCntSess').textContent = fmt(s.counts.sessions);
+      var fmt = function (n) { return n == null ? 'n/a' : Number(n).toLocaleString(); };
+      var map = { sysCntDocs: 'docs', sysCntStaff: 'staff', sysCntPast: 'pastStaff', sysCntSess: 'sessions',
+                  sysCntRev: 'revisions', sysCntViews: 'views', sysCntAudit: 'auditRows',
+                  sysCntPun: 'punishments', sysCntInf: 'infractions', sysCntFb: 'feedback', sysCntAi: 'aiChats' };
+      Object.keys(map).forEach(function (id) { var el = $(id); if (el) el.textContent = fmt(s.counts[map[id]]); });
     }
 
     var pill = $('sysUpdaterPill');
@@ -338,15 +459,19 @@
     if (s.updater.pending || (st && st.state === 'queued')) {
       box.className = 'sys-update-state is-run';
       box.innerHTML = '<span class="sys-spin"></span> Update queued — the host picks it up within a minute…';
+      setProgress('queued', 'Queued — waiting for the host watcher');
     } else if (st && st.state === 'running') {
       box.className = 'sys-update-state is-run';
       box.innerHTML = '<span class="sys-spin"></span> ' + esc(st.detail || 'Updating…');
+      setProgress(phaseOf(st.detail), st.detail || 'Updating…');
     } else if (st && st.state === 'ok') {
       box.className = 'sys-update-state is-ok';
       box.textContent = '✓ ' + (st.detail || 'Up to date');
+      setProgress('done', st.detail || 'Up to date');
     } else if (st && st.state === 'error') {
       box.className = 'sys-update-state is-err';
       box.textContent = '✗ ' + (st.detail || 'Update failed');
+      failProgress(st.detail || 'Update failed');
     } else { box.className = 'sys-update-state'; box.textContent = ''; }
     if (s.build && (s.build.commit || s.build.version)) $('sysBuild').textContent = s.build.commit || ('v' + s.build.version);
     if (window.fillTimes) window.fillTimes();
@@ -409,13 +534,23 @@
   // bypass this handler and hard-navigate. Confirm inline instead.
   form.addEventListener('submit', function (e) {
     e.preventDefault();
+    // Spell out what an update actually does. It is irreversible from this page
+    // (there is no rollback button), it drops connections, and on a 1 GB host the
+    // rebuild is the part most likely to bite — so say all of that up front.
+    var warnings = [
+      'The site goes down while the containers rebuild — usually under a minute, but longer on a small host.',
+      'Anyone mid-edit loses unsaved work, and open sessions are interrupted.',
+      'Database migrations run automatically on the way back up.',
+      'There is no rollback from this page — undoing a bad update means SSHing into the host.',
+    ];
+    var body = 'Pull the latest <strong>main</strong> from GitHub and rebuild on the host.<ul class="confirm-warn">'
+      + warnings.map(function (w) { return '<li>' + w + '</li>'; }).join('') + '</ul>';
     if (window.vcfConfirm) {
       window.vcfConfirm({
-        title: 'Run update',
-        message: 'Pull the latest code from main and rebuild on the host? The site restarts for a few seconds while the new build comes up.',
-        okLabel: 'Update now', danger: false,
+        title: 'Run update', message: body, html: true,
+        okLabel: 'Update now', danger: true,
       }, run);
-    } else if (confirm('Pull the latest code and rebuild?')) run();
+    } else if (confirm('Pull the latest code and rebuild? The site restarts and there is no rollback from here.')) run();
   });
 })();
 </script>
