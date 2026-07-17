@@ -315,7 +315,21 @@ kbd {
      the nav scrolled (read as a locked band), and its low-contrast ramp banded
      into visible rectangles against the window-pane grid behind the sidebar.
      A uniform tint has no ramp to band and no edge to pin. */
-  background: color-mix(in srgb, var(--accent) 2.5%, transparent);
+  --side-tint: color-mix(in srgb, var(--accent) 2.5%, transparent);
+  background: var(--side-tint);
+  /* On wide screens the centred layout leaves an empty strip between the screen
+     edge and the sidebar, so the tint used to float with a dark gap on its left.
+     These box-shadows are exact copies of the sidebar (0 blur / 0 spread, so no
+     vertical bleed) tiled one sidebar-width apart to the left — they fill that
+     strip to the screen edge. box-shadow paints outside the element's own
+     overflow clip and never adds a scrollbar, which a ::before could not do
+     here (the sidebar clips overflow-x because it scrolls vertically). Four
+     copies cover the gap up to a ~3840px (4K) viewport. */
+  box-shadow:
+    calc(var(--sidebar-w) * -1) 0 0 var(--side-tint),
+    calc(var(--sidebar-w) * -2) 0 0 var(--side-tint),
+    calc(var(--sidebar-w) * -3) 0 0 var(--side-tint),
+    calc(var(--sidebar-w) * -4) 0 0 var(--side-tint);
 }
 .sidebar::-webkit-scrollbar { width: 8px; }
 .sidebar::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
