@@ -151,13 +151,13 @@
       body: JSON.stringify({ title: document.getElementById('fb-title').value, body: document.getElementById('fb-body').value, roblox_user: document.getElementById('fb-roblox').value, category: chosenCat, token: token })
     }).then(function (r) { return r.json(); }).then(function (d) {
       btn.disabled = false;
-      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Submission failed.'; err.hidden = false; return; }
+      if (!d.ok) { err.querySelector('span:not(.ic)').textContent = d.error || 'Submission failed.'; err.hidden = false; return; }
       ok.hidden = false;
       document.getElementById('fb-title').value = ''; document.getElementById('fb-body').value = ''; document.getElementById('fb-roblox').value = '';
       Array.prototype.forEach.call(document.querySelectorAll('.fb-count'), function (c) { var el = document.getElementById(c.getAttribute('data-for')); c.textContent = '0 / ' + el.getAttribute('maxlength'); });
       loadMine();
       setTimeout(function () { ok.hidden = true; }, 6000);
-    }).catch(function () { btn.disabled = false; err.querySelector('span').textContent = 'Submission failed — try again.'; err.hidden = false; });
+    }).catch(function () { btn.disabled = false; err.querySelector('span:not(.ic)').textContent = 'Submission failed — try again.'; err.hidden = false; });
   });
 
   // Roblox autocomplete is wired by app.js via the data-rbx-autocomplete attribute.
@@ -252,10 +252,10 @@
       body: JSON.stringify({ body: body, token: token })
     }).then(function (r) { return r.json(); }).then(function (d) {
       ta.disabled = false;
-      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; ta.focus(); return; }
+      if (!d.ok) { err.querySelector('span:not(.ic)').textContent = d.error || 'Could not send.'; err.hidden = false; ta.focus(); return; }
       ta.value = ''; grow(); ta.focus();
       loadThread(openId, true);
-    }).catch(function () { ta.disabled = false; err.querySelector('span').textContent = 'Could not send — try again.'; err.hidden = false; });
+    }).catch(function () { ta.disabled = false; err.querySelector('span:not(.ic)').textContent = 'Could not send — try again.'; err.hidden = false; });
   });
 })();
 </script>

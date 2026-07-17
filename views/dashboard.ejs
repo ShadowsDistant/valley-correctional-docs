@@ -152,7 +152,7 @@
       <p class="muted small" style="margin:-4px 0 12px">Search a user by name (staff names are their Roblox names) to see their full punishment and infraction history.</p>
       <div class="dash-search" style="margin-bottom:16px">
         <%- icon('search') %>
-        <div class="rbx-search" style="flex:1"><input type="text" id="file-input" placeholder="Roblox / staff username…" autocomplete="off" style="width:100%;background:none;border:none;outline:none;color:var(--text);font:inherit" /><div class="rbx-suggest" id="file-suggest" hidden></div></div>
+        <div class="rbx-search" style="flex:1"><input type="text" id="file-input" placeholder="Roblox / staff username…" autocomplete="off" data-suggest="record" style="width:100%;background:none;border:none;outline:none;color:var(--text);font:inherit" /><div class="rbx-suggest" id="file-suggest" hidden></div></div>
         <button class="btn btn-solid btn-sm" id="file-go" type="button">Open file</button>
       </div>
       <div id="file-result"></div>
@@ -387,7 +387,9 @@
     }).catch(function () { out.innerHTML = '<p class="muted">Lookup failed.</p>'; });
   }
   var fileInput = document.getElementById('file-input'), fileGo = document.getElementById('file-go');
-  if (fileInput) attachRoblox(fileInput, document.getElementById('file-suggest'), function (name) { loadFile(name); });
+  // The User File search suggests from RECORDS (people who actually have a file
+  // here), not the whole Roblox userbase — app.js wires it via data-suggest.
+  if (fileInput) fileInput.addEventListener('suggestpick', function (e) { loadFile(e.detail); });
   if (fileGo) { fileGo.addEventListener('click', function () { var v = fileInput.value.trim(); if (v) loadFile(v); });
     fileInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); fileGo.click(); } }); }
   // Deep link: /dashboard?tab=file&open=<name> (used right after logging an action)

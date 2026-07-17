@@ -455,6 +455,66 @@
   window.vcfWireRoblox = wireRoblox;
   wireRoblox();
 
+  // ---------- record-value suggest ----------
+  // For filters that search stored records rather than the Roblox API: any
+  // input[data-suggest="kind"] gets a dropdown of distinct values that actually
+  // exist (/api/suggest), so it narrows to real choices. Focusing an empty field
+  // shows the first few values outright. Picks dispatch a bubbling 'change' plus
+  // a 'suggestpick' CustomEvent for pages that act on selection.
+  function valueSuggest(inp) {
+    if (inp._sugWired) return;
+    inp._sugWired = true;
+    var kind = inp.getAttribute('data-suggest');
+    var wrap = inp.parentNode;
+    var box = wrap.querySelector('.rbx-suggest');
+    if (!box) {
+      wrap.classList.add('suggest-anchor');
+      box = document.createElement('div');
+      box.className = 'rbx-suggest'; box.hidden = true;
+      wrap.appendChild(box);
+    }
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var timer, token = 0, cache = {};
+    function hide() { box.hidden = true; }
+    function render(list) {
+      if (!list.length) { hide(); return; }
+      box.innerHTML = list.map(function (v) {
+        return '<div class="rbx-opt" data-name="' + esc(v) + '"><span class="rbx-opt-txt"><strong>' + esc(v) + '</strong></span></div>';
+      }).join('');
+      box.hidden = false;
+    }
+    function search(q) {
+      if (q in cache) { render(cache[q]); return; }
+      var my = ++token;
+      fetch('/api/suggest?kind=' + encodeURIComponent(kind) + '&q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (my !== token || inp.value.trim() !== q) return;
+          cache[q] = (d && d.data) || [];
+          render(cache[q]);
+        }).catch(function () { /* keep whatever is shown */ });
+    }
+    inp.addEventListener('input', function () {
+      clearTimeout(timer);
+      var q = inp.value.trim();
+      timer = setTimeout(function () { search(q); }, 140);
+    });
+    inp.addEventListener('focus', function () { search(inp.value.trim()); });
+    box.addEventListener('mousedown', function (e) {
+      var o = e.target.closest('.rbx-opt'); if (!o) return;
+      e.preventDefault();
+      inp.value = o.getAttribute('data-name'); hide();
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new CustomEvent('suggestpick', { detail: inp.value, bubbles: true }));
+    });
+    inp.addEventListener('blur', function () { setTimeout(hide, 160); });
+  }
+  function wireSuggest(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('input[data-suggest]'), valueSuggest);
+  }
+  window.vcfWireSuggest = wireSuggest;
+  wireSuggest();
+
   // ---------- TOC scrollspy ----------
   var tocObs = null;
   function initTOC() {
@@ -604,6 +664,7 @@
         loadAvatars(main); initTOC();
         if (window.enhanceInputs) window.enhanceInputs(main);
         if (window.vcfWireRoblox) window.vcfWireRoblox(main);
+        if (window.vcfWireSuggest) window.vcfWireSuggest(main);
         try { window.dispatchEvent(new CustomEvent('pjax:load', { detail: { url: url } })); } catch (e) {}
         main.classList.remove('pjax-loading');
         watchdog(seq);

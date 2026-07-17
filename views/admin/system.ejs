@@ -222,9 +222,9 @@
         <%- icon('warning') %>
         <div>
           <strong>The host updater isn't running.</strong>
-          <p class="muted small">The app is containerised and has no Docker socket (by design — it would be root on the host), so a helper on the host performs updates. Install it once:</p>
-          <pre class="mono"><code>chmod +x /opt/vcf-docs/deploy/update-watcher.sh
-( crontab -l 2>/dev/null; echo '* * * * * /opt/vcf-docs/deploy/update-watcher.sh >> /var/log/vcf-update.log 2>&1' ) | crontab -</code></pre>
+          <p class="muted small">The app is containerised and has no Docker socket (by design — it would be root on the host), so a helper on the host performs updates. SSH in and install it once — it sets up its own schedule and verifies itself:</p>
+          <pre class="mono"><code>sudo /opt/vcf-docs/deploy/update-watcher.sh install</code></pre>
+          <p class="muted small">If the button still fails afterwards, <code>sudo /opt/vcf-docs/deploy/update-watcher.sh status</code> explains what's wrong (the usual culprit on a 1&nbsp;GB host is no swap — the build needs it).</p>
         </div>
       </div>
     </section>
@@ -453,9 +453,12 @@
     pill.textContent = s.updater.installed ? 'updater online' : 'updater offline';
     pill.className = 'sys-updater-pill ' + (s.updater.installed ? 'is-on' : 'is-off');
     $('sysUpdaterMissing').hidden = !!s.updater.installed;
-    $('sysUpdateBtn').disabled = !s.updater.installed || s.updater.pending;
-
     var st = s.updater.status, box = $('sysUpdateState');
+    // The button stays locked for the whole run, not just while queued — a second
+    // click mid-build would just queue a redundant rebuild.
+    var running = !!(st && (st.state === 'running' || st.state === 'queued')) || s.updater.pending;
+    $('sysUpdateBtn').disabled = !s.updater.installed || running;
+    if (running) updActive = true;
     if (s.updater.pending || (st && st.state === 'queued')) {
       box.className = 'sys-update-state is-run';
       box.innerHTML = '<span class="sys-spin"></span> Update queued — the host picks it up within a minute…';
@@ -467,7 +470,17 @@
     } else if (st && st.state === 'ok') {
       box.className = 'sys-update-state is-ok';
       box.textContent = '✓ ' + (st.detail || 'Up to date');
-      setProgress('done', st.detail || 'Up to date');
+      // Only touch the progress UI (and only reload) when THIS session watched the
+      // update happen — an old "ok" from last week must not reload anyone's page.
+      if (updActive) {
+        setProgress('done', st.detail || 'Update complete');
+        if (sawDown && !reloadArmed) {
+          reloadArmed = true;
+          box.textContent = '✓ Update complete — reloading to the new version…';
+          setTimeout(function () { window.location.reload(); }, 2500);
+        }
+        updActive = false;
+      }
     } else if (st && st.state === 'error') {
       box.className = 'sys-update-state is-err';
       box.textContent = '✗ ' + (st.detail || 'Update failed');
@@ -480,13 +493,29 @@
   var liveEl = $('sysLive');
   function flashLive() { if (!liveEl) return; liveEl.classList.remove('beat'); void liveEl.offsetWidth; liveEl.classList.add('beat'); }
 
+  // Update lifecycle, as witnessed by THIS page session: updActive flips on when
+  // we see a queued/running status, sawDown when polls start failing mid-update
+  // (the containers are being swapped), and reloadArmed guards the one automatic
+  // reload that fetches the new build's assets once it's back.
+  var updActive = false, sawDown = false, reloadArmed = false, downTicks = 0;
+
   function alive() { var e = $('sysCpu'); return !!e && document.body.contains(e); }
   function tick() {
     if (!alive()) return;
     fetch('/admin/system/stats', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d.ok && alive()) { paint(d.stats); flashLive(); } })
-      .catch(function () { /* the app may be restarting mid-update — keep polling */ });
+      .then(function (d) { if (d.ok && alive()) { downTicks = 0; paint(d.stats); flashLive(); } })
+      .catch(function () {
+        // The app may be restarting mid-update — keep polling, and once it has
+        // missed a couple of beats show the restart phase so the frozen
+        // "Rebuilding…" doesn't read as a hang.
+        if (!updActive) return;
+        downTicks++;
+        if (downTicks >= 2) {
+          sawDown = true;
+          setProgress('restart', 'Site is restarting — this page will reload when the new build is live…');
+        }
+      });
   }
   paint(<%- JSON.stringify(stats) %>);
   // near-real-time: poll every 2s, and pause while the tab is hidden so we

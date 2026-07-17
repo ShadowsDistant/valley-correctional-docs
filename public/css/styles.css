@@ -277,6 +277,10 @@ kbd {
 .account-btn .ic { width: 16px; height: 16px; }
 .acct-avatar { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-weight: 800; font-size: 12px; }
 :root[data-theme="dark"] .acct-avatar { color: #ffa200; }
+/* Once a Roblox headshot is painted in, the fallback initial must vanish —
+   generic rule so every current and future [data-rbx-avatar] element gets it
+   instead of each avatar class needing its own copy. */
+[data-rbx-avatar].has-rbx { color: transparent !important; text-shadow: none; }
 .acct-avatar.has-rbx { color: transparent !important; }
 .acct-avatar.has-rbx { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
 .acct-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -306,16 +310,12 @@ kbd {
   border-right: 1px solid var(--border); padding: 24px 14px 34px;
   display: flex; flex-direction: column;
   scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
-  /* The sidebar is its own scroll container, so a default (`scroll`) background
-     stays pinned to the element while the nav slides underneath — it read as a
-     fixed band welded over the content. `local` ties the wash to the content so
-     it travels with it, and the longer ramp drops the hard 220px cutoff. */
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--accent) 5%, transparent) 0,
-    color-mix(in srgb, var(--accent) 2%, transparent) 180px,
-    transparent 420px);
-  background-attachment: local;
-  background-repeat: no-repeat;
+  /* A flat, barely-there tint. This was a vertical gradient wash twice, and both
+     versions produced artifacts: with default attachment it stayed pinned while
+     the nav scrolled (read as a locked band), and its low-contrast ramp banded
+     into visible rectangles against the window-pane grid behind the sidebar.
+     A uniform tint has no ramp to band and no edge to pin. */
+  background: color-mix(in srgb, var(--accent) 2.5%, transparent);
 }
 .sidebar::-webkit-scrollbar { width: 8px; }
 .sidebar::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
@@ -1562,6 +1562,10 @@ time[data-time] { border-bottom: 1px dotted var(--border-2); cursor: help; white
 .fb-send { flex: none; width: 40px; height: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
 .fb-send svg { width: 18px; height: 18px; }
 .fb-composer-error { margin-top: 8px; }
+/* The assistant launcher sits bottom-right — exactly under the feedback drawer's
+   composer and its error alert. Tuck it away while the drawer is open. */
+body.fb-drawer-open #aiFab,
+body.fb-drawer-open #aiPanel { opacity: 0; pointer-events: none; transition: opacity .2s var(--ease); }
 
 /* ---- chat drawer (public) ---- */
 .fb-drawer-scrim { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .25s var(--ease); }
@@ -1659,6 +1663,7 @@ body.fb-drawer-open { overflow: hidden; }
 .info-note { border-color: color-mix(in srgb, #3b82f6 30%, var(--border)); background: color-mix(in srgb, #3b82f6 8%, transparent); }
 .info-note .ic { color: #3b82f6; }
 .rbx-search { position: relative; }
+.suggest-anchor { position: relative; }
 .rbx-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40; background: var(--elevated); border: 1px solid var(--border-2); border-radius: var(--r-sm); box-shadow: var(--shadow-lg); max-height: 240px; overflow-y: auto; padding: 4px; }
 .rbx-opt { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r-xs); font-size: 13.5px; cursor: pointer; }
 .rbx-opt:hover { background: var(--surface-2); }

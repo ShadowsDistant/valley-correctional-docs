@@ -44,7 +44,7 @@
           <% actions.forEach(function (a) { %><option value="<%= a %>" <%= filter.action === a ? 'selected' : '' %>><%= actionLabel(a)[0] %></option><% }); %>
         </select>
       </label>
-      <label class="field field-sm">User<input type="text" name="actor" value="<%= filter.actor %>" placeholder="username" /></label>
+      <label class="field field-sm">User<input type="text" name="actor" value="<%= filter.actor %>" placeholder="username" autocomplete="off" data-suggest="actor" /></label>
       <label class="field field-sm">From<input type="date" name="from" value="<%= filter.from %>" /></label>
       <label class="field field-sm">To<input type="date" name="to" value="<%= filter.to %>" /></label>
       <div class="log-filter-actions">

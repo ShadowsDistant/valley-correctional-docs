@@ -2315,6 +2315,37 @@ app.post('/api/roblox-thumbs', auth.requireAuth, async (req, res) => {
 });
 
 // Unified user file: a Roblox/staff name's punishments + infractions + points.
+// Autocomplete for filters that search stored records (not the Roblox API):
+// returns distinct values that actually exist, so the dropdown narrows to real
+// choices. Gated per kind, and record names respect the same division scoping
+// as /api/user-file — a mod shouldn't see infracted staff names via suggest.
+app.get('/api/suggest', auth.requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const u = req.session.user;
+  const kind = String(req.query.kind || '');
+  const q = String(req.query.q || '').trim().slice(0, 40).replace(/[%_]/g, '');
+  const like = q + '%';
+  let values = [];
+  try {
+    if (kind === 'actor' && u.role === 'admin') {
+      values = db.prepare('SELECT DISTINCT actor AS v FROM audit_log WHERE actor LIKE ? COLLATE NOCASE ORDER BY actor LIMIT 8')
+        .all(like).map((r) => r.v);
+    } else if (kind === 'record' && auth.canStaffDashboard(u)) {
+      const seen = new Set();
+      if (auth.canModerate(u) || u.role === 'admin') {
+        db.prepare('SELECT DISTINCT roblox_user AS v FROM punishments WHERE roblox_user LIKE ? COLLATE NOCASE ORDER BY roblox_user LIMIT 8')
+          .all(like).forEach((r) => seen.add(r.v));
+      }
+      if (auth.canSID(u) || u.role === 'admin') {
+        db.prepare('SELECT DISTINCT staff_user AS v FROM infractions WHERE staff_user LIKE ? COLLATE NOCASE ORDER BY staff_user LIMIT 8')
+          .all(like).forEach((r) => seen.add(r.v));
+      }
+      values = Array.from(seen).sort((a, b) => a.localeCompare(b)).slice(0, 8);
+    }
+  } catch (e) { values = []; }
+  res.json({ ok: true, data: values });
+});
+
 app.get('/api/user-file', requireDashboard, (req, res) => {
   res.set('Cache-Control', 'no-store');
   const u = req.session.user;

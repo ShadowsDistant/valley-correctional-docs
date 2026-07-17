@@ -333,10 +333,10 @@
       body: JSON.stringify({ body: body })
     }).then(function (r) { return r.json(); }).then(function (d) {
       ta.disabled = false;
-      if (!d.ok) { err.querySelector('span').textContent = d.error || 'Could not send.'; err.hidden = false; ta.focus(); return; }
+      if (!d.ok) { err.querySelector('span:not(.ic)').textContent = d.error || 'Could not send.'; err.hidden = false; ta.focus(); return; }
       ta.value = ''; ta.style.height = 'auto'; ta.focus();
       loadThread(id, true);
-    }).catch(function () { ta.disabled = false; err.querySelector('span').textContent = 'Could not send — try again.'; err.hidden = false; });
+    }).catch(function () { ta.disabled = false; err.querySelector('span:not(.ic)').textContent = 'Could not send — try again.'; err.hidden = false; });
   }
   document.addEventListener('click', onMsgDel);
   document.addEventListener('click', onThreadToggle);
