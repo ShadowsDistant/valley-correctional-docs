@@ -27,12 +27,14 @@
       <div class="panel-head"><h2><%- icon('target') %> Where your traffic comes from</h2><span class="muted small"><%= countryTotal %> located visitor<%= countryTotal===1?'':'s' %> · <%= totals.days %>d</span></div>
       <div class="globe-layout">
         <div class="globe-stage">
-          <canvas id="trafficGlobe" width="380" height="380" data-geo="/assets/geo/world.json?v=<%= assetVersion %>" aria-label="Interactive globe of traffic origin — drag to rotate, arrow keys to pan, plus and minus to zoom"></canvas>
-          <div class="globe-legend" aria-hidden="true">
-            <span class="globe-lg"><i class="globe-lg-dot"></i>Visitors</span>
-            <span class="globe-lg"><i class="globe-lg-coast"></i>Coast</span>
-            <span class="globe-lg"><i class="globe-lg-border"></i>Borders</span>
-            <span class="globe-lg globe-legend-states"><i class="globe-lg-state"></i>States</span>
+          <div class="globe-canvas-wrap">
+            <canvas id="trafficGlobe" width="380" height="380" data-geo="/assets/geo/world.json?v=<%= assetVersion %>" aria-label="Interactive globe of traffic origin — drag to rotate, arrow keys to pan, plus and minus to zoom"></canvas>
+            <div class="globe-legend" aria-hidden="true">
+              <span class="globe-lg"><i class="globe-lg-dot"></i>Visitors</span>
+              <span class="globe-lg"><i class="globe-lg-coast"></i>Coast</span>
+              <span class="globe-lg"><i class="globe-lg-border"></i>Borders</span>
+              <span class="globe-lg globe-legend-states"><i class="globe-lg-state"></i>States</span>
+            </div>
           </div>
           <p class="globe-hint muted small">Drag to spin &amp; tilt · scroll or ± to zoom · state lines appear as you zoom in</p>
         </div>
@@ -67,7 +69,7 @@
         var vline=series.map(function(s,i){return (i===0?'M':'L')+X(i).toFixed(1)+' '+Y(s.visitors).toFixed(1);}).join(' ');
         var area='M'+X(0).toFixed(1)+' '+(H-padB)+' '+series.map(function(s,i){return 'L'+X(i).toFixed(1)+' '+Y(s.views).toFixed(1);}).join(' ')+' L'+X(n-1).toFixed(1)+' '+(H-padB)+' Z';
       %>
-      <div class="chart-wrap">
+      <div class="chart-wrap" id="dayChartWrap">
         <svg class="chart" viewBox="0 0 <%= W %> <%= H %>" preserveAspectRatio="none" role="img" aria-label="Views per day">
           <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffa200" stop-opacity="0.28"/><stop offset="100%" stop-color="#ffa200" stop-opacity="0"/></linearGradient></defs>
           <% for(var g=0;g<=4;g++){ var gy=padT+(H-padT-padB)*g/4; %>
@@ -77,9 +79,53 @@
           <path class="area" d="<%= area %>"/>
           <path class="spark" d="<%= line %>"/>
           <path class="spark2" d="<%= vline %>"/>
+          <g id="dayChartCursor" hidden>
+            <line class="chart-guide" y1="<%= padT %>" y2="<%= H-padB %>"/>
+            <circle class="chart-pt chart-pt-views" r="3.5"/>
+            <circle class="chart-pt chart-pt-visitors" r="3.5"/>
+          </g>
         </svg>
+        <div class="chart-tip" id="dayChartTip" hidden></div>
         <div class="chart-x"><span><%= series[0].day.slice(5) %></span><span><%= series[Math.floor(n/2)].day.slice(5) %></span><span><%= series[n-1].day.slice(5) %></span></div>
       </div>
+      <script>
+      (function () {
+        var wrap = document.getElementById('dayChartWrap'); if (!wrap) return;
+        var svg = wrap.querySelector('svg'), cursor = document.getElementById('dayChartCursor'), tip = document.getElementById('dayChartTip');
+        var data = <%- JSON.stringify(series.map(function(s){ return { d: s.day, v: s.views, u: s.visitors }; })) %>;
+        var W = <%= W %>, H = <%= H %>, padL = <%= padL %>, padB = <%= padB %>, padT = <%= padT %>, padR = <%= padR %>, maxV = <%= maxV %>;
+        var n = data.length; if (!n) return;
+        var xstep = (W - padL - padR) / Math.max(1, n - 1), yScale = (H - padT - padB) / maxV;
+        var X = function (i) { return padL + i * xstep; }, Y = function (v) { return H - padB - v * yScale; };
+        var line = cursor.querySelector('line'),
+            ptV = cursor.querySelector('.chart-pt-views'),
+            ptU = cursor.querySelector('.chart-pt-visitors');
+        function show(e) {
+          // the svg stretches (preserveAspectRatio=none), so map client x onto the viewBox
+          var r = svg.getBoundingClientRect();
+          var vx = (e.clientX - r.left) / r.width * W;
+          var i = Math.max(0, Math.min(n - 1, Math.round((vx - padL) / xstep)));
+          var d = data[i], x = X(i);
+          line.setAttribute('x1', x); line.setAttribute('x2', x);
+          ptV.setAttribute('cx', x); ptV.setAttribute('cy', Y(d.v));
+          ptU.setAttribute('cx', x); ptU.setAttribute('cy', Y(d.u));
+          cursor.hidden = false;
+          tip.hidden = false;
+          tip.innerHTML = '<strong>' + d.d + '</strong>'
+            + '<span><i class="legend-dot dot-views"></i>' + d.v + ' view' + (d.v === 1 ? '' : 's') + '</span>'
+            + '<span><i class="legend-dot dot-visitors"></i>' + d.u + ' visitor' + (d.u === 1 ? '' : 's') + '</span>';
+          // keep the tip inside the chart
+          var px = x / W * r.width;
+          var tw = tip.offsetWidth;
+          tip.style.left = Math.max(4, Math.min(r.width - tw - 4, px - tw / 2)) + 'px';
+        }
+        function hide() { cursor.hidden = true; tip.hidden = true; }
+        wrap.addEventListener('mousemove', show);
+        wrap.addEventListener('mouseleave', hide);
+        wrap.addEventListener('touchmove', function (e) { if (e.touches[0]) show(e.touches[0]); }, { passive: true });
+        wrap.addEventListener('touchend', hide);
+      })();
+      </script>
     </section>
 
     <div class="admin-cols">

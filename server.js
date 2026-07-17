@@ -328,6 +328,17 @@ function audit(actor, action, target, details) {
   try { auditStmt.run(actor || 'system', action, target || '', details || ''); } catch (e) { /* never break a request */ }
 }
 
+// Node exposes header values as latin1-decoded strings, so any non-ASCII text a
+// proxy sends (Cloudflare's CF-IPCity is UTF-8) arrives mojibake. Re-read the
+// original bytes as UTF-8, but only keep the result if it actually decodes —
+// otherwise the header really was latin1 and we leave it alone.
+function utf8Header(v) {
+  const s = String(v || '');
+  if (!s || !/[\u0080-\u00ff]/.test(s)) return s;   // pure ASCII: nothing to do
+  const decoded = Buffer.from(s, 'latin1').toString('utf8');
+  return decoded.includes('�') ? s : decoded;
+}
+
 function recordViewRow(req, { slug, area }) {
   try {
     const ua = (req.headers['user-agent'] || '').slice(0, 300);
@@ -339,7 +350,9 @@ function recordViewRow(req, { slug, area }) {
     const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
     const country = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' && cc !== 'T1' ? cc : '';
     // Optional finer geo from Cloudflare's visitor-location Managed Transform.
-    const city = String(req.headers['cf-ipcity'] || '').slice(0, 80);
+    // Node decodes header bytes as latin1, so a UTF-8 city name ("Goiás") would
+    // otherwise be stored mojibake ("GoiÃ¡s") — re-read the bytes as UTF-8.
+    const city = utf8Header(req.headers['cf-ipcity']).slice(0, 80);
     const latH = parseFloat(req.headers['cf-iplatitude']);
     const lonH = parseFloat(req.headers['cf-iplongitude']);
     const lat = Number.isFinite(latH) && latH >= -90 && latH <= 90 ? latH : null;
@@ -1917,6 +1930,30 @@ function buildInfo() {
     built,
   };
 }
+// Rolling usage history for the System page charts. Sampled on the server (not
+// in the browser) so the graph is continuous across page loads and shows real
+// history the moment an admin opens the page, rather than starting from empty.
+// In-memory only — this is a live health view, not an audit record.
+const SYS_HISTORY_MAX = 180;            // 180 x 10s = 30 minutes
+const sysHistory = [];
+function sampleSystem() {
+  try {
+    const cpus = os.cpus() || [];
+    const total = os.totalmem(), free = os.freemem();
+    const load = os.loadavg()[0];
+    sysHistory.push({
+      t: Date.now(),
+      cpu: cpus.length ? Math.min(100, Math.round((load / cpus.length) * 1000) / 10) : 0,
+      mem: total ? Math.round(((total - free) / total) * 1000) / 10 : 0,
+      rss: process.memoryUsage().rss,
+    });
+    while (sysHistory.length > SYS_HISTORY_MAX) sysHistory.shift();
+  } catch (e) { /* health sampling must never throw */ }
+}
+sampleSystem();
+const sysHistoryTimer = setInterval(sampleSystem, 10000);
+if (sysHistoryTimer.unref) sysHistoryTimer.unref();   // don't hold the process open
+
 function systemStats() {
   const cpus = os.cpus() || [];
   const total = os.totalmem(), free = os.freemem();
@@ -1969,6 +2006,8 @@ function systemStats() {
       pending: fs.existsSync(UPDATE_REQ),
       status: readJson(UPDATE_STATUS),
     },
+    history: sysHistory,
+    historyWindowMs: SYS_HISTORY_MAX * 10000,
     now: new Date().toISOString(),
   };
 }
@@ -2107,6 +2146,8 @@ app.get('/dashboard', requireDashboard, auth.csrfToken, viewRecorder('dashboard'
     needsApprovalMod: auth.needsApproval(u, 'moderation'), needsApprovalSID: auth.needsApproval(u, 'sid'),
     canApproveMod: auth.canApprove(u, 'moderation'), canApproveSID: auth.canApprove(u, 'sid'),
     canVoidPun: auth.canVoidPunishment(u), canVoidInf: auth.canVoidInfraction(u),
+    // permanent deletion is admin-only and irreversible — see /dashboard/*/delete
+    isAdmin: u.role === 'admin',
     staffList: isSID ? sidTargets(u) : [],
   });
 });
@@ -2269,6 +2310,57 @@ app.post('/dashboard/punishment/void', requireDashboard, auth.csrfToken, auth.ve
   // Voids are kept, never deleted — marked with who voided and why.
   db.prepare('UPDATE punishments SET voided = 1, void_reason = ?, voided_by = ? WHERE id = ?').run(reason, u.username, Number(req.body.id));
   if (p) audit(u.username, 'punish.void', p.roblox_user, reason);
+  res.redirect('/dashboard');
+});
+
+// --- permanent deletion (admins only) ---------------------------------------
+// Voiding keeps the record; this erases it. Any evidence the record pointed at
+// is removed from disk too, otherwise "deleted" would leave the files served at
+// their (unguessable, but still live) /uploads URL and still counting against
+// the storage cap. The audit_log entry is deliberately kept: the record of who
+// destroyed what is the whole accountability trail for an irreversible action.
+function deleteEvidenceFiles(evidence) {
+  const names = String(evidence || '').match(/\/uploads\/[A-Za-z0-9._-]+/g) || [];
+  let freed = 0;
+  for (const url of names) {
+    const base = path.basename(url);
+    // only ever touch files this app generated, and never escape UPLOAD_DIR
+    if (!/^[a-f0-9]{20}\.(png|jpe?g|gif|webp|pdf)$/i.test(base)) continue;
+    const full = path.join(UPLOAD_DIR, base);
+    if (path.dirname(path.resolve(full)) !== path.resolve(UPLOAD_DIR)) continue;
+    try {
+      freed += fs.statSync(full).size;
+      fs.unlinkSync(full);
+    } catch (e) { /* already gone */ }
+  }
+  if (freed) uploadBytes = Math.max(0, uploadsTotal() - freed);
+  return names.length;
+}
+
+app.post('/dashboard/punishment/delete', requireDashboard, auth.requireAdmin, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const u = req.session.user;
+  const id = Number(req.body.id);
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to permanently delete a punishment.' });
+  const p = db.prepare('SELECT roblox_user, type, evidence FROM punishments WHERE id = ?').get(id);
+  if (!p) return res.redirect('/dashboard');
+  const files = deleteEvidenceFiles(p.evidence);
+  db.prepare('DELETE FROM punishments WHERE id = ?').run(id);
+  audit(u.username, 'punish.delete', p.roblox_user, p.type + ' · ' + reason + (files ? ' · ' + files + ' evidence file(s) removed' : ''));
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/infraction/delete', requireDashboard, auth.requireAdmin, auth.csrfToken, auth.verifyCsrf, (req, res) => {
+  const u = req.session.user;
+  const id = Number(req.body.id);
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  if (!reason) return res.status(400).render('error', { title: 'Invalid', heading: 'Reason required', message: 'A reason is required to permanently delete an infraction.' });
+  const inf = db.prepare('SELECT staff_user, type, points, evidence FROM infractions WHERE id = ?').get(id);
+  if (!inf) return res.redirect('/dashboard');
+  const files = deleteEvidenceFiles(inf.evidence);
+  db.prepare('DELETE FROM infractions WHERE id = ?').run(id);
+  // the staff member's point total is derived from this table, so it drops here
+  audit(u.username, 'infraction.delete', inf.staff_user, inf.type + ' · ' + inf.points + 'pt · ' + reason + (files ? ' · ' + files + ' evidence file(s) removed' : ''));
   res.redirect('/dashboard');
 });
 

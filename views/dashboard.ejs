@@ -77,7 +77,7 @@
                 <td class="small"><%= p.reason %><% if (p.evidence) { %> <a href="<%= p.evidence %>" target="_blank" rel="noopener" class="ev-link">evidence</a><% } %></td>
                 <td class="small"><%= p.moderator %></td>
                 <td class="small nowrap"><time data-time="<%= p.created_at %>"><%= p.created_at.slice(0,16) %></time></td>
-                <td><% if (!p.voided && canVoidPun) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>? A reason is required." data-confirm-title="Void punishment" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (p.voided) { %><span class="badge void-pill" data-tip="<%= p.void_reason || 'Voided' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %></td>
+                <td class="row-actions"><% if (!p.voided && canVoidPun) { %><form method="post" action="/dashboard/punishment/void" class="inline" data-confirm="Void this punishment against <%= p.roblox_user %>? A reason is required." data-confirm-title="Void punishment" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (p.voided) { %><span class="badge void-pill" data-tip="<%= p.void_reason || 'Voided' %><%= p.voided_by ? ' — '+p.voided_by : '' %>">Voided</span><% } %><% if (isAdmin) { %><form method="post" action="/dashboard/punishment/delete" class="inline" data-confirm="Permanently delete this punishment against <%= p.roblox_user %>? This erases the record and its evidence from the database — it cannot be undone. Void it instead if you only want it struck from the active list." data-confirm-title="Delete permanently" data-confirm-ok="Delete forever" data-confirm-input="Why is this being deleted?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= p.id %>"/><button class="btn btn-ghost btn-sm danger row-del" type="submit" data-tip="Permanently delete" data-tip-pos="left"><%- icon('trash') %></button></form><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -135,7 +135,7 @@
                 <td class="small"><% if (f.outcome && f.outcome!=='No action') { %><span class="pill pill-<%= /Termination/.test(f.outcome)?'red':(/Suspension/.test(f.outcome)?'amber':'grey') %>"><%= f.outcome %></span><% } else { %>—<% } %></td>
                 <td class="small"><%= f.issued_by %></td>
                 <td class="small nowrap"><time data-time="<%= f.created_at %>"><%= f.created_at.slice(0,16) %></time></td>
-                <td><% if (!f.voided && canVoidInf) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>? A reason is required." data-confirm-title="Void infraction" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (f.voided) { %><span class="badge void-pill" data-tip="<%= f.void_reason || 'Voided' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %></td>
+                <td class="row-actions"><% if (!f.voided && canVoidInf) { %><form method="post" action="/dashboard/infraction/void" class="inline" data-confirm="Void this infraction against <%= f.staff_user %>? A reason is required." data-confirm-title="Void infraction" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form><% } else if (f.voided) { %><span class="badge void-pill" data-tip="<%= f.void_reason || 'Voided' %><%= f.voided_by ? ' — '+f.voided_by : '' %>">Voided</span><% } %><% if (isAdmin) { %><form method="post" action="/dashboard/infraction/delete" class="inline" data-confirm="Permanently delete this <%= f.points %>-point infraction against <%= f.staff_user %>? This erases the record and its evidence from the database and removes its points from their total — it cannot be undone. Void it instead if you only want it struck from the active list." data-confirm-title="Delete permanently" data-confirm-ok="Delete forever" data-confirm-input="Why is this being deleted?"><input type="hidden" name="_csrf" value="<%= csrfToken %>"/><input type="hidden" name="id" value="<%= f.id %>"/><button class="btn btn-ghost btn-sm danger row-del" type="submit" data-tip="Permanently delete" data-tip-pos="left"><%- icon('trash') %></button></form><% } %></td>
               </tr>
             <% }); %>
           </tbody>
@@ -197,6 +197,8 @@
   var CSRF = (document.querySelector('input[name=_csrf]')||{}).value || '';
   var CAN_VOID_PUN = <%= (typeof canVoidPun !== 'undefined' && canVoidPun) ? 'true' : 'false' %>;
   var CAN_VOID_INF = <%= (typeof canVoidInf !== 'undefined' && canVoidInf) ? 'true' : 'false' %>;
+  var IS_ADMIN = <%= (typeof isAdmin !== 'undefined' && isAdmin) ? 'true' : 'false' %>;
+  var TRASH_SVG = '<%- icon('trash').replace(/'/g, "\\'").replace(/\n/g, '') %>';
 
   // tabs (with a re-triggered slide-in animation on switch)
   var tabs = document.getElementById('dashTabs');
@@ -414,10 +416,23 @@
 
   // ---------- realtime updates ----------
   function timeCell(ts) { return '<time data-time="' + esc(ts) + '">' + esc(String(ts).slice(0, 16)) + '</time>'; }
-  function voidFormCell(action, id, msg, allowed, r) {
-    if (r.voided) return '<td><span class="badge void-pill" data-tip="' + esc(r.void_reason || 'Voided') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span></td>';
-    if (!allowed) return '<td></td>';
-    return '<td><form method="post" action="' + action + '" class="inline" data-confirm="' + esc(msg) + ' A reason is required." data-confirm-title="Void" data-confirm-ok="Void" data-confirm-input="Why is this being voided?"><input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/><button class="btn btn-ghost btn-sm" type="submit">Void</button></form></td>';
+  // Row actions: Void (rank-gated, keeps the record) and — for admins only —
+  // permanent deletion, which is offered even on already-voided rows.
+  function voidFormCell(action, id, msg, allowed, r, delMsg) {
+    var out = '<td class="row-actions">';
+    if (r.voided) {
+      out += '<span class="badge void-pill" data-tip="' + esc(r.void_reason || 'Voided') + (r.voided_by ? ' — ' + esc(r.voided_by) : '') + '">Voided</span>';
+    } else if (allowed) {
+      out += '<form method="post" action="' + action + '" class="inline" data-confirm="' + esc(msg) + ' A reason is required." data-confirm-title="Void" data-confirm-ok="Void" data-confirm-input="Why is this being voided?">'
+        + '<input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/>'
+        + '<button class="btn btn-ghost btn-sm" type="submit">Void</button></form>';
+    }
+    if (IS_ADMIN) {
+      out += '<form method="post" action="' + action.replace('/void', '/delete') + '" class="inline" data-confirm="' + esc(delMsg) + '" data-confirm-title="Delete permanently" data-confirm-ok="Delete forever" data-confirm-input="Why is this being deleted?">'
+        + '<input type="hidden" name="_csrf" value="' + CSRF + '"/><input type="hidden" name="id" value="' + id + '"/>'
+        + '<button class="btn btn-ghost btn-sm danger row-del" type="submit" data-tip="Permanently delete" data-tip-pos="left">' + TRASH_SVG + '</button></form>';
+    }
+    return out + '</td>';
   }
   function punRow(p) {
     var pill = /ban/i.test(p.type) ? 'red' : (p.type === 'Note' ? 'grey' : 'amber');
@@ -425,12 +440,14 @@
       + '<td><span class="pill pill-' + pill + '">' + esc(p.type) + '</span>' + (p.duration ? ' <span class="muted small">' + esc(p.duration) + '</span>' : '') + '</td>'
       + '<td class="small">' + esc(p.reason) + (p.evidence ? ' <a href="' + esc(p.evidence) + '" target="_blank" rel="noopener" class="ev-link">evidence</a>' : '') + '</td>'
       + '<td class="small">' + esc(p.moderator) + '</td><td class="small nowrap">' + timeCell(p.created_at) + '</td>'
-      + voidFormCell('/dashboard/punishment/void', p.id, 'Void this punishment against ' + esc(p.roblox_user) + '?', CAN_VOID_PUN, p) + '</tr>';
+      + voidFormCell('/dashboard/punishment/void', p.id, 'Void this punishment against ' + esc(p.roblox_user) + '?', CAN_VOID_PUN, p,
+          'Permanently delete this punishment against ' + esc(p.roblox_user) + '? This erases the record and its evidence from the database — it cannot be undone. Void it instead if you only want it struck from the active list.') + '</tr>';
   }
   function infRow(f) {
     var out = f.outcome ? '<span class="pill pill-' + (/Termination/.test(f.outcome) ? 'red' : (/Suspension/.test(f.outcome) ? 'amber' : 'grey')) + '">' + esc(f.outcome) + '</span>' : '—';
     return '<tr class="' + (f.voided ? 'row-void' : '') + '"><td class="small"><strong>' + esc(f.staff_user) + '</strong></td><td class="small">' + esc(f.type) + '</td><td class="num mono">' + f.points + '</td><td class="small">' + out + '</td><td class="small">' + esc(f.issued_by) + '</td><td class="small nowrap">' + timeCell(f.created_at) + '</td>'
-      + voidFormCell('/dashboard/infraction/void', f.id, 'Void this infraction against ' + esc(f.staff_user) + '?', CAN_VOID_INF, f) + '</tr>';
+      + voidFormCell('/dashboard/infraction/void', f.id, 'Void this infraction against ' + esc(f.staff_user) + '?', CAN_VOID_INF, f,
+          'Permanently delete this ' + f.points + '-point infraction against ' + esc(f.staff_user) + '? This erases the record and its evidence from the database and removes its points from their total — it cannot be undone. Void it instead if you only want it struck from the active list.') + '</tr>';
   }
   // Void from the User File: reason modal, then POST via a synthesized form.
   document.addEventListener('click', function (e) {

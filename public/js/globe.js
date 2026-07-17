@@ -401,6 +401,18 @@
     // traffic markers + arcs to the busiest hub
     var hubP = MARKERS.length ? project(MARKERS[0].lat, MARKERS[0].lon, rot) : null;
     var showLabels = zoom >= 1.9;
+    // Labels are placed busiest-first (MARKERS arrives ordered by count) and any
+    // that would collide with one already placed is dropped, so clusters like
+    // Ashburn/Washington don't pile into an unreadable smear.
+    var labelRects = [];
+    function labelFits(x, y, w, h) {
+      for (var i = 0; i < labelRects.length; i++) {
+        var r = labelRects[i];
+        if (x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y) return false;
+      }
+      labelRects.push({ x: x, y: y, w: w, h: h });
+      return true;
+    }
     MARKERS.forEach(function (c, idx) {
       var p = project(c.lat, c.lon, rot);
       if (p.z <= 0) return;
@@ -432,8 +444,15 @@
       ctx.strokeStyle = 'rgba(255,255,255,' + ((isHot ? 0.95 : 0.55) * alpha).toFixed(3) + ')'; ctx.lineWidth = 1; ctx.stroke();
       if (showLabels && !isHot && p.z > 0.25) {
         ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-        ctx.fillStyle = 'rgba(255,236,200,' + (0.5 + p.z * 0.4).toFixed(3) + ')';
-        ctx.fillText(c.label, p.sx + rad + 4, p.sy + 3);
+        var lw = ctx.measureText(c.label).width;
+        var lx = p.sx + rad + 4, ly = p.sy - 5;
+        if (labelFits(lx, ly, lw, 11)) {
+          // a dark plate keeps the text readable over land dots
+          ctx.fillStyle = 'rgba(10,8,4,0.55)';
+          ctx.fillRect(lx - 2, ly, lw + 4, 11);
+          ctx.fillStyle = 'rgba(255,236,200,' + (0.55 + p.z * 0.4).toFixed(3) + ')';
+          ctx.fillText(c.label, lx, ly + 8.5);
+        }
       }
     });
 

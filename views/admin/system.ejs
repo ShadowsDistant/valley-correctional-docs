@@ -20,7 +20,6 @@
         <span class="stat-num" id="sysCpu">—</span>
         <span class="stat-label">CPU load · 1 min</span>
         <div class="sys-meter"><span id="sysCpuBar" style="width:0%"></span></div>
-        <canvas class="sys-spark" id="sysCpuSpark" width="240" height="34" aria-hidden="true"></canvas>
         <span class="muted small" id="sysCpuSub">—</span>
       </div>
       <div class="stat-card">
@@ -44,6 +43,24 @@
         <span class="muted small" id="sysUpSub">—</span>
       </div>
     </div>
+
+    <section class="panel sys-hist-panel">
+      <div class="panel-head">
+        <h2><%- icon('chart') %> Usage history</h2>
+        <span class="muted small" id="sysHistRange">last 30 minutes · sampled every 10s</span>
+      </div>
+      <div class="sys-hist-grid">
+        <div class="sys-hist" data-metric="cpu">
+          <div class="sys-hist-head"><span class="sys-hist-label"><i class="sys-hist-key key-cpu"></i>CPU load</span><span class="sys-hist-now mono" id="sysHistCpuNow">—</span></div>
+          <div class="sys-hist-plot"><canvas id="sysHistCpu" height="120"></canvas><div class="chart-tip sys-hist-tip" hidden></div></div>
+        </div>
+        <div class="sys-hist" data-metric="mem">
+          <div class="sys-hist-head"><span class="sys-hist-label"><i class="sys-hist-key key-mem"></i>Memory used</span><span class="sys-hist-now mono" id="sysHistMemNow">—</span></div>
+          <div class="sys-hist-plot"><canvas id="sysHistMem" height="120"></canvas><div class="chart-tip sys-hist-tip" hidden></div></div>
+        </div>
+      </div>
+      <p class="muted small sys-hist-note">History is sampled by the server, so it keeps building whether or not this page is open. It resets when the app restarts.</p>
+    </section>
 
     <div class="admin-cols sys-cols">
       <section class="panel">
@@ -166,34 +183,101 @@
     el.style.width = Math.max(0, Math.min(100, pct)) + '%';
     el.className = pct >= 90 ? 'is-crit' : pct >= 70 ? 'is-warn' : '';
   }
-  // Rolling CPU-load sparkline — a lightweight sense of the trend, not just the
-  // instantaneous number. Keeps the last ~60 samples (2 minutes at 2s).
-  var spark = [], SPARK_MAX = 60;
-  function pushSpark(pct) {
-    spark.push(Math.max(0, Math.min(100, pct)));
-    if (spark.length > SPARK_MAX) spark.shift();
-    drawSpark();
+  // ---- usage history charts -------------------------------------------------
+  // The samples come from the server (see sysHistory in server.js) so the graph
+  // is already populated on first paint instead of drawing itself in real time.
+  var HIST = { cpu: { canvas: 'sysHistCpu', colour: '#ffa200', now: 'sysHistCpuNow' },
+               mem: { canvas: 'sysHistMem', colour: '#60a5fa', now: 'sysHistMemNow' } };
+  var histData = [], histHover = { metric: null, i: -1 };
+
+  function fitCanvas(c) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = c.clientWidth || c.parentNode.clientWidth || 300, h = c.clientHeight || 120;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    }
+    var x = c.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: x, w: w, h: h };
   }
-  function drawSpark() {
-    var c = $('sysCpuSpark'); if (!c || !c.getContext) return;
-    var ctx = c.getContext('2d'), w = c.width, h = c.height, n = spark.length;
+  function drawHist(metric) {
+    var cfg = HIST[metric], c = $(cfg.canvas); if (!c || !c.getContext) return;
+    var f = fitCanvas(c), ctx = f.ctx, w = f.w, h = f.h;
     ctx.clearRect(0, 0, w, h);
-    if (n < 2) return;
-    var css = getComputedStyle(document.documentElement);
-    var accent = (css.getPropertyValue('--accent') || '#6ea8fe').trim();
-    var step = w / (SPARK_MAX - 1), pad = 3, ih = h - pad * 2;
-    var x0 = w - (n - 1) * step;
-    var yOf = function (v) { return pad + ih - (v / 100) * ih; };
+    var padT = 6, padB = 14, ih = h - padT - padB;
+    // grid + axis at 0/50/100%
+    ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
+    for (var g = 0; g <= 2; g++) {
+      var gy = padT + ih * (g / 2);
+      ctx.beginPath(); ctx.moveTo(22, gy); ctx.lineTo(w, gy);
+      ctx.strokeStyle = 'rgba(255,240,214,0.08)'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,240,214,0.32)'; ctx.textAlign = 'right';
+      ctx.fillText((100 - g * 50) + '%', 18, gy + 3);
+    }
+    ctx.textAlign = 'start';
+    var n = histData.length;
+    if (n < 2) {
+      ctx.fillStyle = 'rgba(255,240,214,0.3)';
+      ctx.fillText('collecting…', 30, padT + ih / 2);
+      return;
+    }
+    var x0 = 22, span = w - x0 - 2;
+    var xOf = function (i) { return x0 + (i / (n - 1)) * span; };
+    var yOf = function (v) { return padT + ih - (Math.max(0, Math.min(100, v)) / 100) * ih; };
+    // area + line
     ctx.beginPath();
-    for (var i = 0; i < n; i++) { var x = x0 + i * step, y = yOf(spark[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-    ctx.lineTo(x0 + (n - 1) * step, h); ctx.lineTo(x0, h); ctx.closePath();
-    var g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, accent + '55'); g.addColorStop(1, accent + '00');
-    ctx.fillStyle = g; ctx.fill();
+    for (var i = 0; i < n; i++) { var x = xOf(i), y = yOf(histData[i][metric]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.lineTo(xOf(n - 1), padT + ih); ctx.lineTo(x0, padT + ih); ctx.closePath();
+    var grad = ctx.createLinearGradient(0, padT, 0, padT + ih);
+    grad.addColorStop(0, cfg.colour + '55'); grad.addColorStop(1, cfg.colour + '00');
+    ctx.fillStyle = grad; ctx.fill();
     ctx.beginPath();
-    for (var j = 0; j < n; j++) { var xx = x0 + j * step, yy = yOf(spark[j]); j ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
-    ctx.strokeStyle = accent; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+    for (var j = 0; j < n; j++) { var xx = xOf(j), yy = yOf(histData[j][metric]); j ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+    ctx.strokeStyle = cfg.colour; ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.stroke();
+    // hovered sample marker
+    if (histHover.metric === metric && histHover.i >= 0 && histHover.i < n) {
+      var hx = xOf(histHover.i), hy = yOf(histData[histHover.i][metric]);
+      ctx.beginPath(); ctx.moveTo(hx, padT); ctx.lineTo(hx, padT + ih);
+      ctx.strokeStyle = 'rgba(255,240,214,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, 6.2832);
+      ctx.fillStyle = cfg.colour; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    // time axis: oldest -> newest
+    ctx.fillStyle = 'rgba(255,240,214,0.32)';
+    var mins = Math.round((histData[n - 1].t - histData[0].t) / 60000);
+    ctx.fillText('-' + mins + 'm', x0 + 2, h - 3);
+    ctx.textAlign = 'end'; ctx.fillText('now', w - 2, h - 3); ctx.textAlign = 'start';
   }
+  function drawAllHist() { drawHist('cpu'); drawHist('mem'); }
+
+  // hover: map pointer x back to a sample index and show its value + time
+  Object.keys(HIST).forEach(function (metric) {
+    var c = $(HIST[metric].canvas); if (!c) return;
+    var plot = c.parentNode, tip = plot.querySelector('.sys-hist-tip');
+    c.addEventListener('mousemove', function (e) {
+      var n = histData.length; if (n < 2) return;
+      var r = c.getBoundingClientRect();
+      var x0 = 22, span = r.width - x0 - 2;
+      var i = Math.round(((e.clientX - r.left) - x0) / span * (n - 1));
+      i = Math.max(0, Math.min(n - 1, i));
+      histHover = { metric: metric, i: i };
+      var s = histData[i];
+      var ago = Math.round((Date.now() - s.t) / 1000);
+      tip.hidden = false;
+      tip.innerHTML = '<strong>' + (ago < 60 ? ago + 's ago' : Math.round(ago / 60) + 'm ago') + '</strong>'
+        + '<span>' + (metric === 'cpu' ? 'CPU ' : 'Memory ') + s[metric].toFixed(1) + '%</span>'
+        + (metric === 'mem' ? '<span>' + bytes(s.rss) + ' app RSS</span>' : '');
+      var px = x0 + (i / (n - 1)) * span, tw = tip.offsetWidth;
+      tip.style.left = Math.max(2, Math.min(r.width - tw - 2, px - tw / 2)) + 'px';
+      drawAllHist();
+    });
+    c.addEventListener('mouseleave', function () {
+      histHover = { metric: null, i: -1 }; tip.hidden = true; drawAllHist();
+    });
+  });
+  window.addEventListener('resize', drawAllHist);
   function paint(s) {
     var loadPct = s.cpu.cores ? (s.cpu.load[0] / s.cpu.cores) * 100 : 0;
     $('sysCpu').textContent = s.cpu.load[0].toFixed(2);
@@ -218,7 +302,15 @@
     $('sysRss').textContent = bytes(s.app.rss) + ' RSS · ' + bytes(s.app.heapUsed) + ' heap';
     $('sysDb').textContent = bytes(s.db.bytes);
 
-    pushSpark(loadPct);
+    if (s.history && s.history.length) {
+      histData = s.history;
+      var last = histData[histData.length - 1];
+      $('sysHistCpuNow').textContent = last.cpu.toFixed(1) + '%';
+      $('sysHistMemNow').textContent = last.mem.toFixed(1) + '%';
+      var mins = Math.round((last.t - histData[0].t) / 60000);
+      $('sysHistRange').textContent = (mins ? 'last ' + mins + ' min' : 'starting up') + ' · sampled every 10s';
+      drawAllHist();
+    }
 
     if (s.storage) {
       $('sysStDbTot').textContent = bytes(s.storage.dbTotal);

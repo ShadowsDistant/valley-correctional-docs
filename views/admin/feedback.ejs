@@ -204,7 +204,10 @@
       html += grouped ? '<span class="fb-av-spacer"></span>' : avatar(name, mine);
       html += '<div class="fb-bubble-col">';
       if (!grouped) html += '<div class="fb-bubble-name">' + esc(name) + (mine ? ' <span class="fb-staff-tag">Staff</span>' : '') + '</div>';
-      html += '<div class="fb-bubble">' + (m.deleted ? '<span class="fb-deleted-tag">deleted' + (m.deleted_by ? ' by ' + esc(m.deleted_by) : '') + '</span> ' : '') + esc(m.body) + '</div>';
+      // The body is wrapped so a deleted message can be struck through without
+      // also striking the "deleted by …" tag — text-decoration on an ancestor
+      // paints over descendants, so the tag can't opt out on its own.
+      html += '<div class="fb-bubble">' + (m.deleted ? '<span class="fb-deleted-tag">deleted' + (m.deleted_by ? ' by ' + esc(m.deleted_by) : '') + '</span> ' : '') + '<span class="fb-msg-text">' + esc(m.body) + '</span></div>';
       html += '<div class="fb-bubble-time muted"><time data-time="' + esc(m.created_at) + '">' + esc((m.created_at || '').slice(0, 16)) + '</time>'
         + (!m._first && !m.deleted && m.id ? ' · <button type="button" class="fb-msg-del" data-msgdel="' + m.id + '">delete</button>' : '') + '</div>';
       html += '</div></div>';
