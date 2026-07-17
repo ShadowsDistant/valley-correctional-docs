@@ -19,6 +19,7 @@
     <div class="fb-admin-toolbar">
       <div class="dash-tabs staff-tabs fb-status-tabs" id="fbStatusTabs">
         <button type="button" class="dash-tab" data-status="">All <span class="tab-count"><%= counts.all %></span></button>
+        <button type="button" class="dash-tab" data-status="needsreply">Needs reply <% if (counts.needsReply) { %><span class="tab-count"><%= counts.needsReply %></span><% } %></button>
         <button type="button" class="dash-tab" data-status="open">Open <% if (counts.open) { %><span class="tab-count"><%= counts.open %></span><% } %></button>
         <button type="button" class="dash-tab" data-status="approved">Approved <span class="tab-count"><%= counts.approved %></span></button>
         <button type="button" class="dash-tab" data-status="rejected">Rejected <span class="tab-count"><%= counts.rejected %></span></button>
@@ -127,10 +128,39 @@
     var fn = SORTS[sortSel.value] || SORTS.flagged;
     cards.slice().sort(fn).forEach(function (c) { listBox.appendChild(c); }); // reorder in place
   }
+  // Tab counts reflect the other active filters (category + search), so a tab's
+  // number always matches what you'd actually see after clicking it.
+  function refreshTabCounts() {
+    var pool = cards.filter(function (c) {
+      return (!curCat || c.getAttribute('data-category') === curCat)
+        && (!curQ || (c.getAttribute('data-text') || '').indexOf(curQ) !== -1);
+    });
+    statusTabs.querySelectorAll('[data-status]').forEach(function (b) {
+      var s = b.getAttribute('data-status');
+      var n = pool.filter(function (c) {
+        if (!s) return true;
+        if (s === 'needsreply') return c.getAttribute('data-flagged') === '1';
+        return c.getAttribute('data-status') === s;
+      }).length;
+      var badge = b.querySelector('.tab-count');
+      if (!badge) {
+        if (!n) return;
+        badge = document.createElement('span'); badge.className = 'tab-count'; b.appendChild(badge);
+      }
+      badge.textContent = n;
+      badge.hidden = n === 0;
+    });
+  }
+  // "needsreply" is a view over the awaiting-reply flag, not a stored status.
+  function matchesStatus(c) {
+    if (!curStatus) return true;
+    if (curStatus === 'needsreply') return c.getAttribute('data-flagged') === '1';
+    return c.getAttribute('data-status') === curStatus;
+  }
   function apply() {
     var shown = 0;
     cards.forEach(function (c) {
-      var ok = (!curStatus || c.getAttribute('data-status') === curStatus)
+      var ok = matchesStatus(c)
         && (!curCat || c.getAttribute('data-category') === curCat)
         && (!curQ || (c.getAttribute('data-text') || '').indexOf(curQ) !== -1);
       c.hidden = !ok; if (ok) shown++;
@@ -140,6 +170,7 @@
     searchClear.hidden = !curQ;
     markActive(statusTabs, 'data-status', curStatus);
     markActive(catFilters, 'data-category', curCat);
+    refreshTabCounts();
     // keep the URL in sync (shareable) without reloading
     var p = new URLSearchParams();
     if (curStatus) p.set('status', curStatus);
@@ -182,6 +213,53 @@
     box.innerHTML = html;
     if (window.fillTimes) window.fillTimes();
   }
+  // Bring a card's state in line with the live thread: awaiting-reply flag,
+  // message count, last-activity time and status pill. Everything the filters
+  // and sorts read lives in these attributes.
+  function syncCard(id, d) {
+    var card = document.querySelector('.fb-card[data-id="' + id + '"]');
+    if (!card) return;
+    var last = d.messages.length ? d.messages[d.messages.length - 1] : null;
+    var flagged = !!last && last.sender === 'submitter';
+
+    card.setAttribute('data-flagged', flagged ? '1' : '0');
+    card.classList.toggle('fb-card-flag', flagged);
+    var chip = card.querySelector('[data-flag]');
+    if (flagged && !chip) {
+      var tags = card.querySelector('.fb-card-tags');
+      if (tags) {
+        chip = document.createElement('span');
+        chip.className = 'fb-flag'; chip.setAttribute('data-flag', '');
+        chip.innerHTML = '<span class="ic ic-message"></span> Awaiting reply';
+        tags.appendChild(chip);
+      }
+    } else if (!flagged && chip) { chip.remove(); }
+
+    card.setAttribute('data-msgs', String(d.messages.length));
+    if (last && last.created_at) card.setAttribute('data-active', last.created_at);
+
+    // status can change from another staff member's tab
+    if (d.feedback && d.feedback.status && card.getAttribute('data-status') !== d.feedback.status) {
+      card.setAttribute('data-status', d.feedback.status);
+      var pill = card.querySelector('[data-statuspill]');
+      if (pill) {
+        pill.textContent = d.feedback.status;
+        pill.className = 'pill pill-' + (d.feedback.status === 'open' ? 'amber' : (d.feedback.status === 'rejected' ? 'red' : 'green'));
+      }
+    }
+    updateNeedsBadge();
+    apply();
+  }
+  // Keep the header's "N awaiting reply" badge honest as threads change.
+  function updateNeedsBadge() {
+    var badge = document.querySelector('.fb-needs-badge');
+    var n = cards.filter(function (c) { return c.getAttribute('data-flagged') === '1'; }).length;
+    if (!badge) return;
+    badge.hidden = n === 0;
+    var txt = badge.lastChild;
+    if (txt && txt.nodeType === 3) txt.nodeValue = ' ' + n + ' awaiting reply';
+  }
+
   function loadThread(id, scroll) {
     var wrap = document.getElementById('thread-' + id); if (!wrap) return;
     var box = wrap.querySelector('[data-msgs]');
@@ -192,12 +270,10 @@
       if (sig === sigs[id] && !scroll) return;
       sigs[id] = sig;
       renderChat(box, d);
-      // clear the "awaiting reply" flag on this card once staff have opened & the last message is staff
-      var card = document.querySelector('.fb-card[data-id="' + id + '"]');
-      if (card && d.messages.length && d.messages[d.messages.length - 1].sender === 'staff') {
-        card.classList.remove('fb-card-flag');
-        var fl = card.querySelector('[data-flag]'); if (fl) fl.remove();
-      }
+      // Re-sync the card's filter/sort attributes from the live thread. These
+      // drive the status filter and every sort, so leaving them at their
+      // render-time values silently mis-ranks and mis-filters the card.
+      syncCard(id, d);
       if (scroll || atBottom) box.scrollTop = box.scrollHeight;
     }).catch(function () {});
   }

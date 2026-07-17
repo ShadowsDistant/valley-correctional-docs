@@ -163,11 +163,31 @@ lib/
 content/*.md         Seeded page content (source of truth on first boot)
 views/               EJS templates (docs, admin, editor, analytics)
 public/              CSS, client JS, favicon
+public/geo/          Basemap for the analytics globe (generated, committed)
+scripts/build-geo.js Regenerates public/geo/world.json
 Dockerfile           Production image
 docker-compose.yml   App + Caddy (HTTPS)
 Caddyfile            Reverse-proxy / TLS config
 .do/app.yaml         App Platform spec (see caveat)
 ```
+
+### The analytics globe basemap
+`public/geo/world.json` holds the globe's coastlines, country borders, US state
+borders and a 0.5° land raster. It is a **generated artifact that is committed**,
+so a normal build needs no network access. Regenerate it only if you want fresher
+source data:
+
+```bash
+node scripts/build-geo.js
+```
+
+It downloads [world-atlas](https://github.com/topojson/world-atlas) (countries-110m)
+and [us-atlas](https://github.com/topojson/us-atlas) (states-10m), simplifies them,
+and rewrites the file (~160 kB raw, ~50 kB gzipped).
+
+City-level visitor markers additionally need Cloudflare's **Add visitor location
+headers** Managed Transform enabled (`CF-IPCity` / `CF-IPLatitude` /
+`CF-IPLongitude`). Without it the globe falls back to country centroids.
 
 ---
 

@@ -27,8 +27,14 @@
       <div class="panel-head"><h2><%- icon('target') %> Where your traffic comes from</h2><span class="muted small"><%= countryTotal %> located visitor<%= countryTotal===1?'':'s' %> · <%= totals.days %>d</span></div>
       <div class="globe-layout">
         <div class="globe-stage">
-          <canvas id="trafficGlobe" width="380" height="380" aria-label="Rotating globe of traffic origin"></canvas>
-          <p class="globe-hint muted small">Drag to spin &amp; tilt · scroll or ± to zoom into a spot · hover a marker for detail</p>
+          <canvas id="trafficGlobe" width="380" height="380" data-geo="/assets/geo/world.json?v=<%= assetVersion %>" aria-label="Interactive globe of traffic origin — drag to rotate, arrow keys to pan, plus and minus to zoom"></canvas>
+          <div class="globe-legend" aria-hidden="true">
+            <span class="globe-lg"><i class="globe-lg-dot"></i>Visitors</span>
+            <span class="globe-lg"><i class="globe-lg-coast"></i>Coast</span>
+            <span class="globe-lg"><i class="globe-lg-border"></i>Borders</span>
+            <span class="globe-lg globe-legend-states"><i class="globe-lg-state"></i>States</span>
+          </div>
+          <p class="globe-hint muted small">Drag to spin &amp; tilt · scroll or ± to zoom · state lines appear as you zoom in</p>
         </div>
         <div class="globe-side">
           <div class="globe-side-h" id="globeSideH">Top locations</div>

@@ -1,7 +1,3 @@
-<div class="hero">
-  <span class="hero-eyebrow"><span class="dot"></span> Official Community Hub</span>
-</div>
-
 # Valley Correctional Facility
 
 Welcome to the official documentation hub for **Valley Correctional Facility (VCF)** — the largest and most established prison-roleplay community for Valley Prison. This site is the single source of truth for our rules, shift procedures, divisional structure, and staff handbooks.

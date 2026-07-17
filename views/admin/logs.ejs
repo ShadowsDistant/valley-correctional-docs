@@ -11,6 +11,7 @@
         'user.login': ['Signed in', 'act-login'], 'user.logout': ['Signed out', 'act-neutral'],
         'user.login_fail': ['Failed login', 'act-delete'], 'user.login_blocked': ['Blocked login', 'act-delete'],
         'user.login_locked': ['Locked out (throttle)', 'act-delete'], 'user.rename': ['Renamed account', 'act-edit'],
+        'user.login_2fa_fail': ['Failed passkey check', 'act-delete'],
         'system.update_requested': ['Update requested', 'act-neutral'], 'pages.pending_dismissed': ['Reviewed doc update', 'act-neutral'],
         'passkey.add': ['Added passkey', 'act-create'], 'passkey.remove': ['Removed passkey', 'act-delete'], 'passkey.admin_remove': ['Admin removed passkey', 'act-delete'],
         'page.create': ['Created page', 'act-create'], 'page.update': ['Edited page', 'act-edit'],
@@ -28,6 +29,9 @@
         'infraction.approve': ['Infraction approved', 'act-create'], 'infraction.reject': ['Infraction rejected', 'act-delete'],
         'file.upload': ['File uploaded', 'act-neutral'], 'user.rank': ['Changed rank', 'act-edit'],
         'user.terminated': ['Auto-terminated', 'act-delete'],
+        'user.archive': ['Archived account', 'act-delete'], 'user.suspension_expired': ['Suspension expired', 'act-neutral'],
+        'feedback.create': ['Feedback submitted', 'act-create'], 'feedback.status': ['Feedback reviewed', 'act-edit'],
+        'feedback.blocked': ['Feedback blocked (language)', 'act-delete'], 'feedback.msg_delete': ['Feedback message deleted', 'act-delete'],
       };
       function actionLabel(a) { return (ACTION[a] || [a, 'act-neutral']); }
     %>

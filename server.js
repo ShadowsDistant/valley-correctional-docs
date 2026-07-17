@@ -67,7 +67,7 @@ function policyClauses() {
 // 7-day cache served old CSS against new HTML → the broken/partial renders).
 function computeAssetVersion() {
   const h = crypto.createHash('sha1');
-  const dirs = ['css', 'js'].map((d) => path.join(__dirname, 'public', d));
+  const dirs = ['css', 'js', 'geo'].map((d) => path.join(__dirname, 'public', d));
   for (const dir of dirs) {
     let files = [];
     try { files = fs.readdirSync(dir).sort(); } catch (e) { continue; }
@@ -1760,7 +1760,9 @@ app.get('/admin/feedback', requireFeedbackStaff, auth.csrfToken, viewRecorder('a
   // Return everything; filtering (status / category / search) happens instantly
   // client-side so switching tabs never reloads the page. The query params only
   // pre-select the initial filter for deep links.
-  const status = ['open', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+  // 'needsreply' is a client-side view over the awaiting-reply flag rather than a
+  // stored status, but it's still a valid deep-link target for the tab.
+  const status = ['open', 'approved', 'rejected', 'needsreply'].includes(req.query.status) ? req.query.status : '';
   const category = FEEDBACK_CATEGORIES.includes(req.query.category) ? req.query.category : '';
   const q = String(req.query.q || '').trim().slice(0, 80);
   const items = db.prepare(

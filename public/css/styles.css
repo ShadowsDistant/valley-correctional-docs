@@ -54,7 +54,15 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+/* Reserve the scrollbar gutter at all times so navigating between a short page
+   and a scrolling one doesn't shift the layout sideways.
+   `overflow-y: scroll` is what actually does the work: the root's overflow
+   propagates to the viewport, so `html` never becomes a scroll container itself
+   and `scrollbar-gutter` alone is ignored there. The track we reserve is
+   transparent (see ::-webkit-scrollbar-track) and the thumb only renders when
+   the page really scrolls, so short pages show nothing. The gutter declaration
+   stays for browsers that do honour it on the root. */
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; overflow-y: scroll; }
 html, body { margin: 0; padding: 0; }
 body {
   font-family: var(--font);
@@ -716,6 +724,18 @@ html.pjaxed main.content * { animation-duration: 0s !important; animation-delay:
 .globe-zoom-btn:hover { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); }
 .globe-zoom-btn:active { transform: scale(.9); }
 .globe-zoom-rd { min-width: 34px; text-align: center; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); padding: 0 2px; }
+#trafficGlobe:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 50%; }
+/* Legend for the basemap layers. "States" lights up once they're on screen. */
+.globe-legend { position: absolute; left: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 5px; padding: 7px 9px; border-radius: 9px; background: color-mix(in srgb, var(--surface) 72%, transparent); border: 1px solid var(--border); backdrop-filter: blur(6px); pointer-events: none; z-index: 3; }
+.globe-lg { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 600; letter-spacing: .03em; color: var(--muted); white-space: nowrap; }
+.globe-lg i { flex: none; }
+.globe-lg-dot { width: 7px; height: 7px; border-radius: 50%; background: #ffa200; box-shadow: 0 0 6px rgba(255,162,0,.7); }
+.globe-lg-coast { width: 12px; height: 0; border-top: 1.5px solid rgba(168,236,190,.85); }
+.globe-lg-border { width: 12px; height: 0; border-top: 1px solid rgba(210,235,215,.5); }
+.globe-lg-state { width: 12px; height: 0; border-top: 1px dashed rgba(190,225,205,.45); }
+.globe-legend-states { opacity: .38; transition: opacity .25s var(--ease), color .25s var(--ease); }
+.globe-legend-states.is-on { opacity: 1; color: var(--text-2); }
+@media (max-width: 560px) { .globe-legend { display: none; } }
 .globe-side-h { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-bottom: 12px; }
 .globe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
 .globe-row { display: grid; grid-template-columns: 22px 1fr 90px 34px; align-items: center; gap: 10px; }
